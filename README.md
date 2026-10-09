@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏝️ Pulse
+# Pulse
 
 **A Fluid, Apple iOS Dynamic Island & Media Dashboard for Windows 11**
 
@@ -15,23 +15,23 @@
 
 </div>
 
-## ✨ Key Features
+## Key Features
 
-- **🏝️ Dynamic Island UI**: Floating, top-aligned desktop widget with multi-state expansions (Idle, Compact, Expanded, Track Change, Settings).
-- **🎵 Live Media Session Control**: Synchronizes automatically with active Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, Web Browsers, VLC, etc.
-- **🎨 Album Art & Backdrop FX**: Dynamic album artwork extraction, caching, and ultra-smooth blur backdrops.
-- **⏱️ Interactive Timeline & Seeking**: Real-time progress bar with drag-to-seek support and live track time updates.
-- **⚙️ Customization Engine**:
+- **Dynamic Island UI**: Floating, top-aligned desktop widget with multi-state expansions (Idle, Compact, Expanded, Track Change, Settings).
+- **Live Media Session Control**: Synchronizes automatically with active Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, Web Browsers, VLC, etc.
+- **Album Art & Backdrop FX**: Dynamic album artwork extraction, caching, and ultra-smooth blur backdrops.
+- **Interactive Timeline & Seeking**: Real-time progress bar with drag-to-seek support and live track time updates.
+- **Customization Engine**:
   - Custom animation speeds and curve presets (iOS Fluid Spring, Gentle, Snappy).
   - Theme switching (System, Dark, Light).
   - Configurable top offsets, island dimensions, and auto-collapse timeouts.
-- **🔔 System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup settings, and quick exit.
-- **🖥️ Multi-Monitor & DPI Aware**: Seamlessly adapts to DPI scale factors and monitor layouts without clipping or blurred rendering.
-- **🧪 Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage.
+- **System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup settings, and quick exit.
+- **Multi-Monitor & DPI Aware**: Seamlessly adapts to DPI scale factors and monitor layouts without clipping or blurred rendering.
+- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage.
 
 ---
 
-## 🛠️ Architecture & Technology Stack
+## Architecture & Technology Stack
 
 - **Framework**: .NET 9.0 / C# 13
 - **UI Platform**: WinUI 3 (Windows App SDK)
@@ -41,7 +41,7 @@
 
 ---
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
@@ -72,7 +72,7 @@ dotnet run --project src/Pulse/Pulse.csproj
 
 ---
 
-## 📸 Usage & Controls
+## Usage & Controls
 
 - **Click Island**: Toggle expanded playback view and track timeline.
 - **Hover & Micro-interactions**: Hovering reveals quick media controls and track details.
@@ -80,7 +80,7 @@ dotnet run --project src/Pulse/Pulse.csproj
 
 ---
 
-## 📁 Repository Structure
+## Repository Structure
 
 ```
 pulse/
@@ -100,7 +100,7 @@ pulse/
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions are always welcome! Feel free to open issues, submit pull requests, or request new features.
 
@@ -112,6 +112,6 @@ Contributions are always welcome! Feel free to open issues, submit pull requests
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
