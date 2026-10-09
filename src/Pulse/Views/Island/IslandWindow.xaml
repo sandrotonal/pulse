@@ -202,7 +202,7 @@
                 <Grid x:Name="ExpandedView"
                       Opacity="0"
                       IsHitTestVisible="False"
-                      Padding="22,14,22,16"
+                      Padding="22,16,22,18"
                       PointerReleased="OnExpandedViewPointerReleased"
                       RowDefinitions="Auto,Auto,Auto,Auto">
 
@@ -249,7 +249,7 @@
                     </Grid>
 
                     <!-- Row 1: Album Artwork + Track Details -->
-                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,10">
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,12">
                         <!-- Square Album Art -->
                         <Border Grid.Column="0"
                                 Width="64" Height="64"
@@ -276,7 +276,7 @@
                     </Grid>
 
                     <!-- Row 2: Scrubber & Timestamps -->
-                    <Grid Grid.Row="2" Margin="0,0,0,8">
+                    <Grid Grid.Row="2" Margin="0,0,0,12">
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto" />
                             <RowDefinition Height="Auto" />
@@ -306,7 +306,7 @@
                     </Grid>
 
                     <!-- Row 3: Reference Transport Controls -->
-                    <Grid Grid.Row="3" HorizontalAlignment="Center" Margin="0,2,0,0">
+                    <Grid Grid.Row="3" HorizontalAlignment="Center" Margin="0,0,0,0">
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
 
                             <!-- Seek Backward 15s Capsule -->

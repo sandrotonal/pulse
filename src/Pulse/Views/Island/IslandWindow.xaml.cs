@@ -275,8 +275,8 @@ public sealed partial class IslandWindow : Window
 
         if (isExpanded)
         {
-            targetWidth = 372;
-            targetHeight = 224;
+            targetWidth = 380;
+            targetHeight = 252;
             targetCornerRadius = 36;
         }
         else if (!hasTrack && state is IslandState.Idle)
@@ -298,7 +298,7 @@ public sealed partial class IslandWindow : Window
             targetCornerRadius = 19;
         }
 
-        var scale = _viewModel.IslandScale;
+        var scale = isExpanded ? 1.0 : _viewModel.IslandScale;
         targetWidth *= scale;
         targetHeight *= scale;
 
@@ -340,8 +340,10 @@ public sealed partial class IslandWindow : Window
 
                 _surfaceVisual.CenterPoint = new Vector3((float)(targetWidth / 2), 0, 0);
 
-                var fromScaleX = (float)(216.0 / targetWidth);
-                var fromScaleY = (float)(38.0 / targetHeight);
+                var compactW = (hasTrack ? 216.0 : 76.0) * _viewModel.IslandScale;
+                var compactH = (hasTrack ? 38.0 : 32.0) * _viewModel.IslandScale;
+                var fromScaleX = (float)(compactW / targetWidth);
+                var fromScaleY = (float)(compactH / targetHeight);
 
                 var expandScaleAnim = compositor.CreateVector3KeyFrameAnimation();
                 expandScaleAnim.Duration = morphDuration;
