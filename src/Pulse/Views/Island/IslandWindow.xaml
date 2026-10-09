@@ -18,15 +18,15 @@
 
         <Grid.Resources>
             <!-- Reference Dark Glass palette -->
-            <SolidColorBrush x:Key="IslandBackground" Color="#EE111724" />
-            <SolidColorBrush x:Key="IslandBorder"     Color="#2CFFFFFF" />
+            <SolidColorBrush x:Key="IslandBackground" Color="#F20B1018" />
+            <SolidColorBrush x:Key="IslandBorder"     Color="#33FFFFFF" />
             <SolidColorBrush x:Key="PrimaryText"      Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="SecondaryText"    Color="#FF8E95A2" />
+            <SolidColorBrush x:Key="SecondaryText"    Color="#FFA4ABB6" />
             <SolidColorBrush x:Key="Accent"           Color="#FF007AFF" />
             <SolidColorBrush x:Key="SeekAccent"       Color="#FF007AFF" />
             <SolidColorBrush x:Key="PlayButtonBackground" Color="#FF007AFF" />
             <SolidColorBrush x:Key="PlayButtonForeground" Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="PillControlBackground" Color="#1EFFFFFF" />
+            <SolidColorBrush x:Key="PillControlBackground" Color="#24FFFFFF" />
 
             <!-- Clean base button style -->
             <Style x:Key="IslandButtonStyle" TargetType="Button">
@@ -55,32 +55,32 @@
                 <Setter Property="Height"       Value="28" />
                 <Setter Property="CornerRadius" Value="14" />
                 <Setter Property="Background"   Value="{ThemeResource PillControlBackground}" />
-                <Setter Property="Foreground"   Value="{ThemeResource SecondaryText}" />
+                <Setter Property="Foreground"   Value="#FFDDE3EA" />
             </Style>
 
             <!-- Transport capsule button style (-15 and +15) -->
             <Style x:Key="TransportCapsuleButtonStyle" TargetType="Button" BasedOn="{StaticResource IslandButtonStyle}">
-                <Setter Property="Width"        Value="50" />
-                <Setter Property="Height"       Value="34" />
-                <Setter Property="CornerRadius" Value="17" />
+                <Setter Property="Width"        Value="46" />
+                <Setter Property="Height"       Value="32" />
+                <Setter Property="CornerRadius" Value="16" />
                 <Setter Property="Background"   Value="{ThemeResource PillControlBackground}" />
                 <Setter Property="Foreground"   Value="{ThemeResource PrimaryText}" />
             </Style>
 
             <!-- Transport navigation button style (Previous / Next) -->
             <Style x:Key="TransportNavButtonStyle" TargetType="Button" BasedOn="{StaticResource IslandButtonStyle}">
-                <Setter Property="Width"        Value="36" />
-                <Setter Property="Height"       Value="36" />
-                <Setter Property="CornerRadius" Value="18" />
+                <Setter Property="Width"        Value="34" />
+                <Setter Property="Height"       Value="34" />
+                <Setter Property="CornerRadius" Value="17" />
                 <Setter Property="Background"   Value="Transparent" />
                 <Setter Property="Foreground"   Value="{ThemeResource PrimaryText}" />
             </Style>
 
             <!-- Play/Pause circular button style -->
             <Style x:Key="PlayPauseButtonStyle" TargetType="Button" BasedOn="{StaticResource IslandButtonStyle}">
-                <Setter Property="Width"        Value="50" />
-                <Setter Property="Height"       Value="50" />
-                <Setter Property="CornerRadius" Value="25" />
+                <Setter Property="Width"        Value="48" />
+                <Setter Property="Height"       Value="48" />
+                <Setter Property="CornerRadius" Value="24" />
                 <Setter Property="Background"   Value="{ThemeResource PlayButtonBackground}" />
                 <Setter Property="Foreground"   Value="{ThemeResource PlayButtonForeground}" />
             </Style>
@@ -202,23 +202,20 @@
                 <Grid x:Name="ExpandedView"
                       Opacity="0"
                       IsHitTestVisible="False"
-                      Padding="22,16,22,18"
+                      Padding="18,13,18,15"
                       PointerReleased="OnExpandedViewPointerReleased"
                       RowDefinitions="Auto,Auto,Auto,Auto">
 
                     <!-- Row 0: App Source Badge & Header Controls -->
                     <Grid Grid.Row="0" Margin="0,0,0,10">
                         <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                            <!-- Authentic Spotify Logo -->
-                            <Grid Width="18" Height="18" VerticalAlignment="Center">
-                                <Ellipse Width="18" Height="18" Fill="#FF1DB954" />
-                                <Path Data="M 4.5,6.5 C 7.5,5.5 11.5,5.8 13.8,7.2 M 5,9 C 7.5,8.2 11,8.4 13.2,9.6 M 5.5,11.5 C 7.5,10.8 10,11 11.8,12"
-                                      Stroke="#FF000000" StrokeThickness="1.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                            </Grid>
+                            <Border Width="18" Height="18" CornerRadius="9" Background="{ThemeResource PillControlBackground}">
+                                <Ellipse Width="7" Height="7" Fill="{ThemeResource Accent}" />
+                            </Border>
                             <TextBlock Text="{Binding AppDisplayName, TargetNullValue='Spotify'}"
-                                       FontSize="13"
+                                       FontSize="12"
                                        FontWeight="SemiBold"
-                                       Foreground="#FFE1E4EA"
+                                       Foreground="{ThemeResource SecondaryText}"
                                        VerticalAlignment="Center" />
                         </StackPanel>
 
@@ -252,12 +249,12 @@
                     <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,0,0,12">
                         <!-- Square Album Art -->
                         <Border Grid.Column="0"
-                                Width="64" Height="64"
-                                CornerRadius="14"
+                                Width="62" Height="62"
+                                CornerRadius="15"
                                 Background="#1C232D">
-                            <Grid CornerRadius="14">
-                                <FontIcon Glyph="&#xEC4F;" FontSize="24" Foreground="{ThemeResource SecondaryText}"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                            <Grid CornerRadius="15">
+                                <FontIcon Glyph="&#xEC4F;" FontSize="22" Foreground="{ThemeResource SecondaryText}"
+                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
                             </Grid>
                         </Border>
@@ -265,11 +262,11 @@
                         <!-- Title and Artist -->
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="14,0,0,0" Spacing="3">
                             <TextBlock Text="{Binding CurrentTrack.Title, TargetNullValue='Müzik başlatın'}"
-                                       FontSize="18" FontWeight="Bold"
+                                       FontSize="17" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        TextTrimming="CharacterEllipsis" MaxLines="1" />
                             <TextBlock Text="{Binding CurrentTrack.Artist, TargetNullValue='Pulse'}"
-                                       FontSize="14"
+                                       FontSize="13"
                                        Foreground="{ThemeResource SecondaryText}"
                                        TextTrimming="CharacterEllipsis" MaxLines="1" />
                         </StackPanel>
@@ -284,7 +281,7 @@
 
                         <controls:PulseSeekBar Grid.Row="0"
                                                x:Name="ExpandedSeekBar"
-                                               Height="18"
+                                               Height="20"
                                                Value="{Binding SeekPercent, Mode=TwoWay}"
                                                CanSeek="{Binding CurrentTrack.CanSeek, FallbackValue=True}"
                                                AccentBrush="{ThemeResource SeekAccent}"
@@ -293,13 +290,13 @@
                                                ScrubDelta="OnSeekBarScrubDelta"
                                                ScrubCompleted="OnSeekBarScrubCompleted" />
 
-                        <Grid Grid.Row="1" Margin="1,-2,1,0">
+                        <Grid Grid.Row="1" Margin="1,0,1,0">
                             <TextBlock Text="{Binding PositionLabel}"
-                                       FontSize="11" FontWeight="Medium"
+                                       FontSize="10" FontWeight="Medium"
                                        Foreground="{ThemeResource SecondaryText}"
                                        HorizontalAlignment="Left" />
                             <TextBlock Text="{Binding DurationLabel}"
-                                       FontSize="11" FontWeight="Medium"
+                                       FontSize="10" FontWeight="Medium"
                                        Foreground="{ThemeResource SecondaryText}"
                                        HorizontalAlignment="Right" />
                         </Grid>
@@ -316,7 +313,7 @@
                                     Visibility="{Binding SeekPanelVisibility}"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
-                                    Margin="0,0,14,0"
+                                    Margin="0,0,10,0"
                                     ToolTipService.ToolTip="15 sn geri">
                                 <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
                                     <Path Data="M 11,3 A 8,8 0 1,0 18.5,11 M 11,3 L 8.5,0.5 M 11,3 L 8.5,5.5"
@@ -335,7 +332,7 @@
                                     IsEnabled="{Binding CanGoPrevious}"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
-                                    Margin="0,0,14,0"
+                                    Margin="0,0,10,0"
                                     ToolTipService.ToolTip="Önceki">
                                 <FontIcon Glyph="&#xE892;" FontSize="16" />
                             </Button>
@@ -346,7 +343,7 @@
                                     IsEnabled="{Binding CanTogglePlayback}"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
-                                    Margin="0,0,14,0"
+                                    Margin="0,0,10,0"
                                     ToolTipService.ToolTip="Oynat / Duraklat">
                                 <FontIcon Glyph="{Binding PlayPauseGlyph}" FontSize="18" />
                             </Button>
@@ -357,7 +354,7 @@
                                     IsEnabled="{Binding CanGoNext}"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
-                                    Margin="0,0,14,0"
+                                    Margin="0,0,10,0"
                                     ToolTipService.ToolTip="Sonraki">
                                 <FontIcon Glyph="&#xE893;" FontSize="16" />
                             </Button>

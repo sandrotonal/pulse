@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
+using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
 namespace Pulse.ViewModels;
@@ -21,6 +22,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private DateTimeOffset _lastTickTime = DateTimeOffset.UtcNow;
     private MediaTrack? _currentTrack;
     private BitmapImage? _artworkImage;
+    private uint _artworkAccentColor = 0xFF007AFFu;
     private double? _seekPreviewPercent;
     private string? _seekStatus;
     private bool _isInitialized;
@@ -150,6 +152,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool CanGoNext => CurrentTrack?.CanNext == true;
     public bool CanGoPrevious => CurrentTrack?.CanPrevious == true;
     public BitmapImage? ArtworkImage => _artworkImage;
+    public uint ArtworkAccentColor => _artworkAccentColor;
     public bool IsScrubbing { get; private set; }
     public string PlaybackLabel => CurrentTrack?.PlaybackStatus == PlaybackStatus.Playing ? "Pause" : "Play";
     public string PlayPauseGlyph => CurrentTrack?.PlaybackStatus == PlaybackStatus.Playing ? "\uE769" : "\uE768";
@@ -459,7 +462,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (artwork is null || artwork.Length == 0)
         {
             _artworkImage = null;
+            _artworkAccentColor = 0xFF007AFFu;
             OnPropertyChanged(nameof(ArtworkImage));
+            OnPropertyChanged(nameof(ArtworkAccentColor));
             return;
         }
 
@@ -476,14 +481,94 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             var image = new BitmapImage();
             await image.SetSourceAsync(stream);
             _artworkImage = image;
+            _artworkAccentColor = await ExtractArtworkAccentColorAsync(artwork);
             OnPropertyChanged(nameof(ArtworkImage));
+            OnPropertyChanged(nameof(ArtworkAccentColor));
         }
         catch (Exception)
         {
             _artworkImage = null;
+            _artworkAccentColor = 0xFF007AFFu;
             OnPropertyChanged(nameof(ArtworkImage));
+            OnPropertyChanged(nameof(ArtworkAccentColor));
         }
     }
+
+    private static async Task<uint> ExtractArtworkAccentColorAsync(byte[] artwork)
+    {
+        try
+        {
+            using var stream = new InMemoryRandomAccessStream();
+            using (var writer = new DataWriter(stream))
+            {
+                writer.WriteBytes(artwork);
+                await writer.StoreAsync();
+                writer.DetachStream();
+            }
+
+            stream.Seek(0);
+            var decoder = await BitmapDecoder.CreateAsync(stream);
+            var transform = new BitmapTransform
+            {
+                ScaledWidth = Math.Min(48u, decoder.PixelWidth),
+                ScaledHeight = Math.Min(48u, decoder.PixelHeight),
+                InterpolationMode = BitmapInterpolationMode.Linear
+            };
+            var pixels = await decoder.GetPixelDataAsync(
+                BitmapPixelFormat.Rgba8,
+                BitmapAlphaMode.Premultiplied,
+                transform,
+                ExifOrientationMode.IgnoreExifOrientation,
+                ColorManagementMode.DoNotColorManage);
+            var data = pixels.DetachPixelData();
+            if (data.Length < 4)
+            {
+                return 0xFF007AFFu;
+            }
+
+            double totalWeight = 0;
+            double r = 0;
+            double g = 0;
+            double b = 0;
+            for (var i = 0; i + 3 < data.Length; i += 4)
+            {
+                var pr = data[i];
+                var pg = data[i + 1];
+                var pb = data[i + 2];
+                var max = Math.Max(pr, Math.Max(pg, pb));
+                var min = Math.Min(pr, Math.Min(pg, pb));
+                var saturation = (max - min) / 255d;
+                var brightness = max / 255d;
+                if (brightness < 0.12 || brightness > 0.95)
+                {
+                    continue;
+                }
+
+                var weight = 0.35 + saturation + (brightness * 0.35);
+                r += pr * weight;
+                g += pg * weight;
+                b += pb * weight;
+                totalWeight += weight;
+            }
+
+            if (totalWeight <= 0)
+            {
+                return 0xFF007AFFu;
+            }
+
+            var rr = NormalizeAccentChannel(r / totalWeight);
+            var gg = NormalizeAccentChannel(g / totalWeight);
+            var bb = NormalizeAccentChannel(b / totalWeight);
+            return 0xFF000000u | ((uint)rr << 16) | ((uint)gg << 8) | bb;
+        }
+        catch
+        {
+            return 0xFF007AFFu;
+        }
+    }
+
+    private static byte NormalizeAccentChannel(double value)
+        => (byte)Math.Clamp(Math.Round((value * 0.86) + 24), 32, 232);
 
     private static string FormatTime(TimeSpan? value)
     {

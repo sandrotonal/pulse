@@ -825,3 +825,11 @@ The application must be functional, not a static visual mockup.
 Every visible control should be connected to real Windows media functionality where supported.
 
 **Start with the MVP architecture and implement the working media-session functionality first. Then build the Dynamic Island UI on top of it.**
+
+
+
+fare  ıle usutune gelınce buyusun  fare ımlecı ustusnden kalkdınca kusulsucn 
+
+ayrıca ayarlar kısmı dugzun calısmıyor 
+
+ayrıca  fare ıle uzerıne gelınce  okısımda sarkının spotfyda sozu varsa o kısımda sozlerıde gorunmeısnını ısterım 

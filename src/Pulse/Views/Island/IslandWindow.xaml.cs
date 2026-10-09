@@ -261,6 +261,14 @@ public sealed partial class IslandWindow : Window
         {
             ApplyTheme(_viewModel.Theme);
         }
+        else if (e.PropertyName == nameof(MediaViewModel.ArtworkAccentColor))
+        {
+            ApplyTheme(_viewModel.Theme);
+        }
+        else if (e.PropertyName is nameof(MediaViewModel.TopOffset) or nameof(MediaViewModel.IslandScale))
+        {
+            UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+        }
     }
 
     private void UpdateStateLayout(IslandState state, bool animated)
@@ -275,9 +283,9 @@ public sealed partial class IslandWindow : Window
 
         if (isExpanded)
         {
-            targetWidth = 380;
-            targetHeight = 252;
-            targetCornerRadius = 36;
+            targetWidth = 348;
+            targetHeight = 222;
+            targetCornerRadius = 30;
         }
         else if (!hasTrack && state is IslandState.Idle)
         {
@@ -287,9 +295,9 @@ public sealed partial class IslandWindow : Window
         }
         else if (isHover)
         {
-            targetWidth = hasTrack ? 222 : 84;
-            targetHeight = 40;
-            targetCornerRadius = 20;
+            targetWidth = hasTrack ? 248 : 96;
+            targetHeight = 46;
+            targetCornerRadius = 23;
         }
         else
         {
@@ -324,7 +332,7 @@ public sealed partial class IslandWindow : Window
         try
         {
             var compositor = _surfaceVisual.Compositor;
-            var morphDuration = TimeSpan.FromMilliseconds(isExpanded ? 300 : 240);
+            var morphDuration = TimeSpan.FromMilliseconds(isExpanded ? 260 : 170);
             var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
             var quickEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.6f, 1f));
 
@@ -367,6 +375,24 @@ public sealed partial class IslandWindow : Window
                 expandedFade.InsertKeyFrame(0.3f, 0f);
                 expandedFade.InsertKeyFrame(1f, 1f, springEasing);
                 _expandedVisual.StartAnimation("Opacity", expandedFade);
+            }
+            else if (state is IslandState.Hover or IslandState.Compact or IslandState.Idle or IslandState.TrackChanged or IslandState.Notification)
+            {
+                PositionAndResizeWindow(targetWidth, targetHeight);
+                Surface.Width = targetWidth;
+                Surface.Height = targetHeight;
+                CompactView.IsHitTestVisible = true;
+                ExpandedView.IsHitTestVisible = false;
+                _expandedVisual.Opacity = 0;
+                _compactVisual.Opacity = 1;
+
+                _surfaceVisual.CenterPoint = new Vector3((float)(targetWidth / 2), (float)(targetHeight / 2), 0);
+                var settle = state == IslandState.Hover ? 1.018f : 0.992f;
+                var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
+                scaleAnim.Duration = TimeSpan.FromMilliseconds(170);
+                scaleAnim.InsertKeyFrame(0.72f, new Vector3(settle, settle, 1f), springEasing);
+                scaleAnim.InsertKeyFrame(1f, Vector3.One, springEasing);
+                _surfaceVisual.StartAnimation("Scale", scaleAnim);
             }
             else
             {
@@ -552,15 +578,16 @@ public sealed partial class IslandWindow : Window
         var isLight = theme == "Light";
         WindowRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
 
-        var bgColor      = isLight ? 0xF2F5F5F7u : 0xEE111724u;
-        var borderColor  = isLight ? 0x22000000u : 0x2CFFFFFFu;
+        var artworkAccent = _viewModel.ArtworkAccentColor;
+        var accentColor  = isLight ? 0xFF007AFFu : artworkAccent;
+        var bgColor      = isLight ? 0xF2F5F5F7u : Blend(0xF20B1018u, artworkAccent, 0.20);
+        var borderColor  = isLight ? 0x22000000u : Blend(0x33FFFFFFu, artworkAccent, 0.22);
         var primaryText  = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
-        var secondaryTxt = isLight ? 0xFF8E8E93u : 0xFF8E95A2u;
-        var pillCtrlBg   = isLight ? 0xFFE5E5EAu : 0x1EFFFFFFu;
-        var playBg       = 0xFF007AFFu;
+        var secondaryTxt = isLight ? 0xFF8E8E93u : 0xFFA4ABB6u;
+        var pillCtrlBg   = isLight ? 0xFFE5E5EAu : Blend(0x24FFFFFFu, artworkAccent, 0.14);
+        var playBg       = isLight ? 0xFF007AFFu : accentColor;
         var playFg       = 0xFFFFFFFFu;
-        var accentColor  = 0xFF007AFFu;
-        var seekAccent   = 0xFF007AFFu;
+        var seekAccent   = accentColor;
 
         UpdateBrush("IslandBackground", bgColor);
         UpdateBrush("IslandBorder", borderColor);
@@ -595,6 +622,16 @@ public sealed partial class IslandWindow : Window
 
     private static Windows.UI.Color ToColor(uint color)
         => Windows.UI.Color.FromArgb((byte)(color >> 24), (byte)(color >> 16), (byte)(color >> 8), (byte)color);
+
+    private static uint Blend(uint baseColor, uint overlayColor, double amount)
+    {
+        amount = Math.Clamp(amount, 0, 1);
+        var a = (byte)(baseColor >> 24);
+        var r = (byte)Math.Round(((baseColor >> 16) & 0xFF) * (1 - amount) + ((overlayColor >> 16) & 0xFF) * amount);
+        var g = (byte)Math.Round(((baseColor >> 8) & 0xFF) * (1 - amount) + ((overlayColor >> 8) & 0xFF) * amount);
+        var b = (byte)Math.Round((baseColor & 0xFF) * (1 - amount) + (overlayColor & 0xFF) * amount);
+        return ((uint)a << 24) | ((uint)r << 16) | ((uint)g << 8) | b;
+    }
 
     // Win32 Styles & Border/Shadow Stripping
     private void ApplyWindowStyles()

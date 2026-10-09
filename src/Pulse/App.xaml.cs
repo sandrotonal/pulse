@@ -21,6 +21,7 @@ public partial class App : Application
     private readonly MediaViewModel _mediaViewModel;
     private IslandWindow? _islandWindow;
     private TaskbarFlyoutWindow? _taskbarFlyoutWindow;
+    private SettingsWindow? _settingsWindow;
     private TrayService? _trayService;
 
     public App()
@@ -73,9 +74,16 @@ public partial class App : Application
 
     private void OnSettingsRequested(object? sender, EventArgs args)
     {
+        if (_settingsWindow is not null)
+        {
+            _settingsWindow.Activate();
+            return;
+        }
+
         var viewModel = new SettingsViewModel(_settingsService, _startupService);
-        var window = new SettingsWindow(viewModel);
-        window.Activate();
+        _settingsWindow = new SettingsWindow(viewModel);
+        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
+        _settingsWindow.Activate();
     }
 
     private async void OnStartupRequested(object? sender, bool enabled)
@@ -120,6 +128,7 @@ public partial class App : Application
     private async void OnExitRequested(object? sender, EventArgs args)
     {
         _trayService?.Dispose();
+        _settingsWindow?.Close();
         _taskbarFlyoutWindow?.Close();
         _islandWindow?.Close();
         await _mediaViewModel.DisposeAsync();
