@@ -69,15 +69,18 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    private string? _lastArtworkKey;
+
     public MediaTrack? CurrentTrack
     {
         get => _currentTrack;
         private set
         {
-            var artworkChanged = !ReferenceEquals(_currentTrack?.Artwork, value?.Artwork);
+            var artworkChanged = HasArtworkChanged(value);
             if (SetProperty(ref _currentTrack, value))
             {
                 OnPropertyChanged(nameof(HasTrack));
+                OnPropertyChanged(nameof(IsPlaying));
                 OnPropertyChanged(nameof(CanTogglePlayback));
                 OnPropertyChanged(nameof(CanGoNext));
                 OnPropertyChanged(nameof(CanGoPrevious));
@@ -97,7 +100,21 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
+    private bool HasArtworkChanged(MediaTrack? newTrack)
+    {
+        var newKey = newTrack is null
+            ? null
+            : $"{newTrack.SourceApplicationId}|{newTrack.Title}|{newTrack.Artist}|{newTrack.Album}|{newTrack.Artwork?.Length ?? 0}";
+        if (_lastArtworkKey == newKey)
+        {
+            return false;
+        }
+        _lastArtworkKey = newKey;
+        return true;
+    }
+
     public bool HasTrack => CurrentTrack is not null;
+    public bool IsPlaying => CurrentTrack?.PlaybackStatus == PlaybackStatus.Playing;
     public string AppDisplayName
     {
         get
