@@ -1,0 +1,129 @@
+using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Pulse.Core.Interfaces;
+using Pulse.Services.Artwork;
+using Pulse.Services.Media;
+using Pulse.Services.Settings;
+using Pulse.Services.System;
+using Pulse.ViewModels;
+using Pulse.Views.Flyout;
+using Pulse.Views.Island;
+using Pulse.Views.Settings;
+
+namespace Pulse;
+
+public partial class App : Application
+{
+    private readonly ISettingsService _settingsService;
+    private readonly IStartupService _startupService;
+    private readonly IMediaSessionService _mediaSessionService;
+    private readonly MediaViewModel _mediaViewModel;
+    private IslandWindow? _islandWindow;
+    private TaskbarFlyoutWindow? _taskbarFlyoutWindow;
+    private TrayService? _trayService;
+
+    public App()
+    {
+        InitializeComponent();
+        _settingsService = new SettingsService();
+        _settingsService.SettingsChanged += OnSettingsChanged;
+        _startupService = new StartupService();
+        _mediaSessionService = new WindowsMediaSessionService(new ArtworkCacheService());
+        var playbackController = new PlaybackController(_mediaSessionService);
+        _mediaViewModel = new MediaViewModel(
+            _mediaSessionService,
+            playbackController,
+            _settingsService,
+            DispatcherQueue.GetForCurrentThread());
+    }
+
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
+    {
+        await _settingsService.LoadAsync();
+        await _mediaViewModel.InitializeAsync();
+
+        _islandWindow = new IslandWindow(_mediaViewModel);
+        _islandWindow.SettingsRequested += OnSettingsRequested;
+        _islandWindow.TaskbarFlyoutRequested += (_, _) => _taskbarFlyoutWindow?.ToggleFlyout();
+        _islandWindow.Activate();
+        _islandWindow.ShowIsland();
+
+        _taskbarFlyoutWindow = new TaskbarFlyoutWindow(_mediaViewModel);
+
+        var startupEnabled = await _startupService.IsEnabledAsync();
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+        _trayService = new TrayService(iconPath, startupEnabled);
+        _trayService.ShowRequested += (_, _) =>
+        {
+            if (_islandWindow?.IsIslandHidden == true)
+            {
+                _islandWindow.UnhideIslandAnimated();
+            }
+            _taskbarFlyoutWindow?.ToggleFlyout();
+        };
+        _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
+        _trayService.SettingsRequested += OnSettingsRequested;
+        _trayService.AboutRequested += OnAboutRequested;
+        _trayService.ExitRequested += OnExitRequested;
+        _trayService.StartupRequested += OnStartupRequested;
+        _trayService.SetNotificationsPaused(_settingsService.Current.NotificationsPaused);
+        _trayService.NotificationsPauseRequested += OnNotificationsPauseRequested;
+    }
+
+    private void OnSettingsRequested(object? sender, EventArgs args)
+    {
+        var viewModel = new SettingsViewModel(_settingsService, _startupService);
+        var window = new SettingsWindow(viewModel);
+        window.Activate();
+    }
+
+    private async void OnStartupRequested(object? sender, bool enabled)
+    {
+        var accepted = await _startupService.SetEnabledAsync(enabled);
+        if (_trayService is not null)
+        {
+            _trayService.SetStartupEnabled(accepted);
+        }
+
+        if (accepted)
+        {
+            await _settingsService.SaveAsync(_settingsService.Current with { StartWithWindows = enabled });
+        }
+    }
+
+    private async void OnNotificationsPauseRequested(object? sender, bool paused)
+    {
+        await _settingsService.SaveAsync(_settingsService.Current with { NotificationsPaused = paused });
+    }
+
+    private void OnSettingsChanged(object? sender, Pulse.Core.Models.AppSettings settings)
+        => _trayService?.SetNotificationsPaused(settings.NotificationsPaused);
+
+    private async void OnAboutRequested(object? sender, EventArgs args)
+    {
+        if (_islandWindow is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            Title = "Pulse",
+            Content = "Windows için yerel medya denetimi. Medya oturumları cihazında işlenir.\nSürüm 1.0.0",
+            CloseButtonText = "Kapat",
+            XamlRoot = _islandWindow.IslandXamlRoot
+        };
+        await dialog.ShowAsync();
+    }
+
+    private async void OnExitRequested(object? sender, EventArgs args)
+    {
+        _trayService?.Dispose();
+        _taskbarFlyoutWindow?.Close();
+        _islandWindow?.Close();
+        await _mediaViewModel.DisposeAsync();
+        await _mediaSessionService.DisposeAsync();
+        Exit();
+    }
+}

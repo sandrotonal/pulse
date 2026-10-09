@@ -1,0 +1,29 @@
+## Ignore Visual Studio / .NET build artifacts
+[Bb]in/
+[Oo]bj/
+.vs/
+*.user
+*.userosscache
+*.sln.docstates
+*.suo
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+ARM64/
+[Aa]pp[Xx]/
+_ReSharper*/
+[Tt]est[Rr]esult*/
+
+## Windows generated files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+## Antigravity / IDE / OS metadata
+.DS_Store
+.idea/
+*.log
+scratch/

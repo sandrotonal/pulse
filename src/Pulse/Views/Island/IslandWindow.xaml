@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="Pulse.Views.Island.IslandWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Pulse.Controls"
+    xmlns:winuiex="using:WinUIEx"
+    Title="Pulse Dynamic Island">
+
+    <!--
+        TransparentTintBackdrop: makes the WinUI window chrome fully transparent.
+        The XAML background is handled by Surface (the pill Border) alone.
+    -->
+    <Window.SystemBackdrop>
+        <winuiex:TransparentTintBackdrop TintColor="Transparent" />
+    </Window.SystemBackdrop>
+
+    <!--
+        WindowRoot: transparent container that fills the entire window.
+        Background must be Transparent (not Null) so pointer events are NOT
+        absorbed by the root — clicks pass through to OS desktop outside the pill.
+        The Surface Border handles all hit-testing for the pill itself.
+    -->
+    <Grid x:Name="WindowRoot"
+          Background="Transparent"
+          HorizontalAlignment="Center"
+          VerticalAlignment="Top">
+
+        <Grid.Resources>
+            <!-- Default dark (OLED pitch-black) colors — overridden by ApplyTheme() at runtime -->
+            <SolidColorBrush x:Key="IslandBackground" Color="#FF000000" />
+            <SolidColorBrush x:Key="IslandBorder"     Color="#28FFFFFF" />
+            <SolidColorBrush x:Key="PrimaryText"      Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SecondaryText"    Color="#A0EBEBEB" />
+            <SolidColorBrush x:Key="Accent"           Color="#FF30D158" />
+            <SolidColorBrush x:Key="SeekAccent"       Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="PlayButtonBackground" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="PlayButtonForeground" Color="#FF000000" />
+            <SolidColorBrush x:Key="PillControlBackground" Color="#18FFFFFF" />
+
+            <!-- Base button style: no chrome, no focus ring -->
+            <Style x:Key="IslandButtonStyle" TargetType="Button">
+                <Setter Property="Background"           Value="Transparent" />
+                <Setter Property="Foreground"           Value="{ThemeResource SecondaryText}" />
+                <Setter Property="BorderThickness"      Value="0" />
+                <Setter Property="Padding"              Value="0" />
+                <Setter Property="UseSystemFocusVisuals" Value="False" />
+                <Setter Property="Template">
+                    <Setter.Value>
+                        <ControlTemplate TargetType="Button">
+                            <ContentPresenter
+                                HorizontalContentAlignment="Center"
+                                VerticalContentAlignment="Center"
+                                Background="{TemplateBinding Background}"
+                                CornerRadius="{TemplateBinding CornerRadius}" />
+                        </ControlTemplate>
+                    </Setter.Value>
+                </Setter>
+            </Style>
+
+            <!-- Transport controls: circular, larger -->
+            <Style x:Key="TransportButtonStyle" TargetType="Button" BasedOn="{StaticResource IslandButtonStyle}">
+                <Setter Property="Width"        Value="38" />
+                <Setter Property="Height"       Value="38" />
+                <Setter Property="CornerRadius" Value="19" />
+                <Setter Property="FontSize"     Value="15" />
+                <Setter Property="Foreground"   Value="{ThemeResource PrimaryText}" />
+            </Style>
+        </Grid.Resources>
+
+        <!-- ── Micro notch anchor shown when island is hidden ── -->
+        <Border x:Name="HiddenAnchor"
+                Width="48" Height="5"
+                CornerRadius="2.5"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Margin="0,4,0,0"
+                Background="{ThemeResource IslandBorder}"
+                Opacity="0.5"
+                Visibility="Collapsed"
+                PointerEntered="OnHiddenAnchorPointerEntered"
+                Tapped="OnHiddenAnchorTapped">
+            <ToolTipService.ToolTip>
+                <ToolTip Content="Pulse Dynamic Island'ı Göster" />
+            </ToolTipService.ToolTip>
+        </Border>
+
+        <!-- ══════════════════════════════════════════════════════
+             THE PILL — true Apple Dynamic Island shape
+             IsHitTestVisible=True so taps land here, not pass-through.
+             ══════════════════════════════════════════════════════ -->
+        <Border x:Name="Surface"
+                Width="216" Height="36"
+                CornerRadius="18"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Center"
+                Background="{ThemeResource IslandBackground}"
+                BorderBrush="{ThemeResource IslandBorder}"
+                BorderThickness="0.5"
+                IsHitTestVisible="True"
+                PointerEntered="OnPointerEntered"
+                PointerExited="OnPointerExited"
+                Tapped="OnSurfaceTapped">
+
+            <Border.ContextFlyout>
+                <MenuFlyout>
+                    <MenuFlyoutItem Text="Genişlet / Daralt" Click="OnToggleExpandedClick">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE740;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Adayı Gizle" Click="OnHideIslandClick">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+                    <MenuFlyoutItem Text="Görev Çubuğu Paneli" Click="OnOpenTaskbarFlyoutClick">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                    <MenuFlyoutItem Text="Ayarlar" Click="OnSettingsClick">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
+                </MenuFlyout>
+            </Border.ContextFlyout>
+
+            <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+
+                <!-- ── COMPACT VIEW (pill mode) ── -->
+                <Grid x:Name="CompactView"
+                      Opacity="1"
+                      HorizontalAlignment="Stretch"
+                      VerticalAlignment="Stretch"
+                      Padding="8,0,10,0">
+
+                    <!-- Idle: no active track -->
+                    <Grid x:Name="IdleContent"
+                          Visibility="{Binding IdleVisibility}"
+                          HorizontalAlignment="Center"
+                          VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                            <Ellipse Width="6" Height="6" Fill="{ThemeResource Accent}" />
+                            <TextBlock Text="PULSE"
+                                       FontSize="10" FontWeight="SemiBold"
+                                       CharacterSpacing="120"
+                                       Foreground="{ThemeResource SecondaryText}" />
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Active track compact -->
+                    <Grid x:Name="CompactTrackContent"
+                          Visibility="{Binding CompactVisibility}"
+                          ColumnDefinitions="Auto,*,Auto"
+                          VerticalAlignment="Center">
+
+                        <!-- Mini artwork -->
+                        <Border Grid.Column="0"
+                                Width="26" Height="26"
+                                CornerRadius="7"
+                                Margin="0,0,8,0"
+                                Background="{ThemeResource PillControlBackground}"
+                               >
+                            <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
+                        </Border>
+
+                        <!-- Track title -->
+                        <TextBlock Grid.Column="1"
+                                   Text="{Binding CurrentTrack.Title, TargetNullValue='Pulse'}"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{ThemeResource PrimaryText}"
+                                   VerticalAlignment="Center"
+                                   TextTrimming="CharacterEllipsis"
+                                   MaxLines="1" />
+
+                        <!-- Animated equalizer bars -->
+                        <StackPanel Grid.Column="2"
+                                    Orientation="Horizontal"
+                                    Spacing="2.5"
+                                    VerticalAlignment="Center"
+                                    Margin="8,0,0,0">
+                            <Border x:Name="WaveBar1" Width="3" Height="10" CornerRadius="1.5" Background="{ThemeResource Accent}" />
+                            <Border x:Name="WaveBar2" Width="3" Height="15" CornerRadius="1.5" Background="{ThemeResource Accent}" />
+                            <Border x:Name="WaveBar3" Width="3" Height="8"  CornerRadius="1.5" Background="{ThemeResource Accent}" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+
+                <!-- ── EXPANDED VIEW (Apple Music card) ── -->
+                <Grid x:Name="ExpandedView"
+                      Opacity="0"
+                      IsHitTestVisible="False"
+                      Padding="16,14,16,14"
+                      RowDefinitions="Auto,*,Auto">
+
+                    <!-- Row 0: Artwork + Title + Action icons -->
+                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,10">
+
+                        <!-- Album art -->
+                        <Border Grid.Column="0"
+                                Width="52" Height="52"
+                                CornerRadius="13"
+                                Margin="0,0,12,0"
+                                Background="{ThemeResource PillControlBackground}"
+                               >
+                            <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
+                        </Border>
+
+                        <!-- Title / artist -->
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="{Binding CurrentTrack.Title, TargetNullValue='Şimdi dinle'}"
+                                       FontSize="15" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource PrimaryText}"
+                                       TextTrimming="CharacterEllipsis" MaxLines="1" />
+                            <TextBlock Text="{Binding CurrentTrack.Artist, TargetNullValue='Pulse'}"
+                                       FontSize="12"
+                                       Foreground="{ThemeResource SecondaryText}"
+                                       TextTrimming="CharacterEllipsis" MaxLines="1" />
+                        </StackPanel>
+
+                        <!-- Action row: collapse, hide, settings -->
+                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+                            <Button Style="{StaticResource IslandButtonStyle}"
+                                    Width="28" Height="28" CornerRadius="14"
+                                    Click="OnCollapseClick"
+                                    ToolTipService.ToolTip="Daralt"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased">
+                                <FontIcon Glyph="&#xE70E;" FontSize="12" />
+                            </Button>
+                            <Button Style="{StaticResource IslandButtonStyle}"
+                                    Width="28" Height="28" CornerRadius="14"
+                                    Click="OnHideIslandClick"
+                                    ToolTipService.ToolTip="Gizle"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased">
+                                <FontIcon Glyph="&#xED1A;" FontSize="12" />
+                            </Button>
+                            <Button Style="{StaticResource IslandButtonStyle}"
+                                    Width="28" Height="28" CornerRadius="14"
+                                    Click="OnSettingsClick"
+                                    ToolTipService.ToolTip="Ayarlar"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased">
+                                <FontIcon Glyph="&#xE713;" FontSize="12" />
+                            </Button>
+                        </StackPanel>
+                    </Grid>
+
+                    <!-- Row 1: Seek bar + timestamps -->
+                    <Grid Grid.Row="1" Margin="0,0,0,6">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="Auto" />
+                        </Grid.RowDefinitions>
+
+                        <controls:PulseSeekBar Grid.Row="0"
+                                               x:Name="ExpandedSeekBar"
+                                               Height="20"
+                                               Value="{Binding SeekPercent, Mode=TwoWay}"
+                                               CanSeek="{Binding CurrentTrack.CanSeek, FallbackValue=True}"
+                                               AccentBrush="{ThemeResource SeekAccent}"
+                                               Visibility="{Binding SeekPanelVisibility}"
+                                               ScrubStarted="OnSeekBarScrubStarted"
+                                               ScrubDelta="OnSeekBarScrubDelta"
+                                               ScrubCompleted="OnSeekBarScrubCompleted" />
+
+                        <Grid Grid.Row="1" Margin="2,-2,2,0">
+                            <TextBlock Text="{Binding PositionLabel}"
+                                       FontSize="10" FontWeight="Medium"
+                                       Foreground="{ThemeResource SecondaryText}"
+                                       HorizontalAlignment="Left" />
+                            <TextBlock Text="{Binding DurationLabel}"
+                                       FontSize="10" FontWeight="Medium"
+                                       Foreground="{ThemeResource SecondaryText}"
+                                       HorizontalAlignment="Right" />
+                        </Grid>
+                    </Grid>
+
+                    <!-- Row 2: Transport controls -->
+                    <Grid Grid.Row="2" HorizontalAlignment="Center">
+                        <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center">
+
+                            <Button Style="{StaticResource TransportButtonStyle}"
+                                    Content="−15" FontSize="11" FontWeight="SemiBold"
+                                    Command="{Binding SeekBackwardCommand}"
+                                    IsEnabled="{Binding CurrentTrack.CanSeek}"
+                                    Visibility="{Binding SeekPanelVisibility}"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
+                                    ToolTipService.ToolTip="15 sn geri" />
+
+                            <Button Style="{StaticResource TransportButtonStyle}"
+                                    Command="{Binding PreviousCommand}"
+                                    IsEnabled="{Binding CanGoPrevious}"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
+                                    ToolTipService.ToolTip="Önceki">
+                                <FontIcon Glyph="&#xE892;" FontSize="15" />
+                            </Button>
+
+                            <!-- Prominent play/pause pill -->
+                            <Button Width="44" Height="44" CornerRadius="22"
+                                    Background="{ThemeResource PlayButtonBackground}"
+                                    Foreground="{ThemeResource PlayButtonForeground}"
+                                    BorderThickness="0"
+                                    Command="{Binding PlayPauseCommand}"
+                                    IsEnabled="{Binding CanTogglePlayback}"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
+                                    ToolTipService.ToolTip="Oynat / Duraklat">
+                                <FontIcon Glyph="{Binding PlayPauseGlyph}" FontSize="15" />
+                            </Button>
+
+                            <Button Style="{StaticResource TransportButtonStyle}"
+                                    Command="{Binding NextCommand}"
+                                    IsEnabled="{Binding CanGoNext}"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
+                                    ToolTipService.ToolTip="Sonraki">
+                                <FontIcon Glyph="&#xE893;" FontSize="15" />
+                            </Button>
+
+                            <Button Style="{StaticResource TransportButtonStyle}"
+                                    Content="+15" FontSize="11" FontWeight="SemiBold"
+                                    Command="{Binding SeekForwardCommand}"
+                                    IsEnabled="{Binding CurrentTrack.CanSeek}"
+                                    Visibility="{Binding SeekPanelVisibility}"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
+                                    ToolTipService.ToolTip="15 sn ileri" />
+                        </StackPanel>
+                    </Grid>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
+

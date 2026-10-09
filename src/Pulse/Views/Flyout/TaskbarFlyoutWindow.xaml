@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<Window
+    x:Class="Pulse.Views.Flyout.TaskbarFlyoutWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:controls="using:Pulse.Controls"
+    xmlns:winuiex="using:WinUIEx"
+    Title="Pulse Control Center">
+    <Window.SystemBackdrop>
+        <winuiex:TransparentTintBackdrop TintColor="Transparent" />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="FlyoutRoot" Background="Transparent" HorizontalAlignment="Left" VerticalAlignment="Top">
+        <Grid.Resources>
+            <SolidColorBrush x:Key="FlyoutBackground" Color="#F218181B" />
+            <SolidColorBrush x:Key="FlyoutBorder" Color="#22FFFFFF" />
+            <SolidColorBrush x:Key="PrimaryText" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SecondaryText" Color="#A6EBEBF5" />
+            <SolidColorBrush x:Key="Accent" Color="#FF1DB954" />
+            <SolidColorBrush x:Key="SeekAccent" Color="#FF1DB954" />
+            <SolidColorBrush x:Key="ControlBackground" Color="#18FFFFFF" />
+            <SolidColorBrush x:Key="PlayButtonBackground" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="PlayButtonForeground" Color="#FF000000" />
+
+            <Style x:Key="FlyoutButtonStyle" TargetType="Button">
+                <Setter Property="Background" Value="Transparent" />
+                <Setter Property="Foreground" Value="{ThemeResource SecondaryText}" />
+                <Setter Property="BorderThickness" Value="0" />
+                <Setter Property="Padding" Value="0" />
+                <Setter Property="UseSystemFocusVisuals" Value="False" />
+            </Style>
+
+            <Style x:Key="FlyoutTransportButtonStyle" TargetType="Button" BasedOn="{StaticResource FlyoutButtonStyle}">
+                <Setter Property="Width" Value="38" />
+                <Setter Property="Height" Value="38" />
+                <Setter Property="CornerRadius" Value="19" />
+                <Setter Property="FontSize" Value="16" />
+                <Setter Property="Foreground" Value="{ThemeResource PrimaryText}" />
+            </Style>
+        </Grid.Resources>
+
+        <!-- Windows 11 Action Center / Apple Control Center Media Card -->
+        <Border x:Name="Surface"
+                Width="320"
+                Height="436"
+                Background="{ThemeResource FlyoutBackground}"
+                BorderBrush="{ThemeResource FlyoutBorder}"
+                BorderThickness="1"
+                CornerRadius="16"
+                Padding="16,14,16,14">
+            <Grid RowDefinitions="Auto,Auto,Auto,Auto,Auto">
+                <!-- Row 0: App Source Badge (Spotify icon & title) + Dismiss button -->
+                <Grid Grid.Row="0" Margin="2,0,2,10">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <!-- Spotify Green Badge / Icon -->
+                        <Grid Width="18" Height="18">
+                            <Ellipse Width="18" Height="18" Fill="{ThemeResource Accent}" />
+                            <FontIcon Glyph="&#xE8D6;" FontSize="10" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Grid>
+                        <TextBlock Text="{Binding AppDisplayName, TargetNullValue='Spotify'}"
+                                   FontSize="12"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource PrimaryText}"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+
+                    <Button HorizontalAlignment="Right"
+                            Width="24"
+                            Height="24"
+                            CornerRadius="12"
+                            Style="{StaticResource FlyoutButtonStyle}"
+                            Click="OnCloseClick"
+                            ToolTipService.ToolTip="Kapat">
+                        <FontIcon Glyph="&#xE711;" FontSize="11" Foreground="{ThemeResource SecondaryText}" />
+                    </Button>
+                </Grid>
+
+                <!-- Row 1: Large Gorgeous Square Album Artwork (Image 5 style) -->
+                <Border Grid.Row="1"
+                        Width="288"
+                        Height="250"
+                        CornerRadius="12"
+                        Background="{ThemeResource ControlBackground}"
+                        HorizontalAlignment="Center"
+                        Margin="0,0,0,12">
+                    <Grid CornerRadius="12">
+                        <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                    </Grid>
+                </Border>
+
+                <!-- Row 2: Track Titles -->
+                <StackPanel Grid.Row="2" HorizontalAlignment="Center" Spacing="2" Margin="0,0,0,8">
+                    <TextBlock Text="{Binding CurrentTrack.Title, TargetNullValue='Çalan parça yok', FallbackValue='Pulse'}"
+                               FontSize="15"
+                               FontWeight="Bold"
+                               Foreground="{ThemeResource PrimaryText}"
+                               TextTrimming="CharacterEllipsis"
+                               TextAlignment="Center"
+                               MaxLines="1" />
+                    <TextBlock Text="{Binding CurrentTrack.Artist, TargetNullValue='Müzik başlatın', FallbackValue='Hazır'}"
+                               FontSize="12"
+                               Foreground="{ThemeResource SecondaryText}"
+                               TextTrimming="CharacterEllipsis"
+                               TextAlignment="Center"
+                               MaxLines="1" />
+                </StackPanel>
+
+                <!-- Row 3: Scrubber & Timestamps -->
+                <Grid Grid.Row="3" Margin="4,0,4,6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <controls:PulseSeekBar Grid.Row="0"
+                                           x:Name="FlyoutSeekBar"
+                                           Height="16"
+                                           Value="{Binding SeekPercent, Mode=TwoWay}"
+                                           CanSeek="{Binding CurrentTrack.CanSeek, FallbackValue=True}"
+                                           AccentBrush="{ThemeResource SeekAccent}"
+                                           Visibility="{Binding SeekPanelVisibility}"
+                                           ScrubStarted="OnSeekBarScrubStarted"
+                                           ScrubDelta="OnSeekBarScrubDelta"
+                                           ScrubCompleted="OnSeekBarScrubCompleted" />
+
+                    <Grid Grid.Row="1" Margin="2,-2,2,0">
+                        <TextBlock Text="{Binding PositionLabel}"
+                                   FontSize="10"
+                                   FontWeight="Medium"
+                                   Foreground="{ThemeResource SecondaryText}"
+                                   HorizontalAlignment="Left" />
+                        <TextBlock Text="{Binding DurationLabel}"
+                                   FontSize="10"
+                                   FontWeight="Medium"
+                                   Foreground="{ThemeResource SecondaryText}"
+                                   HorizontalAlignment="Right" />
+                    </Grid>
+                </Grid>
+
+                <!-- Row 4: Transport Controls -->
+                <Grid Grid.Row="4" HorizontalAlignment="Center" Margin="0,2,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                        <!-- -15s button -->
+                        <Button Style="{StaticResource FlyoutTransportButtonStyle}"
+                                Content="−15"
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Command="{Binding SeekBackwardCommand}"
+                                IsEnabled="{Binding CurrentTrack.CanSeek}"
+                                Visibility="{Binding SeekPanelVisibility}"
+                                ToolTipService.ToolTip="15 saniye geri" />
+
+                        <!-- Previous -->
+                        <Button Style="{StaticResource FlyoutTransportButtonStyle}"
+                                Command="{Binding PreviousCommand}"
+                                IsEnabled="{Binding CanGoPrevious}"
+                                ToolTipService.ToolTip="Önceki parça">
+                            <FontIcon Glyph="&#xE892;" FontSize="16" />
+                        </Button>
+
+                        <!-- Play/Pause Pill -->
+                        <Button Width="46"
+                                Height="46"
+                                CornerRadius="23"
+                                Background="{ThemeResource PlayButtonBackground}"
+                                Foreground="{ThemeResource PlayButtonForeground}"
+                                Command="{Binding PlayPauseCommand}"
+                                IsEnabled="{Binding CanTogglePlayback}"
+                                ToolTipService.ToolTip="Oynat / Duraklat">
+                            <FontIcon Glyph="{Binding PlayPauseGlyph}" FontSize="17" />
+                        </Button>
+
+                        <!-- Next -->
+                        <Button Style="{StaticResource FlyoutTransportButtonStyle}"
+                                Command="{Binding NextCommand}"
+                                IsEnabled="{Binding CanGoNext}"
+                                ToolTipService.ToolTip="Sonraki parça">
+                            <FontIcon Glyph="&#xE893;" FontSize="16" />
+                        </Button>
+
+                        <!-- +15s button -->
+                        <Button Style="{StaticResource FlyoutTransportButtonStyle}"
+                                Content="+15"
+                                FontSize="11"
+                                FontWeight="SemiBold"
+                                Command="{Binding SeekForwardCommand}"
+                                IsEnabled="{Binding CurrentTrack.CanSeek}"
+                                Visibility="{Binding SeekPanelVisibility}"
+                                ToolTipService.ToolTip="15 saniye ileri" />
+                    </StackPanel>
+                </Grid>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>
