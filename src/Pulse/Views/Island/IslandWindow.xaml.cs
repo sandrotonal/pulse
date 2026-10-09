@@ -276,8 +276,8 @@ public sealed partial class IslandWindow : Window
         if (isExpanded)
         {
             targetWidth = 384;
-            targetHeight = 220;
-            targetCornerRadius = 28;
+            targetHeight = 244;
+            targetCornerRadius = 26;
         }
         else if (!hasTrack && state is IslandState.Idle)
         {
@@ -550,15 +550,15 @@ public sealed partial class IslandWindow : Window
         var isLight = theme == "Light";
         WindowRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
 
-        var bgColor      = isLight ? 0xF8F8FAu : 0xFF0B0C0Eu;
-        var borderColor  = isLight ? 0x18000000u : 0x24FFFFFFu;
+        var bgColor      = isLight ? 0xFFF5F5F7u : 0xFF18181Bu;
+        var borderColor  = isLight ? 0x1A000000u : 0x2AFFFFFFu;
         var primaryText  = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
-        var secondaryTxt = isLight ? 0xFF8E8E93u : 0x9EEBEBF5u;
-        var pillCtrlBg   = isLight ? 0xFFEBEBF0u : 0x1AFFFFFFu;
+        var secondaryTxt = isLight ? 0xFF8E8E93u : 0xA0EBEBEBu;
+        var pillCtrlBg   = isLight ? 0xFFEBEBF0u : 0x20FFFFFFu;
         var playBg       = isLight ? 0xFF007AFFu : 0xFFFFFFFFu;
         var playFg       = isLight ? 0xFFFFFFFFu : 0xFF000000u;
         var accentColor  = isLight ? 0xFF34C759u : 0xFF1DB954u;
-        var seekAccent   = isLight ? 0xFF007AFFu : 0xFF0A84FFu;
+        var seekAccent   = isLight ? 0xFF007AFFu : 0xFF1DB954u;
 
         UpdateBrush("IslandBackground", bgColor);
         UpdateBrush("IslandBorder", borderColor);
@@ -589,7 +589,7 @@ public sealed partial class IslandWindow : Window
     }
 
     private static Microsoft.UI.Xaml.Media.SolidColorBrush Brush(uint color)
-        => new(Microsoft.UI.Colors.Transparent) { Color = ToColor(color) };
+        => new(ToColor(color));
 
     private static Windows.UI.Color ToColor(uint color)
         => Windows.UI.Color.FromArgb((byte)(color >> 24), (byte)(color >> 16), (byte)(color >> 8), (byte)color);
@@ -607,10 +607,6 @@ public sealed partial class IslandWindow : Window
         var newExStyle = (exStyle & ~WsExWindowEdge & ~WsExClientEdge & ~WsExDlgModalFrame & ~WsExStaticEdge)
             | WsExToolWindow | WsExTopmost | WsExNoActivate;
         SetWindowLongPtr(_hwnd, GwlExStyle, new IntPtr(newExStyle));
-
-        // Disable DWM non-client rendering (borders, shadows, caption)
-        int ncrpDisabled = 1; // DWMNCRP_DISABLED
-        DwmSetWindowAttribute(_hwnd, 2, ref ncrpDisabled, sizeof(int)); // 2 = DWMWA_NCRENDERING_POLICY
 
         // Remove DWM border line
         int dwmBorderNone = unchecked((int)0xFFFFFFFE); // DWMWA_COLOR_NONE

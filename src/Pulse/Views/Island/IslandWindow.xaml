@@ -17,17 +17,18 @@
         pass directly to the underlying windows and desktop.
     -->
     <Grid x:Name="WindowRoot"
+          Background="Transparent"
           HorizontalAlignment="Center"
           VerticalAlignment="Top">
 
         <Grid.Resources>
-            <!-- Default OLED pitch-black theme palette -->
-            <SolidColorBrush x:Key="IslandBackground" Color="#FF0B0C0E" />
-            <SolidColorBrush x:Key="IslandBorder"     Color="#24FFFFFF" />
+            <!-- Default Apple Dark Mode palette -->
+            <SolidColorBrush x:Key="IslandBackground" Color="#FF18181B" />
+            <SolidColorBrush x:Key="IslandBorder"     Color="#2AFFFFFF" />
             <SolidColorBrush x:Key="PrimaryText"      Color="#FFFFFFFF" />
-            <SolidColorBrush x:Key="SecondaryText"    Color="#9EEBEBF5" />
+            <SolidColorBrush x:Key="SecondaryText"    Color="#A0EBEBEB" />
             <SolidColorBrush x:Key="Accent"           Color="#FF1DB954" />
-            <SolidColorBrush x:Key="SeekAccent"       Color="#FF0A84FF" />
+            <SolidColorBrush x:Key="SeekAccent"       Color="#FF1DB954" />
             <SolidColorBrush x:Key="PlayButtonBackground" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="PlayButtonForeground" Color="#FF000000" />
             <SolidColorBrush x:Key="PillControlBackground" Color="#1AFFFFFF" />
