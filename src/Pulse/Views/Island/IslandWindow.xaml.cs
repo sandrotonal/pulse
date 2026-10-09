@@ -45,6 +45,9 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _wave1Visual;
     private readonly Visual _wave2Visual;
     private readonly Visual _wave3Visual;
+    private readonly Visual _expWave1Visual;
+    private readonly Visual _expWave2Visual;
+    private readonly Visual _expWave3Visual;
     private readonly SubclassProc _subclassProc;
 
     private double _dpiScale = 1.0;
@@ -69,6 +72,9 @@ public sealed partial class IslandWindow : Window
         _wave1Visual = ElementCompositionPreview.GetElementVisual(WaveBar1);
         _wave2Visual = ElementCompositionPreview.GetElementVisual(WaveBar2);
         _wave3Visual = ElementCompositionPreview.GetElementVisual(WaveBar3);
+        _expWave1Visual = ElementCompositionPreview.GetElementVisual(ExpWaveBar1);
+        _expWave2Visual = ElementCompositionPreview.GetElementVisual(ExpWaveBar2);
+        _expWave3Visual = ElementCompositionPreview.GetElementVisual(ExpWaveBar3);
 
         ElementCompositionPreview.SetIsTranslationEnabled(Surface, true);
         ElementCompositionPreview.SetIsTranslationEnabled(CompactView, true);
@@ -235,7 +241,7 @@ public sealed partial class IslandWindow : Window
         var x = workArea.Left + Math.Max(0, (workArea.Right - workArea.Left - winWidth) / 2);
         var y = workArea.Top + (int)Math.Round(_viewModel.TopOffset * _dpiScale);
 
-        AppWindow.Resize(new SizeInt32(winWidth, winHeight));
+        AppWindow.ResizeClient(new SizeInt32(winWidth, winHeight));
         AppWindow.Move(new PointInt32(x, y));
         SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
@@ -275,8 +281,8 @@ public sealed partial class IslandWindow : Window
 
         if (isExpanded)
         {
-            targetWidth = 384;
-            targetHeight = 244;
+            targetWidth = 356;
+            targetHeight = 214;
             targetCornerRadius = 26;
         }
         else if (!hasTrack && state is IslandState.Idle)
@@ -437,6 +443,10 @@ public sealed partial class IslandWindow : Window
             AnimateWaveBar(_wave1Visual, WaveBar1, 0.35f, 1.0f, 480);
             AnimateWaveBar(_wave2Visual, WaveBar2, 0.20f, 1.0f, 360);
             AnimateWaveBar(_wave3Visual, WaveBar3, 0.40f, 1.0f, 620);
+
+            AnimateWaveBar(_expWave1Visual, ExpWaveBar1, 0.30f, 1.0f, 500);
+            AnimateWaveBar(_expWave2Visual, ExpWaveBar2, 0.20f, 1.0f, 380);
+            AnimateWaveBar(_expWave3Visual, ExpWaveBar3, 0.35f, 1.0f, 640);
         }
         catch { }
     }
@@ -454,6 +464,13 @@ public sealed partial class IslandWindow : Window
             _wave1Visual.Scale = new Vector3(1f, 0.45f, 1f);
             _wave2Visual.Scale = new Vector3(1f, 0.65f, 1f);
             _wave3Visual.Scale = new Vector3(1f, 0.35f, 1f);
+
+            _expWave1Visual.StopAnimation("Scale");
+            _expWave2Visual.StopAnimation("Scale");
+            _expWave3Visual.StopAnimation("Scale");
+            _expWave1Visual.Scale = new Vector3(1f, 0.45f, 1f);
+            _expWave2Visual.Scale = new Vector3(1f, 0.65f, 1f);
+            _expWave3Visual.Scale = new Vector3(1f, 0.35f, 1f);
         }
         catch { }
     }
@@ -575,6 +592,9 @@ public sealed partial class IslandWindow : Window
         WaveBar1.Background = Brush(accentColor);
         WaveBar2.Background = Brush(accentColor);
         WaveBar3.Background = Brush(accentColor);
+        ExpWaveBar1.Background = Brush(accentColor);
+        ExpWaveBar2.Background = Brush(accentColor);
+        ExpWaveBar3.Background = Brush(accentColor);
         if (ExpandedSeekBar is not null)
             ExpandedSeekBar.AccentBrush = Brush(seekAccent);
     }
