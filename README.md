@@ -15,6 +15,9 @@
 
 </div>
 
+<img width="264" height="59" alt="image" src="https://github.com/user-attachments/assets/5ffc4ecf-8842-4872-abe3-6b65d3ddf2a5" />
+
+
 ## Key Features
 
 - **Dynamic Island UI**: Floating, top-aligned desktop widget with multi-state expansions (Idle, Compact, Expanded, Track Change, Settings).
@@ -30,6 +33,8 @@
 - **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage.
 
 ---
+<img width="508" height="286" alt="image" src="https://github.com/user-attachments/assets/f5668019-45df-4d4a-a6d0-4385be2d70f8" />
+
 
 ## Architecture & Technology Stack
 
