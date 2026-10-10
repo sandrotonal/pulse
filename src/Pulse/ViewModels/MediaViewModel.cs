@@ -5,6 +5,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
+using Pulse.Services.Lyrics;
 using Windows.Graphics.Imaging;
 using Windows.Storage.Streams;
 
@@ -16,6 +17,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly IPlaybackController _playbackController;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ISettingsService _settingsService;
+    private readonly LyricsService _lyricsService = new();
     private readonly IslandStateMachine _stateMachine = new();
     private readonly DispatcherQueueTimer _stateTimer;
     private readonly DispatcherQueueTimer _playbackTicker;
@@ -23,6 +25,10 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private MediaTrack? _currentTrack;
     private BitmapImage? _artworkImage;
     private uint _artworkAccentColor = 0xFF007AFFu;
+    private LyricsResult? _lyrics;
+    private string _currentLyricLine = "Sözler aranıyor";
+    private string _nextLyricLine = "";
+    private string? _lyricsLookupKey;
     private double? _seekPreviewPercent;
     private string? _seekStatus;
     private bool _isInitialized;
@@ -66,6 +72,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             }
             await ExecuteSeekAsync(() => _playbackController.SeekForwardAsync(TimeSpan.FromSeconds(15)));
         });
+        ToggleShuffleCommand = new RelayCommand(() => IsShuffleEnabled = !IsShuffleEnabled);
+        ToggleFavoriteCommand = new RelayCommand(() => IsFavorite = !IsFavorite);
+        ToggleMuteCommand = new RelayCommand(() => IsMuted = !IsMuted);
         _mediaSessionService.CurrentTrackChanged += OnCurrentTrackChanged;
     }
 
@@ -130,6 +139,15 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             return !string.IsNullOrWhiteSpace(id) ? id : "Pulse";
         }
     }
+    public string AppBadgeText => AppDisplayName switch
+    {
+        "Spotify" => "S",
+        "YouTube Music" => "YT",
+        "Apple Music" => "",
+        "Google Chrome" => "C",
+        "Microsoft Edge" => "E",
+        _ => "P"
+    };
     public bool IsSpotify => CurrentTrack?.SourceApplicationId?.Contains("Spotify", StringComparison.OrdinalIgnoreCase) == true;
     public IslandState CurrentIslandState => _stateMachine.CurrentState;
     public bool IsIdle => CurrentIslandState == IslandState.Idle;
@@ -144,6 +162,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public Microsoft.UI.Xaml.Visibility ExpandedVisibility => IsExpanded ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SeekPanelVisibility => ShowSeekControls ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public bool AutoCollapse => _settingsService.Current.AutoCollapse;
+    public bool EnableHoverExpand => _settingsService.Current.EnableHoverExpand;
+    public bool DynamicColorTint => _settingsService.Current.DynamicColorTint;
+    public bool ShowEqualizer => _settingsService.Current.ShowEqualizer;
     public int TopOffset => _settingsService.Current.TopOffset;
     public double IslandScale => _settingsService.Current.IslandScale / 100d;
     public string AnimationIntensity => _settingsService.Current.AnimationIntensity;
@@ -153,6 +174,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool CanGoPrevious => CurrentTrack?.CanPrevious == true;
     public BitmapImage? ArtworkImage => _artworkImage;
     public uint ArtworkAccentColor => _artworkAccentColor;
+    public bool HasLyrics => _lyrics?.HasLyrics == true;
+    public string CurrentLyricLine => _currentLyricLine;
+    public string NextLyricLine => _nextLyricLine;
     public bool IsScrubbing { get; private set; }
     public string PlaybackLabel => CurrentTrack?.PlaybackStatus == PlaybackStatus.Playing ? "Pause" : "Play";
     public string PlayPauseGlyph => CurrentTrack?.PlaybackStatus == PlaybackStatus.Playing ? "\uE769" : "\uE768";
@@ -195,6 +219,59 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public AsyncCommand NextCommand { get; }
     public AsyncCommand SeekBackwardCommand { get; }
     public AsyncCommand SeekForwardCommand { get; }
+    public RelayCommand ToggleShuffleCommand { get; }
+    public RelayCommand ToggleFavoriteCommand { get; }
+    public RelayCommand ToggleMuteCommand { get; }
+
+    private bool _isShuffleEnabled;
+    public bool IsShuffleEnabled
+    {
+        get => _isShuffleEnabled;
+        set
+        {
+            if (SetProperty(ref _isShuffleEnabled, value))
+            {
+                OnPropertyChanged(nameof(ShuffleBrush));
+            }
+        }
+    }
+
+    private bool _isFavorite;
+    public bool IsFavorite
+    {
+        get => _isFavorite;
+        set
+        {
+            if (SetProperty(ref _isFavorite, value))
+            {
+                OnPropertyChanged(nameof(FavoriteGlyph));
+                OnPropertyChanged(nameof(FavoriteBrush));
+            }
+        }
+    }
+
+    public string FavoriteGlyph => IsFavorite ? "\uEB52" : "\uEB51";
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush ShuffleBrush => new(
+        IsShuffleEnabled ? Microsoft.UI.ColorHelper.FromArgb(255, 0, 122, 255) : Microsoft.UI.ColorHelper.FromArgb(255, 164, 171, 182));
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush FavoriteBrush => new(
+        IsFavorite ? Microsoft.UI.ColorHelper.FromArgb(255, 255, 59, 48) : Microsoft.UI.ColorHelper.FromArgb(255, 164, 171, 182));
+
+    private bool _isMuted;
+    public bool IsMuted
+    {
+        get => _isMuted;
+        set
+        {
+            if (SetProperty(ref _isMuted, value))
+            {
+                OnPropertyChanged(nameof(MuteGlyph));
+            }
+        }
+    }
+
+    public string MuteGlyph => IsMuted ? "\uE74F" : "\uE767";
 
     public async Task InitializeAsync()
     {
@@ -291,36 +368,31 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public void OnPointerEntered()
     {
         _stateTimer.Stop();
-        _stateMachine.SetHovered(true);
+        if (_stateMachine.CurrentState == IslandState.Collapsing)
+        {
+            _stateMachine.SetHovered(true);
+            return;
+        }
+        if (EnableHoverExpand)
+        {
+            _stateMachine.SetHovered(true);
+        }
     }
 
     public void OnPointerExited()
     {
         _stateMachine.SetHovered(false);
-        if (IsExpanded && AutoCollapse)
-        {
-            _stateTimer.Interval = TimeSpan.FromSeconds(4.2);
-            _stateTimer.Start();
-        }
     }
 
     public void ToggleExpanded()
     {
         _stateMachine.ToggleExpanded();
-        if (IsExpanded && AutoCollapse)
-        {
-            _stateTimer.Interval = TimeSpan.FromSeconds(5.5);
-            _stateTimer.Start();
-        }
-        else
-        {
-            _stateTimer.Stop();
-        }
+        _stateTimer.Stop();
     }
 
     public void Collapse()
     {
-        if (IsExpanded)
+        if (CurrentIslandState == IslandState.Expanded)
         {
             _stateMachine.ToggleExpanded();
         }
@@ -361,6 +433,10 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         var oldTrack = CurrentTrack;
         var changedTrack = track is not null && (oldTrack is null || track.Title != oldTrack.Title || track.Artist != oldTrack.Artist || track.SourceApplicationId != oldTrack.SourceApplicationId);
         CurrentTrack = track;
+        if (changedTrack)
+        {
+            _ = UpdateLyricsAsync(track);
+        }
         _lastTickTime = DateTimeOffset.UtcNow;
         if (track?.PlaybackStatus == PlaybackStatus.Playing)
         {
@@ -403,6 +479,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
 
         _currentTrack = track with { Position = newPos };
+        UpdateActiveLyric(newPos);
         OnPropertyChanged(nameof(PositionLabel));
         OnPropertyChanged(nameof(SeekPercent));
     }
@@ -447,6 +524,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(NotificationsPaused));
         OnPropertyChanged(nameof(SeekPanelVisibility));
         OnPropertyChanged(nameof(AutoCollapse));
+        OnPropertyChanged(nameof(EnableHoverExpand));
+        OnPropertyChanged(nameof(DynamicColorTint));
+        OnPropertyChanged(nameof(ShowEqualizer));
         OnPropertyChanged(nameof(TopOffset));
         OnPropertyChanged(nameof(IslandScale));
         OnPropertyChanged(nameof(AnimationIntensity));
@@ -454,6 +534,80 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (!settings.AutoCollapse)
         {
             _stateTimer.Stop();
+        }
+    }
+
+    private async Task UpdateLyricsAsync(MediaTrack? track)
+    {
+        var lookupKey = track is null ? null : string.Join("|", track.Title, track.Artist, track.Album, track.Duration?.TotalSeconds.ToString("0"));
+        _lyricsLookupKey = lookupKey;
+        _lyrics = null;
+        SetLyricLines("Sözler aranıyor", string.Empty);
+        OnPropertyChanged(nameof(HasLyrics));
+
+        if (track is null || string.IsNullOrWhiteSpace(track.Title) || string.IsNullOrWhiteSpace(track.Artist))
+        {
+            SetLyricLines("Bu parça için söz bilgisi yok", string.Empty);
+            return;
+        }
+
+        var lyrics = await _lyricsService.FindLyricsAsync(track.Title, track.Artist, track.Album, track.Duration);
+        if (_lyricsLookupKey != lookupKey)
+        {
+            return;
+        }
+
+        _lyrics = lyrics;
+        OnPropertyChanged(nameof(HasLyrics));
+        UpdateActiveLyric(track.Position);
+    }
+
+    private void UpdateActiveLyric(TimeSpan position)
+    {
+        if (_lyrics is null)
+        {
+            SetLyricLines("Bu parça için söz bilgisi yok", string.Empty);
+            return;
+        }
+
+        if (_lyrics.Lines.Count > 0)
+        {
+            var index = 0;
+            for (var i = 0; i < _lyrics.Lines.Count; i++)
+            {
+                if (_lyrics.Lines[i].Time <= position)
+                {
+                    index = i;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            SetLyricLines(_lyrics.Lines[index].Text, index + 1 < _lyrics.Lines.Count ? _lyrics.Lines[index + 1].Text : string.Empty);
+            return;
+        }
+
+        var plainLines = _lyrics.PlainText?
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .ToArray();
+        SetLyricLines(plainLines?.FirstOrDefault() ?? "Söz bulundu", plainLines is { Length: > 1 } ? plainLines[1] : string.Empty);
+    }
+
+    private void SetLyricLines(string current, string next)
+    {
+        if (_currentLyricLine != current)
+        {
+            _currentLyricLine = current;
+            OnPropertyChanged(nameof(CurrentLyricLine));
+        }
+
+        if (_nextLyricLine != next)
+        {
+            _nextLyricLine = next;
+            OnPropertyChanged(nameof(NextLyricLine));
         }
     }
 

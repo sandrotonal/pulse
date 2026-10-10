@@ -50,8 +50,23 @@ public sealed partial class IslandWindow : Window
     private double _dpiScale = 1.0;
     private bool _isIslandHidden;
     private double _currentPillWidth = 216;
-    private double _currentPillHeight = 38;
+    private double _currentPillHeight = 40;
     private bool _waveAnimating;
+    private readonly DispatcherQueueTimer _collapseDelayTimer;
+    private bool _isPointerOverSurface;
+    private bool _isInteractingWithControl;
+
+    private long _transitionGeneration;
+    private double _animStartWidth;
+    private double _animStartHeight;
+    private double _animStartCornerRadius;
+    private double _animTargetWidth;
+    private double _animTargetHeight;
+    private double _animTargetCornerRadius;
+    private long _animStartTimeTicks;
+    private double _animDurationMs;
+    private bool _isDimensionAnimating;
+    private Action? _onAnimationCompleted;
 
     public event EventHandler? SettingsRequested;
     public event EventHandler? TaskbarFlyoutRequested;
@@ -62,6 +77,10 @@ public sealed partial class IslandWindow : Window
         _viewModel = viewModel;
         WindowRoot.DataContext = viewModel;
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+
+        _collapseDelayTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
+        _collapseDelayTimer.Tick += OnCollapseDelayTimerTick;
 
         _surfaceVisual = ElementCompositionPreview.GetElementVisual(Surface);
         _compactVisual = ElementCompositionPreview.GetElementVisual(CompactView);
@@ -74,8 +93,7 @@ public sealed partial class IslandWindow : Window
         ElementCompositionPreview.SetIsTranslationEnabled(CompactView, true);
         ElementCompositionPreview.SetIsTranslationEnabled(ExpandedView, true);
 
-        // Subclass window to intercept WM_GETMINMAXINFO:
-        // Allows window to shrink to any small capsule dimensions without Windows OS clamping
+        // Subclass window to intercept WM_NCHITTEST and WM_GETMINMAXINFO:
         _subclassProc = WndProc;
         SetWindowSubclass(_hwnd, _subclassProc, UIntPtr.Zero, IntPtr.Zero);
 
@@ -89,6 +107,7 @@ public sealed partial class IslandWindow : Window
             presenter.IsAlwaysOnTop = true;
         }
 
+        PositionHostWindow();
         ApplyWindowStyles();
         ApplyTheme(_viewModel.Theme);
 
@@ -111,7 +130,7 @@ public sealed partial class IslandWindow : Window
         if (_isIslandHidden) UnhideIslandAnimated();
         ShowWindow(_hwnd, 4); // SW_SHOWNOACTIVATE
         ApplyWindowStyles();
-        PositionAndResizeWindow(_currentPillWidth, _currentPillHeight);
+        PositionHostWindow();
     }
 
     public void HideIslandAnimated()
@@ -154,7 +173,6 @@ public sealed partial class IslandWindow : Window
             {
                 Surface.Visibility = Visibility.Collapsed;
                 HiddenAnchor.Visibility = Visibility.Visible;
-                PositionAndResizeWindow(48, 8);
             }
         };
         timer.Start();
@@ -167,7 +185,6 @@ public sealed partial class IslandWindow : Window
 
         HiddenAnchor.Visibility = Visibility.Collapsed;
         Surface.Visibility = Visibility.Visible;
-        PositionAndResizeWindow(_currentPillWidth, _currentPillHeight);
 
         try
         {
@@ -210,7 +227,9 @@ public sealed partial class IslandWindow : Window
         else HideIslandAnimated();
     }
 
-    private void PositionAndResizeWindow(double widthDip, double heightDip)
+    private const double BaseWindowTopGap = 14.0;
+
+    private void PositionHostWindow()
     {
         if (_hwnd == IntPtr.Zero) return;
 
@@ -226,14 +245,19 @@ public sealed partial class IslandWindow : Window
         _dpiScale = Math.Max(1u, GetDpiForWindow(_hwnd)) / 96.0;
         var workArea = info.WorkArea;
 
-        var winWidth = (int)Math.Round(widthDip * _dpiScale);
-        var winHeight = (int)Math.Round(heightDip * _dpiScale);
+        var scale = Math.Max(1.0, _viewModel.IslandScale);
+        var hostWidthDip = Math.Max(420.0, 384.0 * scale + 24.0);
+        var hostHeightDip = Math.Max(260.0, 220.0 * scale + 24.0);
 
-        WindowRoot.Width = widthDip;
-        WindowRoot.Height = heightDip;
+        WindowRoot.Width = hostWidthDip;
+        WindowRoot.Height = hostHeightDip;
+
+        var winWidth = (int)Math.Round(hostWidthDip * _dpiScale);
+        var winHeight = (int)Math.Round(hostHeightDip * _dpiScale);
 
         var x = workArea.Left + Math.Max(0, (workArea.Right - workArea.Left - winWidth) / 2);
-        var y = workArea.Top + (int)Math.Round(_viewModel.TopOffset * _dpiScale);
+        var effectiveTopOffset = Math.Max(BaseWindowTopGap, _viewModel.TopOffset + BaseWindowTopGap);
+        var y = workArea.Top + (int)Math.Round(effectiveTopOffset * _dpiScale);
 
         AppWindow.ResizeClient(new SizeInt32(winWidth, winHeight));
         AppWindow.Move(new PointInt32(x, y));
@@ -257,23 +281,93 @@ public sealed partial class IslandWindow : Window
                 StopEqualizerWave();
             }
         }
-        else if (e.PropertyName == nameof(MediaViewModel.Theme))
-        {
-            ApplyTheme(_viewModel.Theme);
-        }
-        else if (e.PropertyName == nameof(MediaViewModel.ArtworkAccentColor))
+        else if (e.PropertyName is nameof(MediaViewModel.Theme) 
+                 or nameof(MediaViewModel.ArtworkAccentColor) 
+                 or nameof(MediaViewModel.DynamicColorTint))
         {
             ApplyTheme(_viewModel.Theme);
         }
         else if (e.PropertyName is nameof(MediaViewModel.TopOffset) or nameof(MediaViewModel.IslandScale))
         {
-            UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+            PositionHostWindow();
+            UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.ShowEqualizer))
+        {
+            if (CompactWaveBars is not null)
+            {
+                CompactWaveBars.Opacity = (_viewModel.CurrentIslandState == IslandState.Hover && _viewModel.ShowEqualizer) ? 1.0 : 0.0;
+            }
+        }
+    }
+
+    private void AnimateSurfaceDimensions(double toWidth, double toHeight, double toCornerRadius, double durationMs, Action? onCompleted = null)
+    {
+        _animStartWidth = Surface.Width > 0 ? Surface.Width : Surface.ActualWidth;
+        if (_animStartWidth <= 0) _animStartWidth = 216.0;
+
+        _animStartHeight = Surface.Height > 0 ? Surface.Height : Surface.ActualHeight;
+        if (_animStartHeight <= 0) _animStartHeight = 40.0;
+
+        _animStartCornerRadius = Surface.CornerRadius.TopLeft > 0 ? Surface.CornerRadius.TopLeft : 20.0;
+
+        _animTargetWidth = toWidth;
+        _animTargetHeight = toHeight;
+        _animTargetCornerRadius = toCornerRadius;
+        _animDurationMs = Math.Max(1.0, durationMs);
+        _animStartTimeTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        _onAnimationCompleted = onCompleted;
+
+        if (!_isDimensionAnimating)
+        {
+            _isDimensionAnimating = true;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnDimensionRendering;
+        }
+    }
+
+    private void OnDimensionRendering(object? sender, object e)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        double elapsedMs = (now - _animStartTimeTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+        double progress = Math.Clamp(elapsedMs / _animDurationMs, 0.0, 1.0);
+
+        // Apple fluid cubic ease-out: 1 - (1 - t)^3
+        double inv = 1.0 - progress;
+        double ease = 1.0 - (inv * inv * inv);
+
+        double currentW = _animStartWidth + (_animTargetWidth - _animStartWidth) * ease;
+        double currentH = _animStartHeight + (_animTargetHeight - _animStartHeight) * ease;
+        double currentR = _animStartCornerRadius + (_animTargetCornerRadius - _animStartCornerRadius) * ease;
+
+        Surface.Width = currentW;
+        Surface.Height = currentH;
+        Surface.CornerRadius = new CornerRadius(currentR);
+
+        _currentPillWidth = currentW;
+        _currentPillHeight = currentH;
+
+        if (progress >= 1.0)
+        {
+            _isDimensionAnimating = false;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDimensionRendering;
+
+            Surface.Width = _animTargetWidth;
+            Surface.Height = _animTargetHeight;
+            Surface.CornerRadius = new CornerRadius(_animTargetCornerRadius);
+            _currentPillWidth = _animTargetWidth;
+            _currentPillHeight = _animTargetHeight;
+
+            var callback = _onAnimationCompleted;
+            _onAnimationCompleted = null;
+            callback?.Invoke();
         }
     }
 
     private void UpdateStateLayout(IslandState state, bool animated)
     {
+        var generation = ++_transitionGeneration;
         var isExpanded = state == IslandState.Expanded;
+        var isCollapsing = state == IslandState.Collapsing;
         var isHover = state == IslandState.Hover;
         var hasTrack = _viewModel.HasTrack;
 
@@ -283,9 +377,9 @@ public sealed partial class IslandWindow : Window
 
         if (isExpanded)
         {
-            targetWidth = 348;
-            targetHeight = 222;
-            targetCornerRadius = 30;
+            targetWidth = 384;
+            targetHeight = 220;
+            targetCornerRadius = 32;
         }
         else if (!hasTrack && state is IslandState.Idle)
         {
@@ -295,147 +389,124 @@ public sealed partial class IslandWindow : Window
         }
         else if (isHover)
         {
-            targetWidth = hasTrack ? 248 : 96;
-            targetHeight = 46;
-            targetCornerRadius = 23;
+            targetWidth = hasTrack ? 252 : 86;
+            targetHeight = 40;
+            targetCornerRadius = 20;
         }
         else
         {
             targetWidth = hasTrack ? 216 : 76;
-            targetHeight = 38;
-            targetCornerRadius = 19;
+            targetHeight = 40;
+            targetCornerRadius = 20;
         }
 
-        var scale = isExpanded ? 1.0 : _viewModel.IslandScale;
+        var scale = (isExpanded || isCollapsing) ? 1.0 : _viewModel.IslandScale;
         targetWidth *= scale;
         targetHeight *= scale;
 
-        _currentPillWidth = targetWidth;
-        _currentPillHeight = targetHeight;
+        if (CompactWaveBars is not null)
+        {
+            CompactWaveBars.Opacity = (isHover && _viewModel.ShowEqualizer) ? 1.0 : 0.0;
+        }
 
         if (!animated)
         {
-            PositionAndResizeWindow(targetWidth, targetHeight);
+            if (_isDimensionAnimating)
+            {
+                _isDimensionAnimating = false;
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDimensionRendering;
+            }
+
             Surface.Width = targetWidth;
             Surface.Height = targetHeight;
             Surface.CornerRadius = new CornerRadius(targetCornerRadius);
+            _currentPillWidth = targetWidth;
+            _currentPillHeight = targetHeight;
+
             _compactVisual.Opacity = isExpanded ? 0 : 1;
             CompactView.IsHitTestVisible = !isExpanded;
             _expandedVisual.Opacity = isExpanded ? 1 : 0;
             ExpandedView.IsHitTestVisible = isExpanded;
+
             _surfaceVisual.Scale = Vector3.One;
+            _surfaceVisual.StopAnimation("Scale");
+            _surfaceVisual.StopAnimation("Translation");
+            Surface.Translation = Vector3.Zero;
             _surfaceVisual.Opacity = 1;
             return;
         }
 
-        // Apple fluid spring morphing via Compositor
         try
         {
             var compositor = _surfaceVisual.Compositor;
-            var morphDuration = TimeSpan.FromMilliseconds(isExpanded ? 260 : 170);
             var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
             var quickEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.6f, 1f));
 
-            Surface.CornerRadius = new CornerRadius(targetCornerRadius);
+            _surfaceVisual.Scale = Vector3.One;
+            _surfaceVisual.StopAnimation("Scale");
+            _surfaceVisual.StopAnimation("Translation");
+            Surface.Translation = Vector3.Zero;
 
             if (isExpanded)
             {
-                // Expanding: resize window first to accommodate large card,
-                // then spring-scale from compact dimensions downward
-                PositionAndResizeWindow(targetWidth, targetHeight);
-                Surface.Width = targetWidth;
-                Surface.Height = targetHeight;
-
-                _surfaceVisual.CenterPoint = new Vector3((float)(targetWidth / 2), 0, 0);
-
-                var compactW = (hasTrack ? 216.0 : 76.0) * _viewModel.IslandScale;
-                var compactH = (hasTrack ? 38.0 : 32.0) * _viewModel.IslandScale;
-                var fromScaleX = (float)(compactW / targetWidth);
-                var fromScaleY = (float)(compactH / targetHeight);
-
-                var expandScaleAnim = compositor.CreateVector3KeyFrameAnimation();
-                expandScaleAnim.Duration = morphDuration;
-                expandScaleAnim.InsertKeyFrame(0f, new Vector3(fromScaleX, fromScaleY, 1f));
-                expandScaleAnim.InsertKeyFrame(0.7f, new Vector3(1.02f, 1.02f, 1f), springEasing);
-                expandScaleAnim.InsertKeyFrame(1f, Vector3.One, springEasing);
-                _surfaceVisual.StartAnimation("Scale", expandScaleAnim);
-
-                // Content cross-fade
                 CompactView.IsHitTestVisible = false;
                 ExpandedView.IsHitTestVisible = true;
 
+                // Coordinated cross-fade & reveal
                 var compactFade = compositor.CreateScalarKeyFrameAnimation();
-                compactFade.Duration = TimeSpan.FromMilliseconds(80);
+                compactFade.Duration = TimeSpan.FromMilliseconds(90);
                 compactFade.InsertKeyFrame(1f, 0f, quickEasing);
                 _compactVisual.StartAnimation("Opacity", compactFade);
 
                 var expandedFade = compositor.CreateScalarKeyFrameAnimation();
-                expandedFade.Duration = TimeSpan.FromMilliseconds(240);
+                expandedFade.Duration = TimeSpan.FromMilliseconds(260);
                 expandedFade.InsertKeyFrame(0f, 0f);
-                expandedFade.InsertKeyFrame(0.3f, 0f);
+                expandedFade.InsertKeyFrame(0.15f, 0f);
                 expandedFade.InsertKeyFrame(1f, 1f, springEasing);
                 _expandedVisual.StartAnimation("Opacity", expandedFade);
+
+                var expandTranslate = compositor.CreateVector3KeyFrameAnimation();
+                expandTranslate.Duration = TimeSpan.FromMilliseconds(280);
+                expandTranslate.InsertKeyFrame(0f, new Vector3(0, 8, 0));
+                expandTranslate.InsertKeyFrame(1f, Vector3.Zero, springEasing);
+                _expandedVisual.StartAnimation("Translation", expandTranslate);
+
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 300);
             }
-            else if (state is IslandState.Hover or IslandState.Compact or IslandState.Idle or IslandState.TrackChanged or IslandState.Notification)
+            else if (isCollapsing)
             {
-                PositionAndResizeWindow(targetWidth, targetHeight);
-                Surface.Width = targetWidth;
-                Surface.Height = targetHeight;
+                CompactView.IsHitTestVisible = true;
+                ExpandedView.IsHitTestVisible = false;
+
+                var expandedFade = compositor.CreateScalarKeyFrameAnimation();
+                expandedFade.Duration = TimeSpan.FromMilliseconds(110);
+                expandedFade.InsertKeyFrame(1f, 0f, quickEasing);
+                _expandedVisual.StartAnimation("Opacity", expandedFade);
+
+                var compactFade = compositor.CreateScalarKeyFrameAnimation();
+                compactFade.Duration = TimeSpan.FromMilliseconds(220);
+                compactFade.InsertKeyFrame(0f, 0f);
+                compactFade.InsertKeyFrame(0.15f, 0f);
+                compactFade.InsertKeyFrame(1f, 1f, springEasing);
+                _compactVisual.StartAnimation("Opacity", compactFade);
+
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 280, () =>
+                {
+                    if (generation == _transitionGeneration && _viewModel.CurrentIslandState == IslandState.Collapsing)
+                    {
+                        _viewModel.CompleteCollapse();
+                    }
+                });
+            }
+            else
+            {
+                // Compact or Hover
                 CompactView.IsHitTestVisible = true;
                 ExpandedView.IsHitTestVisible = false;
                 _expandedVisual.Opacity = 0;
                 _compactVisual.Opacity = 1;
 
-                _surfaceVisual.CenterPoint = new Vector3((float)(targetWidth / 2), (float)(targetHeight / 2), 0);
-                var settle = state == IslandState.Hover ? 1.018f : 0.992f;
-                var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
-                scaleAnim.Duration = TimeSpan.FromMilliseconds(170);
-                scaleAnim.InsertKeyFrame(0.72f, new Vector3(settle, settle, 1f), springEasing);
-                scaleAnim.InsertKeyFrame(1f, Vector3.One, springEasing);
-                _surfaceVisual.StartAnimation("Scale", scaleAnim);
-            }
-            else
-            {
-                // Collapsing: animate scale up into the compact pill
-                _surfaceVisual.CenterPoint = new Vector3((float)(Surface.ActualWidth / 2), 0, 0);
-
-                var toScaleX = (float)(targetWidth / Math.Max(1.0, Surface.ActualWidth));
-                var toScaleY = (float)(targetHeight / Math.Max(1.0, Surface.ActualHeight));
-
-                var collapseScaleAnim = compositor.CreateVector3KeyFrameAnimation();
-                collapseScaleAnim.Duration = morphDuration;
-                collapseScaleAnim.InsertKeyFrame(1f, new Vector3(toScaleX, toScaleY, 1f), springEasing);
-                _surfaceVisual.StartAnimation("Scale", collapseScaleAnim);
-
-                CompactView.IsHitTestVisible = true;
-                ExpandedView.IsHitTestVisible = false;
-
-                var expandedFade = compositor.CreateScalarKeyFrameAnimation();
-                expandedFade.Duration = TimeSpan.FromMilliseconds(90);
-                expandedFade.InsertKeyFrame(1f, 0f, quickEasing);
-                _expandedVisual.StartAnimation("Opacity", expandedFade);
-
-                var compactFade = compositor.CreateScalarKeyFrameAnimation();
-                compactFade.Duration = TimeSpan.FromMilliseconds(200);
-                compactFade.InsertKeyFrame(0f, 0f);
-                compactFade.InsertKeyFrame(1f, 1f, springEasing);
-                _compactVisual.StartAnimation("Opacity", compactFade);
-
-                // Resize window to compact capsule once animation completes
-                var collapseTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-                collapseTimer.Interval = TimeSpan.FromMilliseconds(245);
-                collapseTimer.Tick += (s, e) =>
-                {
-                    collapseTimer.Stop();
-                    if (!_viewModel.IsExpanded && !_isIslandHidden)
-                    {
-                        Surface.Width = targetWidth;
-                        Surface.Height = targetHeight;
-                        _surfaceVisual.Scale = Vector3.One;
-                        PositionAndResizeWindow(targetWidth, targetHeight);
-                    }
-                };
-                collapseTimer.Start();
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 160);
             }
         }
         catch
@@ -445,12 +516,8 @@ public sealed partial class IslandWindow : Window
             Surface.CornerRadius = new CornerRadius(targetCornerRadius);
             _compactVisual.Opacity = isExpanded ? 0 : 1;
             _expandedVisual.Opacity = isExpanded ? 1 : 0;
-            PositionAndResizeWindow(targetWidth, targetHeight);
-        }
-
-        if (state == IslandState.Collapsing)
-        {
-            _viewModel.CompleteCollapse();
+            _currentPillWidth = targetWidth;
+            _currentPillHeight = targetHeight;
         }
     }
 
@@ -503,9 +570,34 @@ public sealed partial class IslandWindow : Window
         visual.StartAnimation("Scale", anim);
     }
 
-    // Input handlers
-    private void OnPointerEntered(object sender, PointerRoutedEventArgs e) => _viewModel.OnPointerEntered();
-    private void OnPointerExited(object sender, PointerRoutedEventArgs e) => _viewModel.OnPointerExited();
+    // Input handlers and 04 Auto-collapse sequence
+    private void OnCollapseDelayTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl)
+        {
+            _viewModel.Collapse();
+        }
+    }
+
+    private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
+    {
+        _isPointerOverSurface = true;
+        _collapseDelayTimer.Stop();
+        _viewModel.OnPointerEntered();
+    }
+
+    private void OnPointerExited(object sender, PointerRoutedEventArgs e)
+    {
+        _isPointerOverSurface = false;
+        _viewModel.OnPointerExited();
+
+        if (_viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl)
+        {
+            _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
+            _collapseDelayTimer.Start();
+        }
+    }
 
     private void OnSurfacePointerReleased(object sender, PointerRoutedEventArgs e)
     {
@@ -524,6 +616,7 @@ public sealed partial class IslandWindow : Window
 
     private void OnToggleExpandedClick(object sender, RoutedEventArgs e) => _viewModel.ToggleExpanded();
     private void OnCollapseClick(object sender, RoutedEventArgs e) => _viewModel.Collapse();
+    private void OnToggleMuteClick(object sender, RoutedEventArgs e) => _viewModel.ToggleMuteCommand.Execute(null);
     private void OnHideIslandClick(object sender, RoutedEventArgs e) => HideIslandAnimated();
 
     private void OnOpenTaskbarFlyoutClick(object sender, RoutedEventArgs e)
@@ -535,8 +628,14 @@ public sealed partial class IslandWindow : Window
     private void OnSettingsClick(object sender, RoutedEventArgs e)
         => SettingsRequested?.Invoke(this, EventArgs.Empty);
 
-    private void OnSeekBarScrubStarted(object? sender, double percent) => _viewModel.BeginScrub(percent);
+    private void OnSeekBarScrubStarted(object? sender, double percent)
+    {
+        _collapseDelayTimer.Stop();
+        _viewModel.BeginScrub(percent);
+    }
+
     private void OnSeekBarScrubDelta(object? sender, double percent) => _viewModel.UpdateScrub(percent);
+
     private async void OnSeekBarScrubCompleted(object? sender, double percent)
     {
         try
@@ -544,16 +643,33 @@ public sealed partial class IslandWindow : Window
             await _viewModel.EndScrubAsync(percent);
         }
         catch { }
+
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse)
+        {
+            _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
+            _collapseDelayTimer.Start();
+        }
     }
 
     private void OnButtonPointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        _isInteractingWithControl = true;
+        _collapseDelayTimer.Stop();
         if (sender is FrameworkElement el) AnimateButtonScale(el, 0.92f);
+        e.Handled = true;
     }
 
     private void OnButtonPointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        _isInteractingWithControl = false;
         if (sender is FrameworkElement el) AnimateButtonScale(el, 1.0f);
+        e.Handled = true;
+
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse)
+        {
+            _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
+            _collapseDelayTimer.Start();
+        }
     }
 
     private void AnimateButtonScale(FrameworkElement element, float targetScale)
@@ -578,7 +694,7 @@ public sealed partial class IslandWindow : Window
         var isLight = theme == "Light";
         WindowRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
 
-        var artworkAccent = _viewModel.ArtworkAccentColor;
+        var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
         var accentColor  = isLight ? 0xFF007AFFu : artworkAccent;
         var bgColor      = isLight ? 0xF2F5F5F7u : Blend(0xF20B1018u, artworkAccent, 0.20);
         var borderColor  = isLight ? 0x22000000u : Blend(0x33FFFFFFu, artworkAccent, 0.22);
@@ -659,10 +775,12 @@ public sealed partial class IslandWindow : Window
             SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged);
     }
 
-    // Subclass WndProc to eliminate OS window minimum size constraints
+    // Subclass WndProc to handle native hit-testing and eliminate OS window minimum size constraints
     private IntPtr WndProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData)
     {
         const uint WM_GETMINMAXINFO = 0x0024;
+        const uint WM_NCHITTEST = 0x0084;
+
         if (uMsg == WM_GETMINMAXINFO)
         {
             var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
@@ -672,11 +790,76 @@ public sealed partial class IslandWindow : Window
             return IntPtr.Zero;
         }
 
+        if (uMsg == WM_NCHITTEST)
+        {
+            // During active control drag/scrub or button press, maintain hit testing
+            if (_isInteractingWithControl || _viewModel.IsScrubbing)
+            {
+                return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+            }
+
+            int screenX = unchecked((short)(long)lParam);
+            int screenY = unchecked((short)((long)lParam >> 16));
+
+            if (!IsPointInsideVisibleIsland(screenX, screenY))
+            {
+                const int HTTRANSPARENT = -1;
+                return new IntPtr(HTTRANSPARENT);
+            }
+        }
+
         return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+    }
+
+    private bool IsPointInsideVisibleIsland(int screenX, int screenY)
+    {
+        if (_hwnd == IntPtr.Zero) return false;
+        if (!GetWindowRect(_hwnd, out var winRect)) return false;
+
+        if (screenX < winRect.Left || screenX > winRect.Right ||
+            screenY < winRect.Top || screenY > winRect.Bottom)
+        {
+            return false;
+        }
+
+        if (_dpiScale <= 0) _dpiScale = 1.0;
+
+        double localDipX = (screenX - winRect.Left) / _dpiScale;
+        double localDipY = (screenY - winRect.Top) / _dpiScale;
+
+        double hostWidth = WindowRoot.Width > 0 ? WindowRoot.Width : 420.0;
+
+        if (_isIslandHidden)
+        {
+            double anchorLeft = (hostWidth - 48.0) / 2.0;
+            double anchorRight = anchorLeft + 48.0;
+            double anchorTop = 0.0;
+            double anchorBottom = 16.0;
+
+            return localDipX >= anchorLeft && localDipX <= anchorRight &&
+                   localDipY >= anchorTop && localDipY <= anchorBottom;
+        }
+
+        double pillWidth = _currentPillWidth > 0 ? _currentPillWidth : Surface.ActualWidth;
+        if (pillWidth <= 0) pillWidth = 216.0;
+
+        double pillHeight = _currentPillHeight > 0 ? _currentPillHeight : Surface.ActualHeight;
+        if (pillHeight <= 0) pillHeight = 40.0;
+
+        double leftDip = (hostWidth - pillWidth) / 2.0;
+        double rightDip = leftDip + pillWidth;
+        double topDip = 0.0;
+        double bottomDip = pillHeight;
+
+        return localDipX >= (leftDip - 2.0) && localDipX <= (rightDip + 2.0) &&
+               localDipY >= (topDip - 2.0) && localDipY <= (bottomDip + 2.0);
     }
 
     // P/Invoke
     private delegate IntPtr SubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
 
     [DllImport("comctl32.dll", SetLastError = true)]
     private static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, UIntPtr uIdSubclass, IntPtr dwRefData);

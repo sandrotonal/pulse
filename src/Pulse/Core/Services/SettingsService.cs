@@ -47,6 +47,9 @@ public sealed class SettingsService : ISettingsService
             AnimationIntensity = settings.AnimationIntensity is "Minimal" or "Dynamic" ? settings.AnimationIntensity : "Normal"
         };
 
+        // Notify in-memory listeners immediately for instantaneous real-time UI response
+        SettingsChanged?.Invoke(this, Current);
+
         await _saveGate.WaitAsync();
         try
         {
@@ -59,11 +62,10 @@ public sealed class SettingsService : ISettingsService
 
             File.Move(temporaryPath, _settingsPath, overwrite: true);
         }
+        catch { }
         finally
         {
             _saveGate.Release();
         }
-
-        SettingsChanged?.Invoke(this, Current);
     }
 }
