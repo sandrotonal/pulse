@@ -173,6 +173,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool EnableHoverExpand => _settingsService.Current.EnableHoverExpand;
     public bool DynamicColorTint => _settingsService.Current.DynamicColorTint;
     public bool ShowEqualizer => _settingsService.Current.ShowEqualizer;
+    public bool UseTransparency => _settingsService.Current.UseTransparency;
     public int TopOffset => _settingsService.Current.TopOffset;
     public double IslandScale => _settingsService.Current.IslandScale / 100d;
     public string AnimationIntensity => _settingsService.Current.AnimationIntensity;
@@ -557,6 +558,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(EnableHoverExpand));
         OnPropertyChanged(nameof(DynamicColorTint));
         OnPropertyChanged(nameof(ShowEqualizer));
+        OnPropertyChanged(nameof(UseTransparency));
         OnPropertyChanged(nameof(TopOffset));
         OnPropertyChanged(nameof(IslandScale));
         OnPropertyChanged(nameof(AnimationIntensity));

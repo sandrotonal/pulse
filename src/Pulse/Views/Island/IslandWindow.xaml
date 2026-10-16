@@ -631,41 +631,18 @@
 
                         <!-- Panel 1: Odak Sayacı (Pomodoro) -->
                         <Grid x:Name="FocusExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto">
-                            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,4,0,10">
-                                <!-- Square Pomodoro Icon Glass Card -->
-                                <Border Grid.Column="0"
-                                        Width="96" Height="96"
-                                        CornerRadius="18"
-                                        Background="#1C232D"
-                                        BorderBrush="#24FFFFFF"
-                                        BorderThickness="1"
-                                        VerticalAlignment="Center">
-                                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <FontIcon Glyph="&#xE916;" FontSize="32" Foreground="{ThemeResource Accent}" />
-                                    </Grid>
-                                </Border>
-
-                                <!-- Countdown & Description -->
-                                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Spacing="2">
-                                    <Border HorizontalAlignment="Left"
-                                            Background="{ThemeResource PillControlBackground}"
-                                            CornerRadius="10"
-                                            Padding="8,2,8,2"
-                                            Margin="0,0,0,2">
-                                        <TextBlock Text="{Binding FocusTimerModeText, TargetNullValue='Odaklanma'}"
-                                                   FontSize="10" FontWeight="SemiBold"
-                                                   Foreground="{ThemeResource Accent}" />
-                                    </Border>
-                                    <TextBlock Text="{Binding FocusTimerText, TargetNullValue='25:00'}"
-                                               FontSize="28" FontWeight="Bold"
-                                               Foreground="{ThemeResource PrimaryText}"
-                                               CharacterSpacing="40" />
-                                    <TextBlock Text="Hedefine odaklan, bildirimler sessize alındı"
-                                               FontSize="10.5"
-                                               Foreground="{ThemeResource SecondaryText}"
-                                               TextTrimming="CharacterEllipsis" />
-                                </StackPanel>
-                            </Grid>
+                            <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="4">
+                                <TextBlock Text="{Binding FocusTimerModeText, TargetNullValue='Odaklanma'}"
+                                           FontSize="10" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource SecondaryText}"
+                                           CharacterSpacing="240"
+                                           HorizontalAlignment="Center" />
+                                <TextBlock Text="{Binding FocusTimerText, TargetNullValue='25:00'}"
+                                           FontSize="40" FontWeight="Light"
+                                           Foreground="{ThemeResource PrimaryText}"
+                                           CharacterSpacing="40"
+                                           HorizontalAlignment="Center" />
+                            </StackPanel>
 
                             <!-- Presets & Actions -->
                             <Grid Grid.Row="1" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
@@ -703,83 +680,59 @@
                                             Width="38" Height="38" CornerRadius="19"
                                             Command="{Binding ToggleFocusTimerCommand}"
                                             ToolTipService.ToolTip="Başlat / Duraklat">
-                                        <FontIcon Glyph="&#xE768;" FontSize="14" />
+                                        <FontIcon Glyph="{Binding FocusPlayPauseGlyph}" FontSize="14" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
                         </Grid>
 
-                        <!-- Panel 2: Sistem & Denetim (Control Center) -->
-                        <Grid x:Name="SystemExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto">
-                            <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="0,4,0,8">
-                                <!-- Battery Card -->
-                                <Border Grid.Column="0"
-                                        Margin="0,0,4,0"
-                                        Background="{ThemeResource PillControlBackground}"
-                                        CornerRadius="16"
-                                        Padding="12,10">
-                                    <Grid RowDefinitions="Auto,*">
-                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xEBAA;" FontSize="13" Foreground="{ThemeResource Accent}" />
-                                            <TextBlock Text="Pil &amp; Güç" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource SecondaryText}" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,6,0,0">
-                                            <TextBlock Text="%85 Şarj Oluyor" FontSize="13.5" FontWeight="Bold" Foreground="{ThemeResource PrimaryText}" />
-                                            <TextBlock Text="Performans Modu Aktif" FontSize="9.5" Foreground="{ThemeResource SecondaryText}" />
-                                        </StackPanel>
-                                    </Grid>
-                                </Border>
-
-                                <!-- Screenshot Quick Action Card -->
-                                <Button Grid.Column="1"
-                                        Style="{StaticResource IslandButtonStyle}"
-                                        Margin="4,0,0,0"
-                                        HorizontalAlignment="Stretch"
-                                        VerticalAlignment="Stretch"
-                                        Background="{ThemeResource PillControlBackground}"
-                                        CornerRadius="16"
-                                        Padding="12,10"
-                                        Command="{Binding TakeScreenshotCommand}"
-                                        ToolTipService.ToolTip="Ekran Görüntüsü Al ve Kaydet">
-                                    <Grid RowDefinitions="Auto,*" HorizontalAlignment="Left">
-                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xE722;" FontSize="13" Foreground="{ThemeResource Accent}" />
-                                            <TextBlock Text="Ekran Yakala" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource SecondaryText}" />
-                                        </StackPanel>
-                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,6,0,0">
-                                            <TextBlock Text="Hızlı Yakala" FontSize="13.5" FontWeight="Bold" Foreground="{ThemeResource PrimaryText}" />
-                                            <TextBlock Text="Panoya ve Dosyaya Kaydet" FontSize="9.5" Foreground="{ThemeResource SecondaryText}" />
-                                        </StackPanel>
-                                    </Grid>
-                                </Button>
-                            </Grid>
-
-                            <!-- Volume Control Card -->
-                            <Border Grid.Row="1"
-                                    Background="{ThemeResource PillControlBackground}"
-                                    CornerRadius="16"
-                                    Padding="12,8">
+                        <!-- Panel 2: Sistem & Denetim (flat, Apple Control Center feel — no cards) -->
+                        <Grid x:Name="SystemExpandedPanel" Visibility="Collapsed">
+                            <StackPanel VerticalAlignment="Center" Spacing="16" Margin="4,0">
+                                <!-- Volume row -->
                                 <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
                                     <Button Style="{StaticResource IslandButtonStyle}"
-                                            Width="28" Height="28" CornerRadius="14"
-                                            Command="{Binding ToggleMuteCommand}"
-                                            Margin="0,0,8,0"
+                                            Width="32" Height="32" CornerRadius="16"
+                                            Command="{Binding SystemToggleMuteCommand}"
+                                            Margin="0,0,10,0"
                                             ToolTipService.ToolTip="Sesi Kapat / Aç">
-                                        <FontIcon Glyph="{Binding MuteGlyph}" FontSize="13" Foreground="{ThemeResource PrimaryText}" />
+                                        <FontIcon Glyph="{Binding SystemMuteGlyph}" FontSize="13" Foreground="{ThemeResource PrimaryText}" />
                                     </Button>
 
-                                    <Slider Value="{Binding MasterVolume, Mode=TwoWay}"
+                                    <Slider Grid.Column="1"
+                                            Value="{Binding MasterVolume, Mode=TwoWay}"
                                             Minimum="0" Maximum="100"
                                             VerticalAlignment="Center"
-                                            Margin="0,0,8,0" />
+                                            Margin="0,0,10,0" />
 
                                     <TextBlock Text="{Binding MasterVolumeLabel}"
                                                FontSize="11.5" FontWeight="SemiBold"
                                                Foreground="{ThemeResource PrimaryText}"
                                                VerticalAlignment="Center"
-                                               Width="32" TextAlignment="Right" />
+                                               Width="34" TextAlignment="Right" />
                                 </Grid>
-                            </Border>
+
+                                <!-- Battery + quick capture row -->
+                                <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
+                                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
+                                                Visibility="{Binding BatteryVisibility}">
+                                        <FontIcon Glyph="{Binding BatteryGlyph}" FontSize="14" Foreground="{ThemeResource Accent}" />
+                                        <TextBlock Text="{Binding BatterySummary}"
+                                                   FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource PrimaryText}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <Button Grid.Column="1"
+                                            Style="{StaticResource CircularHeaderButtonStyle}"
+                                            Width="32" Height="32" CornerRadius="16"
+                                            HorizontalAlignment="Right"
+                                            Command="{Binding TakeScreenshotCommand}"
+                                            ToolTipService.ToolTip="Ekran Görüntüsü Al (Görüntü panoya kopyalanır ve Ekran Görüntüleri klasörüne kaydedilir)">
+                                        <FontIcon Glyph="&#xE722;" FontSize="13" />
+                                    </Button>
+                                </Grid>
+                            </StackPanel>
                         </Grid>
                     </Grid>
                 </Grid>

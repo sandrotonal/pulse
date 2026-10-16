@@ -15,9 +15,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private readonly IFocusTimerService _focusTimer;
     private readonly ISystemEventService _systemEvents;
     private readonly IFileOperationService _fileOperations;
+    private readonly ISystemControlService? _systemControl;
     private readonly DispatcherQueue _dispatcherQueue;
 
     private IslandEvent? _activeEvent;
+    private bool _systemMuted;
+    private int _batteryPercent = -1;
+    private bool _batteryIsCharging;
+    private bool _batteryIsLow;
 
     public IslandViewModel(
         MediaViewModel media,
@@ -25,7 +30,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         IFocusTimerService focusTimer,
         ISystemEventService systemEvents,
         IFileOperationService fileOperations,
-        DispatcherQueue dispatcherQueue)
+        DispatcherQueue dispatcherQueue,
+        ISystemControlService? systemControl = null)
     {
         _media = media ?? throw new ArgumentNullException(nameof(media));
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
@@ -33,6 +39,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _systemEvents = systemEvents ?? throw new ArgumentNullException(nameof(systemEvents));
         _fileOperations = fileOperations ?? throw new ArgumentNullException(nameof(fileOperations));
         _dispatcherQueue = dispatcherQueue ?? throw new ArgumentNullException(nameof(dispatcherQueue));
+        _systemControl = systemControl;
 
         _media.PropertyChanged += OnMediaPropertyChanged;
         _eventRouter.ActiveEventChanged += OnActiveEventChanged;
@@ -49,8 +56,26 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             {
                 _focusTimer.Resume();
             }
+            OnPropertyChanged(nameof(FocusPlayPauseGlyph));
         });
         ResetFocusTimerCommand = new RelayCommand(() => _focusTimer.Reset());
+
+        // Real system audio controls (endpoint volume), replacing the demo reporting path
+        if (_systemControl is not null)
+        {
+            _masterVolume = _systemControl.GetMasterVolume();
+            _systemMuted = _systemControl.IsMuted();
+        }
+        SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
+
+        TakeScreenshotCommand = new RelayCommand(() =>
+        {
+            var path = _systemControl?.CaptureScreenshot() ?? string.Empty;
+            if (!string.IsNullOrEmpty(path))
+            {
+                _systemEvents.ReportScreenshotSaved(path);
+            }
+        });
 
         DismissActiveEventCommand = new RelayCommand(() =>
         {
@@ -91,13 +116,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         SetBreakTimer5Command = new RelayCommand(() => _focusTimer.Start(TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)));
         SetBreakTimer15Command = new RelayCommand(() => _focusTimer.Start(TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(5)));
 
-        TakeScreenshotCommand = new RelayCommand(() =>
-        {
-            var timestamp = DateTime.Now.ToString("HHmmss");
-            _systemEvents.ReportScreenshotSaved($@"C:\Screenshots\Pulse_Snap_{timestamp}.png");
-        });
-
         _activeEvent = _eventRouter.CurrentActiveEvent;
+        RefreshBattery();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -120,6 +140,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(FocusPageVisibility));
                 OnPropertyChanged(nameof(SystemPageVisibility));
                 OnPropertyChanged(nameof(ExpandedHeaderTitle));
+
+                if (clamped == 2)
+                {
+                    RefreshBattery();
+                    RefreshSystemAudio();
+                }
             }
         }
     }
@@ -127,7 +153,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsMediaPageSelected => _selectedPageIndex == 0;
     public bool IsFocusPageSelected => _selectedPageIndex == 1;
     public bool IsSystemPageSelected => _selectedPageIndex == 2;
-
     public Microsoft.UI.Xaml.Visibility MediaPageVisibility => SelectedPageIndex == 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FocusPageVisibility => SelectedPageIndex == 1 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SystemPageVisibility => SelectedPageIndex == 2 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
@@ -143,7 +168,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public void PreviousPage() => SelectedPageIndex = (SelectedPageIndex - 1 + 3) % 3;
     public void SelectPage(int index) => SelectedPageIndex = index;
 
-    private int _masterVolume = 75;
+    private int _masterVolume;
     public int MasterVolume
     {
         get => _masterVolume;
@@ -155,11 +180,78 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 _masterVolume = clamped;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(MasterVolumeLabel));
-                _systemEvents.ReportAudioStatus(_masterVolume, IsMuted);
+                _systemControl?.SetMasterVolume(clamped);
+                _systemEvents.ReportAudioStatus(_masterVolume, IsSystemMuted);
             }
         }
     }
     public string MasterVolumeLabel => $"%{_masterVolume}";
+
+    public bool IsSystemMuted => _systemMuted;
+    public string SystemMuteGlyph => _systemMuted ? "\uE74F" : "\uE995";
+
+    public RelayCommand SystemToggleMuteCommand { get; }
+
+    private void ToggleSystemMute()
+    {
+        _systemMuted = !_systemMuted;
+        try
+        {
+            _systemControl?.SetMute(_systemMuted);
+        }
+        catch
+        {
+            // keep local state; endpoint stays authoritative next refresh
+        }
+
+        OnPropertyChanged(nameof(IsSystemMuted));
+        OnPropertyChanged(nameof(SystemMuteGlyph));
+        _systemEvents.ReportAudioStatus(_masterVolume, _systemMuted);
+    }
+
+    public bool HasBattery => _batteryPercent >= 0;
+    public int BatteryPercent => _batteryPercent;
+    public bool BatteryIsCharging => _batteryIsCharging;
+    public string BatterySummary => _batteryIsCharging ? $"%{_batteryPercent} Şarj Oluyor" : $"%{_batteryPercent} Pil";
+    public string BatteryGlyph => _batteryIsCharging
+        ? "\uEBAA"
+        : (_batteryIsLow ? "\uEBA0" : "\uEBA2");
+    public Microsoft.UI.Xaml.Visibility BatteryVisibility => HasBattery
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    private void RefreshBattery()
+    {
+        var status = _systemControl?.GetBatteryStatus();
+        if (status is null)
+        {
+            if (_batteryPercent >= 0)
+            {
+                _batteryPercent = -1;
+                NotifyBatteryChanged();
+            }
+            return;
+        }
+
+        var (percent, isCharging, isLow) = status.Value;
+        if (_batteryPercent != percent || _batteryIsCharging != isCharging || _batteryIsLow != isLow)
+        {
+            _batteryPercent = percent;
+            _batteryIsCharging = isCharging;
+            _batteryIsLow = isLow;
+            NotifyBatteryChanged();
+        }
+    }
+
+    private void NotifyBatteryChanged()
+    {
+        OnPropertyChanged(nameof(HasBattery));
+        OnPropertyChanged(nameof(BatteryPercent));
+        OnPropertyChanged(nameof(BatteryIsCharging));
+        OnPropertyChanged(nameof(BatterySummary));
+        OnPropertyChanged(nameof(BatteryGlyph));
+        OnPropertyChanged(nameof(BatteryVisibility));
+    }
 
     public MediaViewModel Media => _media;
     public IEventRouter EventRouter => _eventRouter;
@@ -203,6 +295,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     }
     public string FocusTimerModeText => (_activeEvent as FocusTimerEvent)?.IsBreak == true || _focusTimer.IsBreak ? "Mola" : "Odaklanma";
     public bool FocusTimerIsRunning => _focusTimer.IsRunning;
+    public string FocusPlayPauseGlyph => _focusTimer.IsRunning ? "\uE769" : "\uE768";
 
     public bool IsFileOperationActive => _activeEvent is FileOperationEvent;
     public string FileOperationName => (_activeEvent as FileOperationEvent)?.FileName ?? string.Empty;
@@ -251,6 +344,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool EnableHoverExpand => _media.EnableHoverExpand;
     public bool DynamicColorTint => _media.DynamicColorTint;
     public bool ShowEqualizer => _media.ShowEqualizer;
+    public bool UseTransparency => _media.UseTransparency;
     public int TopOffset => _media.TopOffset;
     public double IslandScale => _media.IslandScale;
     public string AnimationIntensity => _media.AnimationIntensity;
@@ -322,6 +416,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(FocusTimerText));
         OnPropertyChanged(nameof(FocusTimerModeText));
         OnPropertyChanged(nameof(FocusTimerIsRunning));
+        OnPropertyChanged(nameof(FocusPlayPauseGlyph));
         OnPropertyChanged(nameof(IsFileOperationActive));
         OnPropertyChanged(nameof(FileOperationName));
         OnPropertyChanged(nameof(FileOperationProgress));
@@ -341,6 +436,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(FocusTimerText));
             OnPropertyChanged(nameof(FocusTimerModeText));
             OnPropertyChanged(nameof(FocusTimerIsRunning));
+            OnPropertyChanged(nameof(FocusPlayPauseGlyph));
         }
         else
         {
@@ -349,7 +445,33 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(FocusTimerText));
                 OnPropertyChanged(nameof(FocusTimerModeText));
                 OnPropertyChanged(nameof(FocusTimerIsRunning));
+                OnPropertyChanged(nameof(FocusPlayPauseGlyph));
             });
+        }
+    }
+
+    /// <summary>Re-reads endpoint volume and mute state from the real audio device.</summary>
+    private void RefreshSystemAudio()
+    {
+        if (_systemControl is null)
+        {
+            return;
+        }
+
+        var volume = _systemControl.GetMasterVolume();
+        var muted = _systemControl.IsMuted();
+        if (_masterVolume != volume)
+        {
+            _masterVolume = volume;
+            OnPropertyChanged(nameof(MasterVolume));
+            OnPropertyChanged(nameof(MasterVolumeLabel));
+        }
+
+        if (_systemMuted != muted)
+        {
+            _systemMuted = muted;
+            OnPropertyChanged(nameof(IsSystemMuted));
+            OnPropertyChanged(nameof(SystemMuteGlyph));
         }
     }
 

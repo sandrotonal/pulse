@@ -59,6 +59,7 @@ public sealed partial class IslandWindow : Window
 
     private double _dpiScale = 1.0;
     private bool _isIslandHidden;
+    private bool _glassEnabled;
     private double _currentPillWidth = 216;
     private double _currentPillHeight = 40;
     private bool _waveAnimating;
@@ -125,6 +126,7 @@ public sealed partial class IslandWindow : Window
 
         PositionHostWindow();
         ApplyWindowStyles();
+        ApplyGlass();
         ApplyTheme(_viewModel.Theme);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
@@ -314,8 +316,10 @@ public sealed partial class IslandWindow : Window
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) 
                  or nameof(MediaViewModel.ArtworkAccentColor) 
-                 or nameof(MediaViewModel.DynamicColorTint))
+                 or nameof(MediaViewModel.DynamicColorTint)
+                 or nameof(MediaViewModel.UseTransparency))
         {
+            ApplyGlass();
             ApplyTheme(_viewModel.Theme);
         }
         else if (e.PropertyName is nameof(MediaViewModel.TopOffset) or nameof(MediaViewModel.IslandScale))
@@ -1011,6 +1015,28 @@ public sealed partial class IslandWindow : Window
     }
 
     // Theme Management
+    // DesktopAcrylic behind the pill = iOS "frosted glass" feel when enabled in settings.
+    public void ApplyGlass()
+    {
+        try
+        {
+            var wantGlass = _viewModel.UseTransparency;
+            if (_glassEnabled == wantGlass)
+            {
+                return;
+            }
+
+            _glassEnabled = wantGlass;
+            SystemBackdrop = wantGlass
+                ? new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop()
+                : new WinUIEx.TransparentTintBackdrop { TintColor = Microsoft.UI.Colors.Transparent };
+        }
+        catch
+        {
+            _glassEnabled = false;
+        }
+    }
+
     public void ApplyTheme(string theme)
     {
         var isLight = theme == "Light";
@@ -1018,7 +1044,10 @@ public sealed partial class IslandWindow : Window
 
         var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
         var accentColor  = isLight ? 0xFF007AFFu : artworkAccent;
-        var bgColor      = isLight ? 0xF2F5F5F7u : Blend(0xF20B1018u, artworkAccent, 0.20);
+        // Solid surfaces stay near-opaque; glass surfaces go translucent so acrylic really shows.
+        var bgColor      = isLight
+            ? (_glassEnabled ? 0xB8F2F5F7u : 0xF2F5F5F7u)
+            : (_glassEnabled ? Blend(0x990B1018u, artworkAccent, 0.20) : Blend(0xF20B1018u, artworkAccent, 0.20));
         var borderColor  = isLight ? 0x22000000u : Blend(0x33FFFFFFu, artworkAccent, 0.22);
         var primaryText  = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
         var secondaryTxt = isLight ? 0xFF8E8E93u : 0xFFA4ABB6u;
