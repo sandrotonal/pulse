@@ -54,6 +54,8 @@ public sealed partial class IslandWindow : Window
     private long _lastWheelNavTicks;
     private const long WheelDebounceTicks = 200 * TimeSpan.TicksPerMillisecond;
     private DispatcherQueueTimer? _pageTransitionCleanupTimer;
+    private DispatcherQueueTimer? _hideAnimationTimer;
+    private string? _lastPulseTrackKey;
 
     private double _dpiScale = 1.0;
     private bool _isIslandHidden;
@@ -178,17 +180,22 @@ public sealed partial class IslandWindow : Window
         }
         catch { }
 
-        var timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        timer.Interval = TimeSpan.FromMilliseconds(190);
-        timer.Tick += (s, e) =>
+        var timer = _hideAnimationTimer;
+        if (timer is null)
         {
-            timer.Stop();
-            if (_isIslandHidden)
+            timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            timer.Interval = TimeSpan.FromMilliseconds(190);
+            timer.Tick += (_, _) =>
             {
-                Surface.Visibility = Visibility.Collapsed;
-                HiddenAnchor.Visibility = Visibility.Visible;
-            }
-        };
+                timer.Stop();
+                if (_isIslandHidden)
+                {
+                    Surface.Visibility = Visibility.Collapsed;
+                    HiddenAnchor.Visibility = Visibility.Visible;
+                }
+            };
+            _hideAnimationTimer = timer;
+        }
         timer.Start();
     }
 
@@ -293,6 +300,16 @@ public sealed partial class IslandWindow : Window
             else
             {
                 StopEqualizerWave();
+            }
+
+            var trackKey = GetTrackKey(_viewModel.CurrentTrack);
+            if (e.PropertyName == nameof(MediaViewModel.CurrentTrack) &&
+                !_isIslandHidden &&
+                trackKey is not null &&
+                trackKey != _lastPulseTrackKey)
+            {
+                _lastPulseTrackKey = trackKey;
+                PlayTrackChangePulse();
             }
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) 
@@ -627,6 +644,30 @@ public sealed partial class IslandWindow : Window
         anim.InsertKeyFrame(1f, new Vector3(1f, maxScale, 1f), easing);
 
         visual.StartAnimation("Scale", anim);
+    }
+
+    // Quick scale pulse when the track changes (Apple micro-interaction)
+    private static string? GetTrackKey(MediaTrack? track)
+        => string.IsNullOrEmpty(track?.Title) ? null : $"{track.SourceApplicationId}|{track.Title}|{track.Artist}";
+
+    private void PlayTrackChangePulse()
+    {
+        try
+        {
+            var compositor = _surfaceVisual.Compositor;
+            var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.34f, 1.56f), new Vector2(0.64f, 1f));
+
+            _surfaceVisual.CenterPoint = new Vector3((float)(_currentPillWidth / 2), (float)(_currentPillHeight / 2), 0);
+
+            var pulse = compositor.CreateVector3KeyFrameAnimation();
+            pulse.Duration = TimeSpan.FromMilliseconds(420);
+            pulse.InsertKeyFrame(0f, Vector3.One);
+            pulse.InsertKeyFrame(0.35f, new Vector3(1.05f, 1.05f, 1f), springEasing);
+            pulse.InsertKeyFrame(1f, Vector3.One, springEasing);
+
+            _surfaceVisual.StartAnimation("Scale", pulse);
+        }
+        catch { }
     }
 
     // Input handlers and 04 Auto-collapse sequence
