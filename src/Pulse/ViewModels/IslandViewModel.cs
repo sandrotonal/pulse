@@ -56,9 +56,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             {
                 _focusTimer.Resume();
             }
-            OnPropertyChanged(nameof(FocusPlayPauseGlyph));
+            NotifyFocusTick();
         });
-        ResetFocusTimerCommand = new RelayCommand(() => _focusTimer.Reset());
+        ResetFocusTimerCommand = new RelayCommand(() =>
+        {
+            _focusTimer.Reset();
+            NotifyFocusTick();
+        });
 
         // Real system audio controls (endpoint volume), replacing the demo reporting path
         if (_systemControl is not null)
@@ -110,11 +114,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             });
         });
 
-        // Presets for Focus Timer
-        SetFocusTimer25Command = new RelayCommand(() => _focusTimer.Start(TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5)));
-        SetFocusTimer50Command = new RelayCommand(() => _focusTimer.Start(TimeSpan.FromMinutes(50), TimeSpan.FromMinutes(10)));
-        SetBreakTimer5Command = new RelayCommand(() => _focusTimer.Start(TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)));
-        SetBreakTimer15Command = new RelayCommand(() => _focusTimer.Start(TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(5)));
+        // Presets for Focus Timer (keyed so the UI can highlight the active preset)
+        SetFocusTimer25Command = new RelayCommand(() => StartFocusPreset("25", TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5)));
+        SetFocusTimer50Command = new RelayCommand(() => StartFocusPreset("50", TimeSpan.FromMinutes(50), TimeSpan.FromMinutes(10)));
+        SetBreakTimer5Command = new RelayCommand(() => StartFocusPreset("5", TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)));
+        SetBreakTimer15Command = new RelayCommand(() => StartFocusPreset("15", TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(5)));
 
         _activeEvent = _eventRouter.CurrentActiveEvent;
         RefreshBattery();
@@ -206,6 +210,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         OnPropertyChanged(nameof(IsSystemMuted));
         OnPropertyChanged(nameof(SystemMuteGlyph));
+        OnPropertyChanged(nameof(SystemMuteBrush));
         _systemEvents.ReportAudioStatus(_masterVolume, _systemMuted);
     }
 
@@ -251,6 +256,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BatterySummary));
         OnPropertyChanged(nameof(BatteryGlyph));
         OnPropertyChanged(nameof(BatteryVisibility));
+        OnPropertyChanged(nameof(BatteryBrush));
+        OnPropertyChanged(nameof(SystemMuteBrush));
     }
 
     public MediaViewModel Media => _media;
@@ -296,6 +303,64 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public string FocusTimerModeText => (_activeEvent as FocusTimerEvent)?.IsBreak == true || _focusTimer.IsBreak ? "Mola" : "Odaklanma";
     public bool FocusTimerIsRunning => _focusTimer.IsRunning;
     public string FocusPlayPauseGlyph => _focusTimer.IsRunning ? "\uE769" : "\uE768";
+
+    private string _focusPresetKey = "25";
+    public double FocusProgress => _focusTimer.TotalDuration.TotalSeconds <= 0
+        ? 0
+        : Math.Clamp(1.0 - (_focusTimer.RemainingTime.TotalSeconds / _focusTimer.TotalDuration.TotalSeconds), 0, 1);
+    public bool PreserveFocusPanel => _focusTimer.IsRunning && _selectedPageIndex == 1;
+
+    private void StartFocusPreset(string key, TimeSpan focus, TimeSpan breakTime)
+    {
+        _focusPresetKey = key;
+        NotifyFocusBrushes();
+        _focusTimer.Start(focus, breakTime);
+        OnPropertyChanged(nameof(PreserveFocusPanel));
+    }
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush FocusPreset25Brush => FocusTipBrush("25");
+    public Microsoft.UI.Xaml.Media.SolidColorBrush FocusPreset50Brush => FocusTipBrush("50");
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BreakPreset5Brush => FocusTipBrush("5");
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BreakPreset15Brush => FocusTipBrush("15");
+
+    private Microsoft.UI.Xaml.Media.SolidColorBrush FocusTipBrush(string key)
+    {
+        if (key == _focusPresetKey)
+        {
+            var accent = _media.Theme == "Light"
+                ? 0xFF007AFFu
+                : (_media.DynamicColorTint ? _media.ArtworkAccentColor : 0xFF007AFFu);
+            return MakeBrush(accent);
+        }
+
+        var idle = _media.Theme == "Light" ? 0x16000000u : 0x1FFFFFFFu;
+        return MakeBrush(idle);
+    }
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush SystemMuteBrush => _systemMuted
+        ? MakeBrush(0xFFFF453Au)
+        : (_media.Theme == "Light" ? MakeBrush(0x14000000u) : MakeBrush(0x22FFFFFFu));
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryBrush => MakeBrush(_batteryIsCharging
+        ? 0xFF30D158u
+        : _batteryIsLow ? 0xFFFF453Au : 0xFF007AFFu);
+
+    private static Microsoft.UI.Xaml.Media.SolidColorBrush MakeBrush(uint value)
+    {
+        var color = Windows.UI.Color.FromArgb((byte)(value >> 24), (byte)(value >> 16), (byte)(value >> 8), (byte)value);
+        return new Microsoft.UI.Xaml.Media.SolidColorBrush(color);
+    }
+
+    private void NotifyFocusBrushes()
+    {
+        OnPropertyChanged(nameof(FocusPreset25Brush));
+        OnPropertyChanged(nameof(FocusPreset50Brush));
+        OnPropertyChanged(nameof(BreakPreset5Brush));
+        OnPropertyChanged(nameof(BreakPreset15Brush));
+        OnPropertyChanged(nameof(SystemMuteBrush));
+        OnPropertyChanged(nameof(BatteryBrush));
+        OnPropertyChanged(nameof(FocusProgress));
+    }
 
     public bool IsFileOperationActive => _activeEvent is FileOperationEvent;
     public string FileOperationName => (_activeEvent as FileOperationEvent)?.FileName ?? string.Empty;
@@ -433,21 +498,22 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     {
         if (_dispatcherQueue.HasThreadAccess)
         {
-            OnPropertyChanged(nameof(FocusTimerText));
-            OnPropertyChanged(nameof(FocusTimerModeText));
-            OnPropertyChanged(nameof(FocusTimerIsRunning));
-            OnPropertyChanged(nameof(FocusPlayPauseGlyph));
+            NotifyFocusTick();
         }
         else
         {
-            _dispatcherQueue.TryEnqueue(() =>
-            {
-                OnPropertyChanged(nameof(FocusTimerText));
-                OnPropertyChanged(nameof(FocusTimerModeText));
-                OnPropertyChanged(nameof(FocusTimerIsRunning));
-                OnPropertyChanged(nameof(FocusPlayPauseGlyph));
-            });
+            _dispatcherQueue.TryEnqueue(NotifyFocusTick);
         }
+    }
+
+    private void NotifyFocusTick()
+    {
+        OnPropertyChanged(nameof(FocusTimerText));
+        OnPropertyChanged(nameof(FocusTimerModeText));
+        OnPropertyChanged(nameof(FocusTimerIsRunning));
+        OnPropertyChanged(nameof(FocusPlayPauseGlyph));
+        OnPropertyChanged(nameof(FocusProgress));
+        OnPropertyChanged(nameof(PreserveFocusPanel));
     }
 
     /// <summary>Re-reads endpoint volume and mute state from the real audio device.</summary>
@@ -472,6 +538,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _systemMuted = muted;
             OnPropertyChanged(nameof(IsSystemMuted));
             OnPropertyChanged(nameof(SystemMuteGlyph));
+            OnPropertyChanged(nameof(SystemMuteBrush));
         }
     }
 
@@ -495,6 +562,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         {
             OnPropertyChanged(nameof(TrackContentVisibility));
             OnPropertyChanged(nameof(CustomIdleVisibility));
+        }
+        else if (e.PropertyName is nameof(MediaViewModel.Theme) or nameof(MediaViewModel.ArtworkAccentColor) or nameof(MediaViewModel.DynamicColorTint))
+        {
+            NotifyFocusBrushes();
         }
     }
 

@@ -35,6 +35,8 @@ public sealed partial class IslandWindow : Window
     private const uint SwpNoMove = 0x0002;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
+    private const uint SwpShowWindow = 0x0040;
+    private const uint SwpHideWindow = 0x0080;
     private const uint MonitorDefaultToNearest = 2;
     private static readonly IntPtr HwndTopmost = new(-1);
 
@@ -130,6 +132,11 @@ public sealed partial class IslandWindow : Window
         ApplyTheme(_viewModel.Theme);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+        if (FocusProgressTrack is not null)
+        {
+            FocusProgressTrack.SizeChanged += (_, _) => UpdateFocusProgressFill();
+        }
 
         // Apply initial layout without animation
         UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
@@ -285,6 +292,11 @@ public sealed partial class IslandWindow : Window
         AppWindow.ResizeClient(new SizeInt32(winWidth, winHeight));
         AppWindow.Move(new PointInt32(x, y));
         SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+
+        if (_glassEnabled)
+        {
+            _ = RefreshFrostAsync();
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -340,6 +352,22 @@ public sealed partial class IslandWindow : Window
         {
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
         }
+        else if (e.PropertyName is nameof(IslandViewModel.FocusProgress) or nameof(IslandViewModel.PreserveFocusPanel))
+        {
+            UpdateFocusProgressFill();
+        }
+    }
+
+    private void UpdateFocusProgressFill()
+    {
+        if (FocusProgressTrack is null || FocusProgressFill is null) return;
+        var trackWidth = FocusProgressTrack.ActualWidth;
+        if (trackWidth <= 0)
+        {
+            trackWidth = 336; // fall back to XAML margin-derived width until layout settles
+        }
+        var progress = Math.Clamp(_viewModel.FocusProgress, 0, 1);
+        FocusProgressFill.Width = Math.Max(0, progress * trackWidth);
     }
 
     private void AnimateSurfaceDimensions(double toWidth, double toHeight, double toCornerRadius, double durationMs, Action? onCompleted = null)
@@ -552,6 +580,11 @@ public sealed partial class IslandWindow : Window
                 _expandedVisual.StartAnimation("Translation", expandTranslate);
 
                 AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 300);
+
+                if (_glassEnabled)
+                {
+                    _ = RefreshFrostAsync(force: true);
+                }
             }
             else if (isCollapsing)
             {
@@ -678,9 +711,15 @@ public sealed partial class IslandWindow : Window
     private void OnCollapseDelayTimerTick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl)
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl && !_viewModel.PreserveFocusPanel)
         {
             _viewModel.Collapse();
+        }
+        else if (_viewModel.PreserveFocusPanel && _viewModel.IsExpanded)
+        {
+            // Running focus session keeps the island pinned until paused or page changed.
+            sender.Interval = TimeSpan.FromMilliseconds(600);
+            sender.Start();
         }
     }
 
@@ -693,6 +732,9 @@ public sealed partial class IslandWindow : Window
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
     {
+        // Frost capture briefly hides the window, which synthesizes a synthetic
+        // PointerExited — ignore it so the island doesn't collapse mid-capture.
+        if (_frostBusy) return;
         _isPointerOverSurface = false;
         _viewModel.OnPointerExited();
 
@@ -991,7 +1033,7 @@ public sealed partial class IslandWindow : Window
         if (sender is FrameworkElement el) AnimateButtonScale(el, 1.0f);
         e.Handled = true;
 
-        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse)
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
         {
             _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
             _collapseDelayTimer.Start();
@@ -1015,26 +1057,243 @@ public sealed partial class IslandWindow : Window
     }
 
     // Theme Management
-    // DesktopAcrylic behind the pill = iOS "frosted glass" feel when enabled in settings.
+    // Apple "Liquid Glass": Microsoft's DesktopAcrylicBackdrop conflicts with the
+    // DWM transparency trick WinUIEx uses, so when glass is enabled we render our own
+    // frost layer: sample the live desktop behind the island, blur it and tint it
+    // in-app. Never touches SystemBackdrop (keeps the TransparentTintBackdrop wired
+    // in XAML so the window stays alpha-capable).
     public void ApplyGlass()
     {
+        _glassEnabled = _viewModel.UseTransparency;
+        FrostLayer.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
+        if (_glassEnabled)
+        {
+            EnsureFrostTimer();
+            _ = RefreshFrostAsync();
+        }
+        else
+        {
+            _frostTimer?.Stop();
+            FrostLayer.Fill = null;
+        }
+    }
+
+    private DispatcherQueueTimer? _frostTimer;
+    private bool _frostBusy;
+
+    private void EnsureFrostTimer()
+    {
+        if (_frostTimer is not null) return;
+        _frostTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _frostTimer.Interval = TimeSpan.FromMilliseconds(2500);
+        _frostTimer.Tick += (_, _) => _ = RefreshFrostAsync();
+    }
+
+    /// <summary>Samples the desktop area under the island, blurs + tints it into the frost brush.</summary>
+    private async Task RefreshFrostAsync(bool force = false)
+    {
+        if (!_glassEnabled || _isIslandHidden || _frostBusy || FrostLayer is null) return;
+        // Periodic refreshes skip while the pointer is over the pill (no flicker under
+        // the cursor); forced refreshes (state change / expand) always run.
+        if (!force && _isPointerOverSurface) return;
+
+        _frostBusy = true;
         try
         {
-            var wantGlass = _viewModel.UseTransparency;
-            if (_glassEnabled == wantGlass)
+            var clientW = 0;
+            var clientH = 0;
+            var screenX = 0;
+            var screenY = 0;
+            RunOnDispatcher(() =>
             {
-                return;
-            }
+                // Sample exactly the pill's on-screen rect so the frost maps 1:1.
+                try
+                {
+                    var tf = Surface.TransformToVisual(null);
+                    var bounds = tf.TransformBounds(new Windows.Foundation.Rect(0, 0, Surface.ActualWidth, Surface.ActualHeight));
+                    GetClientRect(_hwnd, out var crc);
+                    var pt = new Win32Point();
+                    _ = ClientToScreen(_hwnd, ref pt);
+                    screenX = pt.X + (int)Math.Round(bounds.X * _dpiScale);
+                    screenY = pt.Y + (int)Math.Round(bounds.Y * _dpiScale);
+                    clientW = Math.Max(16, (int)Math.Round(bounds.Width * _dpiScale));
+                    clientH = Math.Max(16, (int)Math.Round(bounds.Height * _dpiScale));
+                }
+                catch
+                {
+                    GetClientRect(_hwnd, out var crc);
+                    var pt = new Win32Point();
+                    _ = ClientToScreen(_hwnd, ref pt);
+                    screenX = pt.X;
+                    screenY = pt.Y;
+                    clientW = Math.Max(1, crc.Right - crc.Left);
+                    clientH = Math.Max(1, crc.Bottom - crc.Top);
+                }
+            });
+            if (clientW < 16 || clientH < 16) return;
 
-            _glassEnabled = wantGlass;
-            SystemBackdrop = wantGlass
-                ? new Microsoft.UI.Xaml.Media.DesktopAcrylicBackdrop()
-                : new WinUIEx.TransparentTintBackdrop { TintColor = Microsoft.UI.Colors.Transparent };
+            var frost = await Task.Run(() =>
+            {
+                var bmp = CaptureDesktopSample(screenX, screenY, clientW, clientH);
+                if (bmp is null) return null;
+
+                var tint = CurrentGlassTint();
+                var result = FrostAndTint(bmp, tint);
+                bmp.Dispose();
+                return result;
+            });
+            if (frost is null) return;
+
+            byte[] pngBytes;
+            using (var ms = new System.IO.MemoryStream())
+            {
+                frost.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
+                pngBytes = ms.ToArray();
+            }
+            frost.Dispose();
+
+            RunOnDispatcher(() =>
+            {
+                var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
+                using (var writer = new Windows.Storage.Streams.DataWriter(stream.GetOutputStreamAt(0)))
+                {
+                    writer.WriteBytes(pngBytes);
+                    _ = writer.StoreAsync().AsTask().GetAwaiter().GetResult();
+                    _ = writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+                }
+
+                var image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
+                _ = image.SetSourceAsync(stream);
+                FrostLayer.Fill = new Microsoft.UI.Xaml.Media.ImageBrush
+                {
+                    ImageSource = image,
+                    Stretch = Microsoft.UI.Xaml.Media.Stretch.Fill
+                };
+            });
         }
         catch
         {
-            _glassEnabled = false;
+            // Be resilient — worst case the frost simply shows the previous frame.
         }
+        finally
+        {
+            _frostBusy = false;
+        }
+    }
+
+    private void RunOnDispatcher(Action action)
+    {
+        var dispatcher = DispatcherQueue.GetForCurrentThread();
+        if (dispatcher.HasThreadAccess)
+        {
+            action();
+            return;
+        }
+        using var evt = new System.Threading.ManualResetEvent(false);
+        dispatcher.TryEnqueue(() =>
+        {
+            try { action(); }
+            finally { _ = evt.Set(); }
+        });
+        _ = evt.WaitOne(200);
+    }
+
+    private uint CurrentGlassTint()
+    {
+        var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
+        return _viewModel.Theme == "Light"
+            ? 0xB8F2F5F7u
+            : Blend(0xB20B1018u, artworkAccent, 0.20);
+    }
+
+    /// <summary>
+    /// Captures the screen region behind the island. The window is briefly hidden
+    /// so the sample contains only the real desktop beneath it (no self-feedback).
+    /// </summary>
+    private System.Drawing.Bitmap? CaptureDesktopSample(int x, int y, int width, int height)
+    {
+        try
+        {
+            _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpHideWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
+            System.Threading.Thread.Sleep(45); // one DWM frame so the desktop shows through
+        }
+        catch
+        {
+            // ignore — capture below still runs; worst case includes the pill itself
+        }
+
+        System.Drawing.Bitmap? captured = null;
+        try
+        {
+            captured = new System.Drawing.Bitmap(width, height);
+            using var g = System.Drawing.Graphics.FromImage(captured);
+            g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            try
+            {
+                _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
+            }
+            catch
+            {
+            }
+        }
+
+        return captured;
+    }
+
+    private static System.Drawing.Bitmap FrostAndTint(System.Drawing.Bitmap captured, uint tint)
+    {
+        var w = captured.Width;
+        var h = captured.Height;
+
+        // Progressive "frosted" blur: downscale hard, upscale smooth.
+        var fSmall = Math.Max(4, w / 8);
+        var fSmallH = Math.Max(4, h / 8);
+        using var small = new System.Drawing.Bitmap(fSmall, fSmallH);
+        using (var g = System.Drawing.Graphics.FromImage(small))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
+            g.DrawImage(captured, new System.Drawing.Rectangle(0, 0, fSmall, fSmallH),
+                0, 0, w, h, System.Drawing.GraphicsUnit.Pixel);
+        }
+
+        var midW = Math.Max(8, w / 2);
+        var midH = Math.Max(8, h / 2);
+        using var mid = new System.Drawing.Bitmap(midW, midH);
+        using (var g = System.Drawing.Graphics.FromImage(mid))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(small, 0, 0, midW, midH);
+        }
+
+        var frost = new System.Drawing.Bitmap(w, h);
+        using (var g = System.Drawing.Graphics.FromImage(frost))
+        {
+            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+            g.DrawImage(mid, 0, 0, w, h);
+
+            // Tint blend (the ApplyTheme glass palette colour)
+            var tintBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(
+                (byte)(tint >> 24), (byte)(tint >> 16), (byte)(tint >> 8), (byte)tint));
+            g.FillRectangle(tintBrush, 0, 0, w, h);
+            tintBrush.Dispose();
+
+            // iOS-style specular sheen along the top edge
+            using var sheen = new System.Drawing.Drawing2D.LinearGradientBrush(
+                new System.Drawing.RectangleF(0, 0, w, Math.Max(1, h * 0.45f)),
+                System.Drawing.Color.FromArgb(36, 255, 255, 255),
+                System.Drawing.Color.FromArgb(0, 255, 255, 255),
+                System.Drawing.Drawing2D.LinearGradientMode.Vertical);
+            g.FillRectangle(sheen, 0, 0, w, Math.Max(1, (int)(h * 0.45f)));
+        }
+
+        return frost;
     }
 
     public void ApplyTheme(string theme)
@@ -1212,6 +1471,12 @@ public sealed partial class IslandWindow : Window
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetWindowRect(IntPtr hWnd, out Rect lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetClientRect(IntPtr hWnd, out Rect lpRect);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool ClientToScreen(IntPtr hWnd, ref Win32Point lpPoint);
 
     [DllImport("comctl32.dll", SetLastError = true)]
     private static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, UIntPtr uIdSubclass, IntPtr dwRefData);
