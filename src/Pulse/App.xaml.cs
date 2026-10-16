@@ -23,6 +23,7 @@ public partial class App : Application
     private readonly FocusTimerService _focusTimerService;
     private readonly SystemEventService _systemEventService;
     private readonly FileOperationService _fileOperationService;
+    private readonly WindowsSystemControlService _systemControlService;
     private readonly MediaViewModel _mediaViewModel;
     private readonly IslandViewModel _islandViewModel;
     private IslandWindow? _islandWindow;
@@ -44,6 +45,7 @@ public partial class App : Application
         _focusTimerService = new FocusTimerService(_eventRouter);
         _systemEventService = new SystemEventService(_eventRouter);
         _fileOperationService = new FileOperationService(_eventRouter);
+        _systemControlService = new WindowsSystemControlService();
 
         _mediaViewModel = new MediaViewModel(
             _mediaSessionService,
@@ -58,7 +60,8 @@ public partial class App : Application
             _focusTimerService,
             _systemEventService,
             _fileOperationService,
-            dispatcherQueue);
+            dispatcherQueue,
+            _systemControlService);
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -156,6 +159,7 @@ public partial class App : Application
         _islandViewModel.Dispose();
         await _mediaViewModel.DisposeAsync();
         await _mediaSessionService.DisposeAsync();
+        _systemControlService.Dispose();
         Exit();
     }
 }
