@@ -16,6 +16,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _enableHoverExpand = true;
     private bool _dynamicColorTint = true;
     private bool _showEqualizer = true;
+    private bool _useTransparency;
     private int _themeIndex;
     private int _animationIndex = 1;
     private double _topOffset = 14;
@@ -52,6 +53,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool EnableHoverExpand { get => _enableHoverExpand; set { if (SetProperty(ref _enableHoverExpand, value)) Save(); } }
     public bool DynamicColorTint { get => _dynamicColorTint; set { if (SetProperty(ref _dynamicColorTint, value)) Save(); } }
     public bool ShowEqualizer { get => _showEqualizer; set { if (SetProperty(ref _showEqualizer, value)) Save(); } }
+    public bool UseTransparency { get => _useTransparency; set { if (SetProperty(ref _useTransparency, value)) Save(); } }
     public int ThemeIndex { get => _themeIndex; set { if (SetProperty(ref _themeIndex, value)) Save(); } }
     public int AnimationIndex { get => _animationIndex; set { if (SetProperty(ref _animationIndex, value)) Save(); } }
     public double TopOffset
@@ -99,6 +101,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         EnableHoverExpand = settings.EnableHoverExpand;
         DynamicColorTint = settings.DynamicColorTint;
         ShowEqualizer = settings.ShowEqualizer;
+        UseTransparency = settings.UseTransparency;
         ThemeIndex = settings.Theme switch { "Dark" => 1, "Light" => 2, _ => 0 };
         AnimationIndex = settings.AnimationIntensity switch { "Minimal" => 0, "Dynamic" => 2, _ => 1 };
         TopOffset = settings.TopOffset;
@@ -140,6 +143,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             EnableHoverExpand = EnableHoverExpand,
             DynamicColorTint = DynamicColorTint,
             ShowEqualizer = ShowEqualizer,
+            UseTransparency = UseTransparency,
             Theme = ThemeIndex switch { 1 => "Dark", 2 => "Light", _ => "System" },
             AnimationIntensity = AnimationIndex switch { 0 => "Minimal", 2 => "Dynamic", _ => "Normal" },
             TopOffset = (int)Math.Round(TopOffset),
