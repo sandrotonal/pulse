@@ -5,6 +5,7 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Pulse.Core.Models;
@@ -37,7 +38,7 @@ public sealed partial class IslandWindow : Window
     private const uint MonitorDefaultToNearest = 2;
     private static readonly IntPtr HwndTopmost = new(-1);
 
-    private readonly MediaViewModel _viewModel;
+    private readonly IslandViewModel _viewModel;
     private readonly IntPtr _hwnd;
     private readonly Visual _surfaceVisual;
     private readonly Visual _compactVisual;
@@ -45,7 +46,14 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _wave1Visual;
     private readonly Visual _wave2Visual;
     private readonly Visual _wave3Visual;
+    private readonly Visual _mediaPanelVisual;
+    private readonly Visual _focusPanelVisual;
+    private readonly Visual _systemPanelVisual;
     private readonly SubclassProc _subclassProc;
+
+    private long _lastWheelNavTicks;
+    private const long WheelDebounceTicks = 200 * TimeSpan.TicksPerMillisecond;
+    private DispatcherQueueTimer? _pageTransitionCleanupTimer;
 
     private double _dpiScale = 1.0;
     private bool _isIslandHidden;
@@ -71,7 +79,7 @@ public sealed partial class IslandWindow : Window
     public event EventHandler? SettingsRequested;
     public event EventHandler? TaskbarFlyoutRequested;
 
-    public IslandWindow(MediaViewModel viewModel)
+    public IslandWindow(IslandViewModel viewModel)
     {
         InitializeComponent();
         _viewModel = viewModel;
@@ -88,10 +96,16 @@ public sealed partial class IslandWindow : Window
         _wave1Visual = ElementCompositionPreview.GetElementVisual(WaveBar1);
         _wave2Visual = ElementCompositionPreview.GetElementVisual(WaveBar2);
         _wave3Visual = ElementCompositionPreview.GetElementVisual(WaveBar3);
+        _mediaPanelVisual = ElementCompositionPreview.GetElementVisual(MediaExpandedPanel);
+        _focusPanelVisual = ElementCompositionPreview.GetElementVisual(FocusExpandedPanel);
+        _systemPanelVisual = ElementCompositionPreview.GetElementVisual(SystemExpandedPanel);
 
         ElementCompositionPreview.SetIsTranslationEnabled(Surface, true);
         ElementCompositionPreview.SetIsTranslationEnabled(CompactView, true);
         ElementCompositionPreview.SetIsTranslationEnabled(ExpandedView, true);
+        ElementCompositionPreview.SetIsTranslationEnabled(MediaExpandedPanel, true);
+        ElementCompositionPreview.SetIsTranslationEnabled(FocusExpandedPanel, true);
+        ElementCompositionPreview.SetIsTranslationEnabled(SystemExpandedPanel, true);
 
         // Subclass window to intercept WM_NCHITTEST and WM_GETMINMAXINFO:
         _subclassProc = WndProc;
@@ -299,6 +313,12 @@ public sealed partial class IslandWindow : Window
                 CompactWaveBars.Opacity = (_viewModel.CurrentIslandState == IslandState.Hover && _viewModel.ShowEqualizer) ? 1.0 : 0.0;
             }
         }
+        else if (e.PropertyName is nameof(IslandViewModel.IsNotificationActive)
+                 or nameof(IslandViewModel.IsFocusTimerActive)
+                 or nameof(IslandViewModel.IsFileOperationActive))
+        {
+            UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+        }
     }
 
     private void AnimateSurfaceDimensions(double toWidth, double toHeight, double toCornerRadius, double durationMs, Action? onCompleted = null)
@@ -381,6 +401,18 @@ public sealed partial class IslandWindow : Window
             targetHeight = 220;
             targetCornerRadius = 32;
         }
+        else if (_viewModel.IsNotificationActive || _viewModel.IsFileOperationActive)
+        {
+            targetWidth = 268;
+            targetHeight = 40;
+            targetCornerRadius = 20;
+        }
+        else if (_viewModel.IsFocusTimerActive)
+        {
+            targetWidth = 220;
+            targetHeight = 40;
+            targetCornerRadius = 20;
+        }
         else if (!hasTrack && state is IslandState.Idle)
         {
             targetWidth = 76;
@@ -428,6 +460,21 @@ public sealed partial class IslandWindow : Window
             _expandedVisual.Opacity = isExpanded ? 1 : 0;
             ExpandedView.IsHitTestVisible = isExpanded;
 
+            if (isExpanded)
+            {
+                int activeIndex = _viewModel.SelectedPageIndex;
+                for (int i = 0; i < 3; i++)
+                {
+                    var grid = GetPanelGrid(i);
+                    grid.Visibility = (i == activeIndex) ? Visibility.Visible : Visibility.Collapsed;
+                    grid.Translation = Vector3.Zero;
+                    var v = GetPanelVisual(i);
+                    v.Opacity = (i == activeIndex) ? 1f : 0f;
+                    v.StopAnimation("Translation");
+                }
+                UpdatePageDots(activeIndex, animated: false);
+            }
+
             _surfaceVisual.Scale = Vector3.One;
             _surfaceVisual.StopAnimation("Scale");
             _surfaceVisual.StopAnimation("Translation");
@@ -451,6 +498,18 @@ public sealed partial class IslandWindow : Window
             {
                 CompactView.IsHitTestVisible = false;
                 ExpandedView.IsHitTestVisible = true;
+
+                int activeIndex = _viewModel.SelectedPageIndex;
+                for (int i = 0; i < 3; i++)
+                {
+                    var grid = GetPanelGrid(i);
+                    grid.Visibility = (i == activeIndex) ? Visibility.Visible : Visibility.Collapsed;
+                    grid.Translation = Vector3.Zero;
+                    var v = GetPanelVisual(i);
+                    v.Opacity = (i == activeIndex) ? 1f : 0f;
+                    v.StopAnimation("Translation");
+                }
+                UpdatePageDots(activeIndex, animated: false);
 
                 // Coordinated cross-fade & reveal
                 var compactFade = compositor.CreateScalarKeyFrameAnimation();
@@ -614,6 +673,228 @@ public sealed partial class IslandWindow : Window
         e.Handled = true;
     }
 
+    private Visual GetPanelVisual(int index) => index switch
+    {
+        0 => _mediaPanelVisual,
+        1 => _focusPanelVisual,
+        2 => _systemPanelVisual,
+        _ => _mediaPanelVisual
+    };
+
+    private Grid GetPanelGrid(int index) => index switch
+    {
+        0 => MediaExpandedPanel,
+        1 => FocusExpandedPanel,
+        2 => SystemExpandedPanel,
+        _ => MediaExpandedPanel
+    };
+
+    private void OnPageDot0Click(object sender, RoutedEventArgs e) => NavigateToPage(0, 0 > _viewModel.SelectedPageIndex);
+    private void OnPageDot1Click(object sender, RoutedEventArgs e) => NavigateToPage(1, 1 > _viewModel.SelectedPageIndex);
+    private void OnPageDot2Click(object sender, RoutedEventArgs e) => NavigateToPage(2, 2 > _viewModel.SelectedPageIndex);
+
+    private void OnSurfacePointerWheelChanged(object sender, PointerRoutedEventArgs e)
+    {
+        if (!_viewModel.IsExpanded)
+        {
+            return;
+        }
+
+        var point = e.GetCurrentPoint(Surface);
+        var delta = point.Properties.MouseWheelDelta;
+
+        if (Math.Abs(delta) < 30)
+        {
+            return;
+        }
+
+        var now = DateTime.UtcNow.Ticks;
+        if (now - _lastWheelNavTicks < WheelDebounceTicks)
+        {
+            e.Handled = true;
+            return;
+        }
+
+        _lastWheelNavTicks = now;
+        e.Handled = true;
+
+        _collapseDelayTimer.Stop();
+
+        int currentIndex = _viewModel.SelectedPageIndex;
+        if (delta < 0)
+        {
+            int nextIndex = (currentIndex + 1) % 3;
+            NavigateToPage(nextIndex, isForward: true);
+        }
+        else
+        {
+            int prevIndex = (currentIndex - 1 + 3) % 3;
+            NavigateToPage(prevIndex, isForward: false);
+        }
+
+        if (!_isPointerOverSurface && _viewModel.AutoCollapse)
+        {
+            _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
+            _collapseDelayTimer.Start();
+        }
+    }
+
+    private void NavigateToPage(int targetIndex, bool isForward)
+    {
+        targetIndex = Math.Clamp(targetIndex, 0, 2);
+        int fromIndex = _viewModel.SelectedPageIndex;
+        if (fromIndex == targetIndex) return;
+
+        AnimatePageTransition(fromIndex, targetIndex, isForward);
+    }
+
+    private void AnimatePageTransition(int fromIndex, int toIndex, bool isForward)
+    {
+        try
+        {
+            var compositor = _surfaceVisual.Compositor;
+            var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
+            var fadeEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.6f, 1f));
+
+            var fromGrid = GetPanelGrid(fromIndex);
+            var toGrid = GetPanelGrid(toIndex);
+            var fromVisual = GetPanelVisual(fromIndex);
+            var toVisual = GetPanelVisual(toIndex);
+
+            toGrid.Visibility = Visibility.Visible;
+
+            var outFade = compositor.CreateScalarKeyFrameAnimation();
+            outFade.Duration = TimeSpan.FromMilliseconds(160);
+            outFade.InsertKeyFrame(1f, 0f, fadeEasing);
+            fromVisual.StartAnimation("Opacity", outFade);
+
+            var outTranslate = compositor.CreateVector3KeyFrameAnimation();
+            outTranslate.Duration = TimeSpan.FromMilliseconds(180);
+            float outTargetX = isForward ? -26f : 26f;
+            outTranslate.InsertKeyFrame(1f, new Vector3(outTargetX, 0, 0), springEasing);
+            fromVisual.StartAnimation("Translation", outTranslate);
+
+            var inFade = compositor.CreateScalarKeyFrameAnimation();
+            inFade.Duration = TimeSpan.FromMilliseconds(220);
+            inFade.InsertKeyFrame(0f, 0f);
+            inFade.InsertKeyFrame(1f, 1f, springEasing);
+            toVisual.StartAnimation("Opacity", inFade);
+
+            var inTranslate = compositor.CreateVector3KeyFrameAnimation();
+            inTranslate.Duration = TimeSpan.FromMilliseconds(220);
+            float inStartX = isForward ? 26f : -26f;
+            inTranslate.InsertKeyFrame(0f, new Vector3(inStartX, 0, 0));
+            inTranslate.InsertKeyFrame(1f, Vector3.Zero, springEasing);
+            toVisual.StartAnimation("Translation", inTranslate);
+
+            _viewModel.SelectedPageIndex = toIndex;
+            UpdatePageDots(toIndex, animated: true);
+
+            _pageTransitionCleanupTimer?.Stop();
+            _pageTransitionCleanupTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _pageTransitionCleanupTimer.Interval = TimeSpan.FromMilliseconds(240);
+            _pageTransitionCleanupTimer.Tick += (s, e) =>
+            {
+                _pageTransitionCleanupTimer.Stop();
+                for (int i = 0; i < 3; i++)
+                {
+                    var grid = GetPanelGrid(i);
+                    var visual = GetPanelVisual(i);
+                    if (i == toIndex)
+                    {
+                        grid.Visibility = Visibility.Visible;
+                        grid.Translation = Vector3.Zero;
+                        visual.Opacity = 1f;
+                        visual.StopAnimation("Translation");
+                    }
+                    else
+                    {
+                        grid.Visibility = Visibility.Collapsed;
+                        grid.Translation = Vector3.Zero;
+                        visual.Opacity = 0f;
+                        visual.StopAnimation("Translation");
+                    }
+                }
+            };
+            _pageTransitionCleanupTimer.Start();
+        }
+        catch
+        {
+            _viewModel.SelectedPageIndex = toIndex;
+            for (int i = 0; i < 3; i++)
+            {
+                GetPanelGrid(i).Visibility = (i == toIndex) ? Visibility.Visible : Visibility.Collapsed;
+            }
+            UpdatePageDots(toIndex, animated: false);
+        }
+    }
+
+    private void UpdatePageDots(int activeIndex, bool animated)
+    {
+        var dots = new[] { PageDot0, PageDot1, PageDot2 };
+        for (int i = 0; i < dots.Length; i++)
+        {
+            var dot = dots[i];
+            if (dot is null) continue;
+            bool isActive = (i == activeIndex);
+            double targetWidth = isActive ? 18.0 : 6.0;
+            double targetOpacity = isActive ? 1.0 : 0.35;
+
+            if (animated)
+            {
+                AnimateDot(dot, targetWidth, targetOpacity, isActive);
+            }
+            else
+            {
+                dot.Width = targetWidth;
+                dot.Opacity = targetOpacity;
+                if (WindowRoot.Resources.TryGetValue(isActive ? "Accent" : "PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+                {
+                    dot.Background = brush;
+                }
+            }
+        }
+    }
+
+    private void AnimateDot(FrameworkElement dot, double targetWidth, double targetOpacity, bool isActive)
+    {
+        try
+        {
+            var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+            var widthAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+            {
+                To = targetWidth,
+                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut }
+            };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(widthAnim, dot);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(widthAnim, "Width");
+            sb.Children.Add(widthAnim);
+
+            var opacityAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+            {
+                To = targetOpacity,
+                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
+                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut }
+            };
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(opacityAnim, dot);
+            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(opacityAnim, "Opacity");
+            sb.Children.Add(opacityAnim);
+
+            sb.Begin();
+
+            if (dot is Button btn && WindowRoot.Resources.TryGetValue(isActive ? "Accent" : "PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+            {
+                btn.Background = brush;
+            }
+        }
+        catch
+        {
+            dot.Width = targetWidth;
+            dot.Opacity = targetOpacity;
+        }
+    }
+
     private void OnToggleExpandedClick(object sender, RoutedEventArgs e) => _viewModel.ToggleExpanded();
     private void OnCollapseClick(object sender, RoutedEventArgs e) => _viewModel.Collapse();
     private void OnToggleMuteClick(object sender, RoutedEventArgs e) => _viewModel.ToggleMuteCommand.Execute(null);
@@ -722,6 +1003,7 @@ public sealed partial class IslandWindow : Window
         WaveBar3.Background = Brush(accentColor);
         if (ExpandedSeekBar is not null)
             ExpandedSeekBar.AccentBrush = Brush(seekAccent);
+        UpdatePageDots(_viewModel.SelectedPageIndex, animated: false);
     }
 
     private void UpdateBrush(string key, uint color)

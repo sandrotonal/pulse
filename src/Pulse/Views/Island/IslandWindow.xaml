@@ -114,7 +114,8 @@
                 BorderThickness="1"
                 PointerEntered="OnPointerEntered"
                 PointerExited="OnPointerExited"
-                PointerReleased="OnSurfacePointerReleased">
+                PointerReleased="OnSurfacePointerReleased"
+                PointerWheelChanged="OnSurfacePointerWheelChanged">
 
             <Border.ContextFlyout>
                 <MenuFlyout>
@@ -124,6 +125,39 @@
                     <MenuFlyoutItem Text="Adayı Gizle" Click="OnHideIslandClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
+                    <MenuFlyoutSeparator />
+
+                    <!-- Odak Sayacı (Pomodoro) -->
+                    <MenuFlyoutSubItem Text="Odak Sayacı (Pomodoro)">
+                        <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutSubItem.Icon>
+                        <MenuFlyoutItem Text="Başlat (25 Dk)" Command="{Binding StartFocusTimerCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE768;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Duraklat / Devam Et" Command="{Binding ToggleFocusTimerCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE769;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Sıfırla" Command="{Binding ResetFocusTimerCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyoutSubItem>
+
+                    <!-- Bildirim Test Simülatörü -->
+                    <MenuFlyoutSubItem Text="Bildirim Simülatörü">
+                        <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xEA8F;" /></MenuFlyoutSubItem.Icon>
+                        <MenuFlyoutItem Text="Düşük Pil Uyarısı (%15)" Command="{Binding TestBatteryNotificationCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEBA0;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Bluetooth Kulaklık Bağlandı" Command="{Binding TestBluetoothNotificationCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE702;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Ekran Görüntüsü Kaydedildi" Command="{Binding TestScreenshotNotificationCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE722;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Dosya İndirme İlerlemesi" Command="{Binding TestFileProgressCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE896;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyoutSubItem>
+
                     <MenuFlyoutSeparator />
                     <MenuFlyoutItem Text="Görev Çubuğu Paneli" Click="OnOpenTaskbarFlyoutClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon>
@@ -143,9 +177,9 @@
                       VerticalAlignment="Stretch"
                       Padding="10,0,10,0">
 
-                    <!-- Idle: no active track -->
+                    <!-- Idle: no active track or notifications -->
                     <Grid x:Name="IdleContent"
-                          Visibility="{Binding IdleVisibility}"
+                          Visibility="{Binding CustomIdleVisibility}"
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -157,9 +191,123 @@
                         </StackPanel>
                     </Grid>
 
+                    <!-- Contextual System Notification Capsule (Battery, Bluetooth, Volume, Screenshot) -->
+                    <Grid x:Name="NotificationContent"
+                          Visibility="{Binding NotificationVisibility}"
+                          ColumnDefinitions="Auto,*,Auto"
+                          VerticalAlignment="Center">
+                        <Border Grid.Column="0"
+                                Width="26" Height="26"
+                                CornerRadius="13"
+                                Margin="0,0,8,0"
+                                Background="{ThemeResource PillControlBackground}">
+                            <FontIcon Glyph="{Binding NotificationGlyph}"
+                                      FontSize="12"
+                                      Foreground="{ThemeResource PrimaryText}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0.5">
+                            <TextBlock Text="{Binding NotificationTitle}"
+                                       FontSize="11.5" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource PrimaryText}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1" />
+                            <TextBlock Text="{Binding NotificationSubtitle}"
+                                       FontSize="9.5" FontWeight="Normal"
+                                       Foreground="{ThemeResource SecondaryText}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1" />
+                        </StackPanel>
+
+                        <Button Grid.Column="2"
+                                Style="{StaticResource IslandButtonStyle}"
+                                Width="22" Height="22" CornerRadius="11"
+                                Margin="6,0,0,0"
+                                Command="{Binding DismissActiveEventCommand}"
+                                ToolTipService.ToolTip="Kapat">
+                            <FontIcon Glyph="&#xE711;" FontSize="9" Foreground="{ThemeResource SecondaryText}" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Contextual Focus Timer Capsule (Pomodoro) -->
+                    <Grid x:Name="FocusTimerContent"
+                          Visibility="{Binding FocusTimerVisibility}"
+                          ColumnDefinitions="Auto,*,Auto"
+                          VerticalAlignment="Center">
+                        <Border Grid.Column="0"
+                                Width="26" Height="26"
+                                CornerRadius="13"
+                                Margin="0,0,8,0"
+                                Background="{ThemeResource PillControlBackground}">
+                            <FontIcon Glyph="&#xE916;"
+                                      FontSize="12"
+                                      Foreground="{ThemeResource Accent}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0.5">
+                            <TextBlock Text="{Binding FocusTimerText}"
+                                       FontSize="12" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource PrimaryText}"
+                                       MaxLines="1" />
+                            <TextBlock Text="{Binding FocusTimerModeText}"
+                                       FontSize="9" FontWeight="Normal"
+                                       Foreground="{ThemeResource SecondaryText}"
+                                       MaxLines="1" />
+                        </StackPanel>
+
+                        <Button Grid.Column="2"
+                                Style="{StaticResource IslandButtonStyle}"
+                                Width="24" Height="24" CornerRadius="12"
+                                Margin="6,0,0,0"
+                                Command="{Binding ToggleFocusTimerCommand}"
+                                ToolTipService.ToolTip="Başlat / Duraklat">
+                            <FontIcon Glyph="&#xE768;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
+                        </Button>
+                    </Grid>
+
+                    <!-- Contextual File Operation Progress Capsule -->
+                    <Grid x:Name="FileOperationContent"
+                          Visibility="{Binding FileOperationVisibility}"
+                          ColumnDefinitions="Auto,*,Auto"
+                          VerticalAlignment="Center">
+                        <Border Grid.Column="0"
+                                Width="26" Height="26"
+                                CornerRadius="13"
+                                Margin="0,0,8,0"
+                                Background="{ThemeResource PillControlBackground}">
+                            <FontIcon Glyph="&#xE896;"
+                                      FontSize="12"
+                                      Foreground="{ThemeResource Accent}"
+                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                            <TextBlock Text="{Binding FileOperationName}"
+                                       FontSize="11" FontWeight="SemiBold"
+                                       Foreground="{ThemeResource PrimaryText}"
+                                       TextTrimming="CharacterEllipsis"
+                                       MaxLines="1" />
+                            <ProgressBar Value="{Binding FileOperationProgress}"
+                                         Maximum="100"
+                                         Height="3"
+                                         Foreground="{ThemeResource Accent}"
+                                         Background="{ThemeResource PillControlBackground}"
+                                         CornerRadius="1.5" />
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="2"
+                                   Text="{Binding FileOperationStatusText}"
+                                   FontSize="9.5"
+                                   Foreground="{ThemeResource SecondaryText}"
+                                   Margin="8,0,0,0"
+                                   VerticalAlignment="Center" />
+                    </Grid>
+
                     <!-- Active track compact -->
                     <Grid x:Name="CompactTrackContent"
-                          Visibility="{Binding CompactVisibility}"
+                          Visibility="{Binding TrackContentVisibility}"
                           ColumnDefinitions="Auto,*,Auto"
                           VerticalAlignment="Center">
 
@@ -223,35 +371,81 @@
                     </Grid>
                 </Grid>
 
-                <!-- 03: EXPANDED VIEW (Reference-Driven Apple Dynamic Island Media Card) -->
+                <!-- 03: EXPANDED VIEW (Multi-Panel Apple Dynamic Island Carousel) -->
                 <Grid x:Name="ExpandedView"
                       Opacity="0"
                       IsHitTestVisible="False"
                       Padding="16,14,16,14"
                       PointerReleased="OnExpandedViewPointerReleased"
-                      RowDefinitions="Auto,*,Auto">
+                      RowDefinitions="Auto,*">
 
-                    <!-- Row 0: Spotify Brand Badge & Header Controls -->
+                    <!-- Row 0: Dynamic Brand Badge, Center Carousel Dots & Header Controls -->
                     <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
-                        <!-- Left: Authentic Spotify Logo & App Name -->
+                        <!-- Left: Dynamic Badge & Panel Title -->
                         <StackPanel Grid.Column="0" Orientation="Horizontal" VerticalAlignment="Center">
+                            <!-- Section Badges -->
                             <Grid Width="22" Height="22" VerticalAlignment="Center">
-                                <Ellipse Width="22" Height="22" Fill="#1ED760" />
-                                <Canvas Width="22" Height="22">
-                                    <Path Data="M 5.8,8.2 C 8.6,7.2 13.4,7.4 16.2,9.1"
-                                          Stroke="#121212" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                    <Path Data="M 6.4,11.2 C 8.8,10.4 12.8,10.6 15.6,12.1"
-                                          Stroke="#121212" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                    <Path Data="M 7.2,14.0 C 9.2,13.4 12.4,13.6 14.8,14.9"
-                                          Stroke="#121212" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
-                                </Canvas>
+                                <!-- Media / Spotify Badge -->
+                                <Grid x:Name="MediaHeaderBadge" Visibility="{Binding MediaPageVisibility}">
+                                    <Ellipse Width="22" Height="22" Fill="#1ED760" />
+                                    <Canvas Width="22" Height="22">
+                                        <Path Data="M 5.8,8.2 C 8.6,7.2 13.4,7.4 16.2,9.1"
+                                              Stroke="#121212" StrokeThickness="1.8" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        <Path Data="M 6.4,11.2 C 8.8,10.4 12.8,10.6 15.6,12.1"
+                                              Stroke="#121212" StrokeThickness="1.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                        <Path Data="M 7.2,14.0 C 9.2,13.4 12.4,13.6 14.8,14.9"
+                                              Stroke="#121212" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                    </Canvas>
+                                </Grid>
+                                <!-- Focus Timer Badge -->
+                                <Grid x:Name="FocusHeaderBadge" Visibility="{Binding FocusPageVisibility}">
+                                    <Ellipse Width="22" Height="22" Fill="#6366F1" />
+                                    <FontIcon Glyph="&#xE916;" FontSize="11" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
+                                <!-- System Control Badge -->
+                                <Grid x:Name="SystemHeaderBadge" Visibility="{Binding SystemPageVisibility}">
+                                    <Ellipse Width="22" Height="22" Fill="#0EA5E9" />
+                                    <FontIcon Glyph="&#xE713;" FontSize="11" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
                             </Grid>
-                            <TextBlock Text="{Binding AppDisplayName, TargetNullValue='Spotify'}"
+
+                            <TextBlock Text="{Binding ExpandedHeaderTitle, TargetNullValue='Spotify'}"
                                        FontSize="13"
                                        FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        VerticalAlignment="Center"
                                        Margin="8,0,0,0" />
+                        </StackPanel>
+
+                        <!-- Center: iOS-style Interactive Carousel Page Indicators -->
+                        <StackPanel Grid.Column="1"
+                                    Orientation="Horizontal"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="5">
+                            <Button x:Name="PageDot0"
+                                    Style="{StaticResource IslandButtonStyle}"
+                                    Width="18" Height="5" CornerRadius="2.5"
+                                    Background="{ThemeResource Accent}"
+                                    Padding="0"
+                                    Click="OnPageDot0Click"
+                                    ToolTipService.ToolTip="Medya Çalar" />
+                            <Button x:Name="PageDot1"
+                                    Style="{StaticResource IslandButtonStyle}"
+                                    Width="6" Height="5" CornerRadius="2.5"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    Padding="0"
+                                    Click="OnPageDot1Click"
+                                    ToolTipService.ToolTip="Odak Sayacı" />
+                            <Button x:Name="PageDot2"
+                                    Style="{StaticResource IslandButtonStyle}"
+                                    Width="6" Height="5" CornerRadius="2.5"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    Padding="0"
+                                    Click="OnPageDot2Click"
+                                    ToolTipService.ToolTip="Sistem &amp; Denetim" />
                         </StackPanel>
 
                         <!-- Right: Header Action Buttons (Collapse, Mute, Settings) -->
@@ -280,167 +474,313 @@
                         </StackPanel>
                     </Grid>
 
-                    <!-- Row 1: Album Artwork (Left) + Title, Artist, Seekbar, Timestamps (Right) -->
-                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,4,0,12">
-                        <!-- Square Album Art -->
-                        <Border Grid.Column="0"
-                                Width="96" Height="96"
-                                CornerRadius="18"
-                                Background="#1C232D"
-                                BorderBrush="#24FFFFFF"
-                                BorderThickness="1"
-                                VerticalAlignment="Center">
-                            <Grid CornerRadius="18">
-                                <FontIcon Glyph="&#xEC4F;" FontSize="28" Foreground="{ThemeResource SecondaryText}"
-                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
+                    <!-- Row 1: Carousel Panels Host (Media / Focus / System) -->
+                    <Grid Grid.Row="1" x:Name="ExpandedPanelsHost">
+
+                        <!-- Panel 0: Müzik & Medya -->
+                        <Grid x:Name="MediaExpandedPanel" Visibility="Visible" RowDefinitions="*,Auto">
+                            <!-- Existing Media Art & Metadata -->
+                            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,4,0,10">
+                                <!-- Square Album Art -->
+                                <Border Grid.Column="0"
+                                        Width="96" Height="96"
+                                        CornerRadius="18"
+                                        Background="#1C232D"
+                                        BorderBrush="#24FFFFFF"
+                                        BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <Grid CornerRadius="18">
+                                        <FontIcon Glyph="&#xEC4F;" FontSize="28" Foreground="{ThemeResource SecondaryText}"
+                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
+                                    </Grid>
+                                </Border>
+
+                                <!-- Track Metadata, Progress Slider and Timestamps -->
+                                <Grid Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
+                                    </Grid.RowDefinitions>
+
+                                    <TextBlock Grid.Row="0"
+                                               Text="{Binding CurrentTrack.Title, TargetNullValue='Müzik başlatın'}"
+                                               FontSize="19" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource PrimaryText}"
+                                               TextTrimming="CharacterEllipsis" MaxLines="1" />
+
+                                    <TextBlock Grid.Row="1"
+                                               Text="{Binding CurrentTrack.Artist, TargetNullValue='Pulse'}"
+                                               FontSize="13.5" FontWeight="Normal"
+                                               Foreground="{ThemeResource SecondaryText}"
+                                               TextTrimming="CharacterEllipsis" MaxLines="1"
+                                               Margin="0,2,0,8" />
+
+                                    <controls:PulseSeekBar Grid.Row="2"
+                                                           x:Name="ExpandedSeekBar"
+                                                           Height="18"
+                                                           Value="{Binding SeekPercent, Mode=TwoWay}"
+                                                           CanSeek="{Binding CurrentTrack.CanSeek, FallbackValue=True}"
+                                                           AccentBrush="{ThemeResource SeekAccent}"
+                                                           Visibility="{Binding SeekPanelVisibility}"
+                                                           ScrubStarted="OnSeekBarScrubStarted"
+                                                           ScrubDelta="OnSeekBarScrubDelta"
+                                                           ScrubCompleted="OnSeekBarScrubCompleted" />
+
+                                    <Grid Grid.Row="3" Margin="1,2,1,0" Visibility="{Binding SeekPanelVisibility}">
+                                        <TextBlock Text="{Binding PositionLabel}"
+                                                   FontSize="10.5" FontWeight="Medium"
+                                                   Foreground="{ThemeResource SecondaryText}"
+                                                   HorizontalAlignment="Left" />
+                                        <TextBlock Text="{Binding DurationLabel}"
+                                                   FontSize="10.5" FontWeight="Medium"
+                                                   Foreground="{ThemeResource SecondaryText}"
+                                                   HorizontalAlignment="Right" />
+                                    </Grid>
+                                </Grid>
                             </Grid>
-                        </Border>
 
-                        <!-- Track Metadata, Progress Slider and Timestamps -->
-                        <Grid Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center">
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
+                            <!-- Media Transport Controls -->
+                            <Grid Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,0">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
+                                    <Button Style="{StaticResource IslandButtonStyle}"
+                                            Width="32" Height="32" CornerRadius="16"
+                                            Command="{Binding ToggleShuffleCommand}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            ToolTipService.ToolTip="Karıştır">
+                                        <FontIcon Glyph="&#xE8B1;" FontSize="14" Foreground="{Binding ShuffleBrush}" />
+                                    </Button>
 
-                            <!-- Title -->
-                            <TextBlock Grid.Row="0"
-                                       Text="{Binding CurrentTrack.Title, TargetNullValue='Müzik başlatın'}"
-                                       FontSize="19" FontWeight="SemiBold"
-                                       Foreground="{ThemeResource PrimaryText}"
-                                       TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                            Command="{Binding SeekBackwardCommand}"
+                                            IsEnabled="{Binding CurrentTrack.CanSeek}"
+                                            Visibility="{Binding SeekPanelVisibility}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            ToolTipService.ToolTip="15 sn geri">
+                                        <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Path Data="M 11,3 A 8,8 0 1,0 18.5,11 M 11,3 L 8.5,0.5 M 11,3 L 8.5,5.5"
+                                                  Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.5"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                            <TextBlock Text="-15" FontSize="7" FontWeight="Bold"
+                                                       Foreground="{ThemeResource PrimaryText}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Margin="0,0.5,0,0" />
+                                        </Grid>
+                                    </Button>
 
-                            <!-- Artist -->
-                            <TextBlock Grid.Row="1"
-                                       Text="{Binding CurrentTrack.Artist, TargetNullValue='Pulse'}"
-                                       FontSize="13.5" FontWeight="Normal"
-                                       Foreground="{ThemeResource SecondaryText}"
-                                       TextTrimming="CharacterEllipsis" MaxLines="1"
-                                       Margin="0,2,0,8" />
+                                    <Button Style="{StaticResource TransportNavButtonStyle}"
+                                            Command="{Binding PreviousCommand}"
+                                            IsEnabled="{Binding CanGoPrevious}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            ToolTipService.ToolTip="Önceki">
+                                        <FontIcon Glyph="&#xE892;" FontSize="16" />
+                                    </Button>
 
-                            <!-- Seekbar -->
-                            <controls:PulseSeekBar Grid.Row="2"
-                                                   x:Name="ExpandedSeekBar"
-                                                   Height="18"
-                                                   Value="{Binding SeekPercent, Mode=TwoWay}"
-                                                   CanSeek="{Binding CurrentTrack.CanSeek, FallbackValue=True}"
-                                                   AccentBrush="{ThemeResource SeekAccent}"
-                                                   Visibility="{Binding SeekPanelVisibility}"
-                                                   ScrubStarted="OnSeekBarScrubStarted"
-                                                   ScrubDelta="OnSeekBarScrubDelta"
-                                                   ScrubCompleted="OnSeekBarScrubCompleted" />
+                                    <Button Style="{StaticResource PlayPauseButtonStyle}"
+                                            Command="{Binding PlayPauseCommand}"
+                                            IsEnabled="{Binding CanTogglePlayback}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            ToolTipService.ToolTip="Oynat / Duraklat">
+                                        <FontIcon Glyph="{Binding PlayPauseGlyph}" FontSize="18" />
+                                    </Button>
 
-                            <!-- Timestamps -->
-                            <Grid Grid.Row="3" Margin="1,2,1,0" Visibility="{Binding SeekPanelVisibility}">
-                                <TextBlock Text="{Binding PositionLabel}"
-                                           FontSize="10.5" FontWeight="Medium"
-                                           Foreground="{ThemeResource SecondaryText}"
-                                           HorizontalAlignment="Left" />
-                                <TextBlock Text="{Binding DurationLabel}"
-                                           FontSize="10.5" FontWeight="Medium"
-                                           Foreground="{ThemeResource SecondaryText}"
-                                           HorizontalAlignment="Right" />
+                                    <Button Style="{StaticResource TransportNavButtonStyle}"
+                                            Command="{Binding NextCommand}"
+                                            IsEnabled="{Binding CanGoNext}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            ToolTipService.ToolTip="Sonraki">
+                                        <FontIcon Glyph="&#xE893;" FontSize="16" />
+                                    </Button>
+
+                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                            Command="{Binding SeekForwardCommand}"
+                                            IsEnabled="{Binding CurrentTrack.CanSeek}"
+                                            Visibility="{Binding SeekPanelVisibility}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            ToolTipService.ToolTip="15 sn ileri">
+                                        <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Path Data="M 11,3 A 8,8 0 1,1 3.5,11 M 11,3 L 13.5,0.5 M 11,3 L 13.5,5.5"
+                                                  Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.5"
+                                                  StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                            <TextBlock Text="+15" FontSize="7" FontWeight="Bold"
+                                                       Foreground="{ThemeResource PrimaryText}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Margin="0,0.5,0,0" />
+                                        </Grid>
+                                    </Button>
+
+                                    <Button Style="{StaticResource IslandButtonStyle}"
+                                            Width="32" Height="32" CornerRadius="16"
+                                            Command="{Binding ToggleFavoriteCommand}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            ToolTipService.ToolTip="Favorilere Ekle">
+                                        <FontIcon Glyph="{Binding FavoriteGlyph}" FontSize="14" Foreground="{Binding FavoriteBrush}" />
+                                    </Button>
+                                </StackPanel>
                             </Grid>
                         </Grid>
-                    </Grid>
 
-                    <!-- Row 2: Reference Transport Controls (Shuffle, -15, Prev, Play/Pause, Next, +15, Heart) -->
-                    <Grid Grid.Row="2" HorizontalAlignment="Center" Margin="0,0,0,0">
-                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
+                        <!-- Panel 1: Odak Sayacı (Pomodoro) -->
+                        <Grid x:Name="FocusExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto">
+                            <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,4,0,10">
+                                <!-- Square Pomodoro Icon Glass Card -->
+                                <Border Grid.Column="0"
+                                        Width="96" Height="96"
+                                        CornerRadius="18"
+                                        Background="#1C232D"
+                                        BorderBrush="#24FFFFFF"
+                                        BorderThickness="1"
+                                        VerticalAlignment="Center">
+                                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <FontIcon Glyph="&#xE916;" FontSize="32" Foreground="{ThemeResource Accent}" />
+                                    </Grid>
+                                </Border>
 
-                            <!-- Shuffle Button -->
-                            <Button Style="{StaticResource IslandButtonStyle}"
-                                    Width="32" Height="32" CornerRadius="16"
-                                    Command="{Binding ToggleShuffleCommand}"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased"
-                                    ToolTipService.ToolTip="Karıştır">
-                                <FontIcon Glyph="&#xE8B1;" FontSize="14"
-                                          Foreground="{Binding ShuffleBrush}" />
-                            </Button>
-
-                            <!-- Seek Backward 15s Capsule -->
-                            <Button Style="{StaticResource TransportCapsuleButtonStyle}"
-                                    Command="{Binding SeekBackwardCommand}"
-                                    IsEnabled="{Binding CurrentTrack.CanSeek}"
-                                    Visibility="{Binding SeekPanelVisibility}"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased"
-                                    ToolTipService.ToolTip="15 sn geri">
-                                <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <Path Data="M 11,3 A 8,8 0 1,0 18.5,11 M 11,3 L 8.5,0.5 M 11,3 L 8.5,5.5"
-                                          Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.5"
-                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                    <TextBlock Text="-15" FontSize="7" FontWeight="Bold"
+                                <!-- Countdown & Description -->
+                                <StackPanel Grid.Column="1" Margin="14,0,0,0" VerticalAlignment="Center" Spacing="2">
+                                    <Border HorizontalAlignment="Left"
+                                            Background="{ThemeResource PillControlBackground}"
+                                            CornerRadius="10"
+                                            Padding="8,2,8,2"
+                                            Margin="0,0,0,2">
+                                        <TextBlock Text="{Binding FocusTimerModeText, TargetNullValue='Odaklanma'}"
+                                                   FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource Accent}" />
+                                    </Border>
+                                    <TextBlock Text="{Binding FocusTimerText, TargetNullValue='25:00'}"
+                                               FontSize="28" FontWeight="Bold"
                                                Foreground="{ThemeResource PrimaryText}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               Margin="0,0.5,0,0" />
-                                </Grid>
-                            </Button>
+                                               CharacterSpacing="40" />
+                                    <TextBlock Text="Hedefine odaklan, bildirimler sessize alındı"
+                                               FontSize="10.5"
+                                               Foreground="{ThemeResource SecondaryText}"
+                                               TextTrimming="CharacterEllipsis" />
+                                </StackPanel>
+                            </Grid>
 
-                            <!-- Previous Track Button -->
-                            <Button Style="{StaticResource TransportNavButtonStyle}"
-                                    Command="{Binding PreviousCommand}"
-                                    IsEnabled="{Binding CanGoPrevious}"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased"
-                                    ToolTipService.ToolTip="Önceki">
-                                <FontIcon Glyph="&#xE892;" FontSize="16" />
-                            </Button>
+                            <!-- Presets & Actions -->
+                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                            Content="25 dk" FontSize="10.5"
+                                            Width="52" Height="30" CornerRadius="15"
+                                            Command="{Binding SetFocusTimer25Command}"
+                                            ToolTipService.ToolTip="25 Dakika Odaklanma" />
+                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                            Content="50 dk" FontSize="10.5"
+                                            Width="52" Height="30" CornerRadius="15"
+                                            Command="{Binding SetFocusTimer50Command}"
+                                            ToolTipService.ToolTip="50 Dakika Derin Çalışma" />
+                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                            Content="5 dk" FontSize="10.5"
+                                            Width="46" Height="30" CornerRadius="15"
+                                            Command="{Binding SetBreakTimer5Command}"
+                                            ToolTipService.ToolTip="5 Dakika Kısa Mola" />
+                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                            Content="15 dk" FontSize="10.5"
+                                            Width="52" Height="30" CornerRadius="15"
+                                            Command="{Binding SetBreakTimer15Command}"
+                                            ToolTipService.ToolTip="15 Dakika Uzun Mola" />
+                                </StackPanel>
 
-                            <!-- Circular Play/Pause Button -->
-                            <Button Style="{StaticResource PlayPauseButtonStyle}"
-                                    Command="{Binding PlayPauseCommand}"
-                                    IsEnabled="{Binding CanTogglePlayback}"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased"
-                                    ToolTipService.ToolTip="Oynat / Duraklat">
-                                <FontIcon Glyph="{Binding PlayPauseGlyph}" FontSize="18" />
-                            </Button>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource CircularHeaderButtonStyle}"
+                                            Width="32" Height="32" CornerRadius="16"
+                                            Command="{Binding ResetFocusTimerCommand}"
+                                            ToolTipService.ToolTip="Sıfırla">
+                                        <FontIcon Glyph="&#xE777;" FontSize="12" />
+                                    </Button>
+                                    <Button Style="{StaticResource PlayPauseButtonStyle}"
+                                            Width="38" Height="38" CornerRadius="19"
+                                            Command="{Binding ToggleFocusTimerCommand}"
+                                            ToolTipService.ToolTip="Başlat / Duraklat">
+                                        <FontIcon Glyph="&#xE768;" FontSize="14" />
+                                    </Button>
+                                </StackPanel>
+                            </Grid>
+                        </Grid>
 
-                            <!-- Next Track Button -->
-                            <Button Style="{StaticResource TransportNavButtonStyle}"
-                                    Command="{Binding NextCommand}"
-                                    IsEnabled="{Binding CanGoNext}"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased"
-                                    ToolTipService.ToolTip="Sonraki">
-                                <FontIcon Glyph="&#xE893;" FontSize="16" />
-                            </Button>
+                        <!-- Panel 2: Sistem & Denetim (Control Center) -->
+                        <Grid x:Name="SystemExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto">
+                            <Grid Grid.Row="0" ColumnDefinitions="*,*" Margin="0,4,0,8">
+                                <!-- Battery Card -->
+                                <Border Grid.Column="0"
+                                        Margin="0,0,4,0"
+                                        Background="{ThemeResource PillControlBackground}"
+                                        CornerRadius="16"
+                                        Padding="12,10">
+                                    <Grid RowDefinitions="Auto,*">
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xEBAA;" FontSize="13" Foreground="{ThemeResource Accent}" />
+                                            <TextBlock Text="Pil &amp; Güç" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource SecondaryText}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,6,0,0">
+                                            <TextBlock Text="%85 Şarj Oluyor" FontSize="13.5" FontWeight="Bold" Foreground="{ThemeResource PrimaryText}" />
+                                            <TextBlock Text="Performans Modu Aktif" FontSize="9.5" Foreground="{ThemeResource SecondaryText}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
 
-                            <!-- Seek Forward 15s Capsule -->
-                            <Button Style="{StaticResource TransportCapsuleButtonStyle}"
-                                    Command="{Binding SeekForwardCommand}"
-                                    IsEnabled="{Binding CurrentTrack.CanSeek}"
-                                    Visibility="{Binding SeekPanelVisibility}"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased"
-                                    ToolTipService.ToolTip="15 sn ileri">
-                                <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                    <Path Data="M 11,3 A 8,8 0 1,1 3.5,11 M 11,3 L 13.5,0.5 M 11,3 L 13.5,5.5"
-                                          Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.5"
-                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                    <TextBlock Text="+15" FontSize="7" FontWeight="Bold"
+                                <!-- Screenshot Quick Action Card -->
+                                <Button Grid.Column="1"
+                                        Style="{StaticResource IslandButtonStyle}"
+                                        Margin="4,0,0,0"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch"
+                                        Background="{ThemeResource PillControlBackground}"
+                                        CornerRadius="16"
+                                        Padding="12,10"
+                                        Command="{Binding TakeScreenshotCommand}"
+                                        ToolTipService.ToolTip="Ekran Görüntüsü Al ve Kaydet">
+                                    <Grid RowDefinitions="Auto,*" HorizontalAlignment="Left">
+                                        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                            <FontIcon Glyph="&#xE722;" FontSize="13" Foreground="{ThemeResource Accent}" />
+                                            <TextBlock Text="Ekran Yakala" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource SecondaryText}" />
+                                        </StackPanel>
+                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,6,0,0">
+                                            <TextBlock Text="Hızlı Yakala" FontSize="13.5" FontWeight="Bold" Foreground="{ThemeResource PrimaryText}" />
+                                            <TextBlock Text="Panoya ve Dosyaya Kaydet" FontSize="9.5" Foreground="{ThemeResource SecondaryText}" />
+                                        </StackPanel>
+                                    </Grid>
+                                </Button>
+                            </Grid>
+
+                            <!-- Volume Control Card -->
+                            <Border Grid.Row="1"
+                                    Background="{ThemeResource PillControlBackground}"
+                                    CornerRadius="16"
+                                    Padding="12,8">
+                                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource IslandButtonStyle}"
+                                            Width="28" Height="28" CornerRadius="14"
+                                            Command="{Binding ToggleMuteCommand}"
+                                            Margin="0,0,8,0"
+                                            ToolTipService.ToolTip="Sesi Kapat / Aç">
+                                        <FontIcon Glyph="{Binding MuteGlyph}" FontSize="13" Foreground="{ThemeResource PrimaryText}" />
+                                    </Button>
+
+                                    <Slider Value="{Binding MasterVolume, Mode=TwoWay}"
+                                            Minimum="0" Maximum="100"
+                                            VerticalAlignment="Center"
+                                            Margin="0,0,8,0" />
+
+                                    <TextBlock Text="{Binding MasterVolumeLabel}"
+                                               FontSize="11.5" FontWeight="SemiBold"
                                                Foreground="{ThemeResource PrimaryText}"
-                                               HorizontalAlignment="Center" VerticalAlignment="Center"
-                                               Margin="0,0.5,0,0" />
+                                               VerticalAlignment="Center"
+                                               Width="32" TextAlignment="Right" />
                                 </Grid>
-                            </Button>
-
-                            <!-- Favorite / Heart Button -->
-                            <Button Style="{StaticResource IslandButtonStyle}"
-                                    Width="32" Height="32" CornerRadius="16"
-                                    Command="{Binding ToggleFavoriteCommand}"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased"
-                                    ToolTipService.ToolTip="Favorilere Ekle">
-                                <FontIcon Glyph="{Binding FavoriteGlyph}" FontSize="14"
-                                          Foreground="{Binding FavoriteBrush}" />
-                            </Button>
-                        </StackPanel>
+                            </Border>
+                        </Grid>
                     </Grid>
                 </Grid>
             </Grid>
