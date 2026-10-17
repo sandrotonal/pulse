@@ -290,6 +290,16 @@ public sealed partial class IslandWindow : Window
 
     private void PositionHostWindow()
     {
+        ApplyHostWindowSize(_currentPillWidth, _currentPillHeight);
+    }
+
+    /// <summary>
+    /// Sizes/moves the host window to hug the current pill. A big fixed host window would
+    /// swallow clicks in its transparent margins (WinUI never calls WM_NCHITTEST for
+    /// pointer input), so the window must track the pill dimensions.
+    /// </summary>
+    private void ApplyHostWindowSize(double pillWidth, double pillHeight)
+    {
         if (_hwnd == IntPtr.Zero) return;
 
         IntPtr monitor = IntPtr.Zero;
@@ -304,9 +314,10 @@ public sealed partial class IslandWindow : Window
         _dpiScale = Math.Max(1u, GetDpiForWindow(_hwnd)) / 96.0;
         var workArea = info.WorkArea;
 
-        var scale = Math.Max(1.0, _viewModel.IslandScale);
-        var hostWidthDip = Math.Max(420.0, 384.0 * scale + 24.0);
-        var hostHeightDip = Math.Max(264.0, 240.0 * scale + 24.0);
+        const double PadX = 20.0;
+        const double PadBottom = 20.0;
+        var hostWidthDip = Math.Max(120.0, pillWidth) + PadX * 2;
+        var hostHeightDip = Math.Max(36.0, pillHeight) + PadBottom;
 
         WindowRoot.Width = hostWidthDip;
         WindowRoot.Height = hostHeightDip;
@@ -601,6 +612,7 @@ public sealed partial class IslandWindow : Window
             Surface.CornerRadius = new CornerRadius(targetCornerRadius);
             _currentPillWidth = targetWidth;
             _currentPillHeight = targetHeight;
+            ApplyHostWindowSize(targetWidth, targetHeight);
 
             _compactVisual.Opacity = isExpanded ? 0 : 1;
             CompactView.IsHitTestVisible = !isExpanded;
@@ -641,6 +653,10 @@ public sealed partial class IslandWindow : Window
             var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
             var quickEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.6f, 1f));
             var durScale = AnimationProfile.DurationScale;
+
+            // Grow the host window up-front so the animation is never clipped; shrink it
+            // back to the exact pill bounds when the animation completes.
+            ApplyHostWindowSize(Math.Max(_currentPillWidth, targetWidth), Math.Max(_currentPillHeight, targetHeight));
 
             _surfaceVisual.Scale = Vector3.One;
             _surfaceVisual.StopAnimation("Scale");
@@ -683,7 +699,7 @@ public sealed partial class IslandWindow : Window
                 expandTranslate.InsertKeyFrame(1f, Vector3.Zero, springEasing);
                 _expandedVisual.StartAnimation("Translation", expandTranslate);
 
-                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 300);
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 300, () => ApplyHostWindowSize(targetWidth, targetHeight));
 
                 if (_glassEnabled)
                 {
@@ -709,6 +725,7 @@ public sealed partial class IslandWindow : Window
 
                 AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 280, () =>
                 {
+                    ApplyHostWindowSize(targetWidth, targetHeight);
                     if (generation == _transitionGeneration && _viewModel.CurrentIslandState == IslandState.Collapsing)
                     {
                         _viewModel.CompleteCollapse();
@@ -723,7 +740,7 @@ public sealed partial class IslandWindow : Window
                 _expandedVisual.Opacity = 0;
                 _compactVisual.Opacity = 1;
 
-                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 160);
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 160, () => ApplyHostWindowSize(targetWidth, targetHeight));
             }
         }
         catch
