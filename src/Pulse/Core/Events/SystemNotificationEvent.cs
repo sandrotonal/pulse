@@ -7,7 +7,8 @@ public sealed record SystemNotificationEvent(
     string Subtitle,
     string IconGlyph,
     EventPriority Priority = EventPriority.Informational,
-    TimeSpan? DisplayDuration = null
+    TimeSpan? DisplayDuration = null,
+    string? LaunchTarget = null
 ) : IslandEvent(
     Id,
     Priority,

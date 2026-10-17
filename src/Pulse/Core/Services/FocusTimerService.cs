@@ -93,9 +93,20 @@ public sealed class FocusTimerService : IFocusTimerService
             IsBreak = false;
             RemainingTime = _workDuration;
             TotalDuration = _workDuration;
+            _pausedRemaining = _workDuration;
 
             _eventRouter.Dismiss(FocusTimerEventId);
         }
+    }
+
+    public void Restart()
+    {
+        lock (_syncRoot)
+        {
+            if (_isDisposed) return;
+        }
+
+        Start(_workDuration, _breakDuration);
     }
 
     public void SkipToNextSession()

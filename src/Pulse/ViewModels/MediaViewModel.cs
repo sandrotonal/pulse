@@ -179,6 +179,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string AnimationIntensity => _settingsService.Current.AnimationIntensity;
     public string Theme => _settingsService.Current.Theme;
     public bool CanTogglePlayback => CurrentTrack is { CanPlay: true } or { CanPause: true };
+    public string? SourceAppUserModelId => CurrentTrack?.SourceApplicationId;
     public bool CanGoNext => CurrentTrack?.CanNext == true;
     public bool CanGoPrevious => CurrentTrack?.CanPrevious == true;
     public BitmapImage? ArtworkImage => _artworkImage;
@@ -451,6 +452,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         var oldTrack = CurrentTrack;
         var changedTrack = track is not null && (oldTrack is null || track.Title != oldTrack.Title || track.Artist != oldTrack.Artist || track.SourceApplicationId != oldTrack.SourceApplicationId);
         CurrentTrack = track;
+        OnPropertyChanged(nameof(SourceAppUserModelId));
         if (changedTrack)
         {
             _ = UpdateLyricsAsync(track);

@@ -17,5 +17,6 @@ public interface IFocusTimerService : IDisposable
     void Pause();
     void Resume();
     void Reset();
+    void Restart();
     void SkipToNextSession();
 }

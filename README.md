@@ -38,11 +38,16 @@
 - **Dynamic Island UI**: Floating, top-aligned desktop widget with multi-state transitions (Idle, Compact, Hover, Expanded, Track Change pulse).
 - **Live Media Session Control**: Synchronizes automatically with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC and more.
 - **Album Art & Adaptive Theming**: Dynamic artwork extraction, caching, accent-color sampling and pre-blended color tinting across both dark and light themes.
-- **Interactive Timeline & Seeking**: Real-time progress with drag-to-seek support, skip ±15s, shuffle and like controls.
+- **Interactive Timeline & Seeking**: Real-time progress with drag-to-seek support and ±15s skip controls, laid out like Apple's expanded Live Activity.
 - **Liquid-Glass Frost Effect**: Optional transparency mode that samples and blurs the live desktop behind the island for a true frosted-glass look.
 - **Focus Timer (Pomodoro)**: Preset work/break chips (25/50, 5/15 minutes), live countdown, session auto-switching that keeps the island pinned while a session runs.
 - **System Controls Panel**: Master volume with integer stepping and visual mute state, live battery telemetry (charging/level states), and instant screenshot capture that saves locally and copies to the clipboard.
 - **Avatar Pulse (Track Change)**: Smooth scale-in/out micro animations on track changes, plus layout snap animations.
+- **Tap to Open (Deep Link)**: Tap the album artwork in the island to jump straight to the app that owns the playback (Spotify, browser, any GSMTC source). Notification and download capsules open their related file or folder.
+- **Real Event Awareness**: Live AC/charging detection (plug the charger and the island reacts even at 100%), external volume-change HUD (hardware keys), and a Downloads watcher that surfaces completed downloads.
+- **Apple-Style Alert Takeover**: Incoming alerts briefly take over the presentation and then hand back to the current activity.
+- **Single-Instance Launch Guard**: Re-launching Pulse never spawns a broken second copy - the running island surfaces (and expands) instead.
+- **Alive Controls**: Every island button has hover, pressed and disabled feedback; the focus countdown uses tabular digits and an animated progress hairline.
 - **System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup toggle and quick exit.
 - **Multi-Monitor & DPI Aware**: Adapts to DPI scale factors and monitor layouts per cursor position without clipping or blurred rendering.
 - **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage (39 automated tests).
@@ -119,6 +124,8 @@ Stop-Process -Name Pulse -Force -ErrorAction SilentlyContinue
 
 - **Mouse Wheel**: change pages (Media, Focus Timer, System Controls) while expanded.
 - **Click Pill**: toggle the expanded dashboard.
+- **Click Artwork**: open the app that is currently playing (deep link to Spotify/browser/VLC etc.).
+- **Click Alert Capsule**: open the related target (screenshot file, downloads folder, focus panel).
 - **Hover**: quick state (media wave animation, track details).
 - **Right Click / System Tray**: settings panel, focus timer shortcuts, notification simulator, taskbar flyout, hide island.
 - **Dynamic Tinting**: album art driven accent changes blended into pill backgrounds and controls.

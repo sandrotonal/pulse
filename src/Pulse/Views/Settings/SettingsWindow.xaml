@@ -13,6 +13,7 @@
             <SolidColorBrush x:Key="SettingsSecondary" Color="#FF68686E" />
             <SolidColorBrush x:Key="SettingsAccent" Color="#FF248A3D" />
             <SolidColorBrush x:Key="SettingsDivider" Color="#26000000" />
+            <SolidColorBrush x:Key="SettingsCard" Color="#0D808080" />
             <Style x:Key="SectionTitleStyle" TargetType="TextBlock">
                 <Setter Property="FontSize" Value="12" />
                 <Setter Property="FontWeight" Value="SemiBold" />
@@ -51,7 +52,7 @@
             <StackPanel Spacing="0">
                 <!-- 1. DİNAMİK ADA DAVRANIŞI -->
                 <TextBlock Text="DİNAMİK ADA DAVRANIŞI" Style="{StaticResource SectionTitleStyle}" Margin="0,6,0,8" />
-                <Border Background="#0D808080" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
                         <!-- Hover Expand -->
                         <Grid MinHeight="54">
@@ -95,7 +96,7 @@
 
                 <!-- 2. MEDYA VE KONTROLLER -->
                 <TextBlock Text="MEDYA VE KONTROLLER" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="#0D808080" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
                         <!-- Dynamic Artwork Tint -->
                         <Grid MinHeight="54">
@@ -139,7 +140,7 @@
 
                 <!-- 3. GÖRÜNÜM VE ANİMASYON -->
                 <TextBlock Text="GÖRÜNÜM VE ANİMASYON" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="#0D808080" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,6,16,6" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,6,16,6" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
                         <!-- Theme -->
                         <Grid MinHeight="52">
@@ -172,7 +173,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Cam efekti (Glassmorphism)" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Adanın arkasında Windows 11 dondurulmuş cam (Desktop Acrylic) efekti kullanır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Adanın arkasındaki masaüstünü yakalayıp bulanıklaştırarak gerçek cam (frost) efekti uygular." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding UseTransparency, Mode=TwoWay}"
@@ -183,7 +184,7 @@
 
                 <!-- 4. KONUM VE BOYUT -->
                 <TextBlock Text="KONUM VE BOYUT" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="#0D808080" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,10,16,12" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,10,16,12" Margin="0,0,0,16">
                     <StackPanel Spacing="10">
                         <!-- Top Offset -->
                         <StackPanel Spacing="4">
@@ -215,7 +216,7 @@
 
                 <!-- 5. SİSTEM -->
                 <TextBlock Text="SİSTEM" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="#0D808080" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
                     <Grid MinHeight="54">
                         <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                         <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">

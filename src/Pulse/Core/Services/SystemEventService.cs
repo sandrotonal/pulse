@@ -33,6 +33,22 @@ public sealed class SystemEventService : ISystemEventService
         _eventRouter.Publish(evt);
     }
 
+    public void ReportPowerConnected(int percentage)
+    {
+        var clamped = Math.Clamp(percentage, 0, 100);
+        var evt = new SystemNotificationEvent(
+            "power_connected",
+            EventCategory.Battery,
+            "Güç Bağlandı",
+            $"%{clamped} pil",
+            "\uEBAA",
+            EventPriority.Informational,
+            TimeSpan.FromSeconds(2.8)
+        );
+
+        _eventRouter.Publish(evt);
+    }
+
     public void ReportBluetoothStatus(string deviceName, bool isConnected)
     {
         var name = string.IsNullOrWhiteSpace(deviceName) ? "Bluetooth Cihazı" : deviceName;
@@ -55,8 +71,8 @@ public sealed class SystemEventService : ISystemEventService
         var evt = new SystemNotificationEvent(
             "audio_status",
             EventCategory.Audio,
-            isMuted ? "Sessiz" : $"Ses: %{clamped}",
-            isMuted ? "Ses Kapatıldı" : $"%{clamped}",
+            isMuted ? "Sessiz" : "Ses",
+            isMuted ? "Ses kapatıldı" : $"%{clamped}",
             isMuted ? "\uE74F" : "\uE995",
             EventPriority.Informational,
             TimeSpan.FromSeconds(1.8)
@@ -75,7 +91,8 @@ public sealed class SystemEventService : ISystemEventService
             fileName,
             "\uE722",
             EventPriority.Informational,
-            TimeSpan.FromSeconds(3.0)
+            TimeSpan.FromSeconds(3.0),
+            LaunchTarget: filePath
         );
 
         _eventRouter.Publish(evt);

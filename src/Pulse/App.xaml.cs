@@ -24,6 +24,7 @@ public partial class App : Application
     private readonly SystemEventService _systemEventService;
     private readonly FileOperationService _fileOperationService;
     private readonly WindowsSystemControlService _systemControlService;
+    private readonly DownloadsWatcherService _downloadsWatcherService;
     private readonly MediaViewModel _mediaViewModel;
     private readonly IslandViewModel _islandViewModel;
     private IslandWindow? _islandWindow;
@@ -31,8 +32,35 @@ public partial class App : Application
     private SettingsWindow? _settingsWindow;
     private TrayService? _trayService;
 
+    private const string InstanceMutexName = "Local\\PulseDynamicIslandInstance";
+    private const string ShowIslandEventName = "Local\\PulseShowIslandSignal";
+    private static Mutex? _instanceMutex;
+    private EventWaitHandle? _showIslandSignal;
+    private RegisteredWaitHandle? _showIslandRegistration;
+
     public App()
     {
+        // Single-instance guard: a second launch must not boot a competing instance.
+        _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var createdNew);
+        if (!createdNew)
+        {
+            try
+            {
+                if (EventWaitHandle.TryOpenExisting(ShowIslandEventName, out var showEvent))
+                {
+                    showEvent.Set();
+                    showEvent.Dispose();
+                }
+            }
+            catch
+            {
+                // Existing instance may be shutting down; nothing to signal.
+            }
+
+            Environment.Exit(0);
+            return;
+        }
+
         InitializeComponent();
         _settingsService = new SettingsService();
         _settingsService.SettingsChanged += OnSettingsChanged;
@@ -46,6 +74,7 @@ public partial class App : Application
         _systemEventService = new SystemEventService(_eventRouter);
         _fileOperationService = new FileOperationService(_eventRouter);
         _systemControlService = new WindowsSystemControlService();
+        _downloadsWatcherService = new DownloadsWatcherService(_eventRouter);
 
         _mediaViewModel = new MediaViewModel(
             _mediaSessionService,
@@ -74,6 +103,32 @@ public partial class App : Application
         _islandWindow.TaskbarFlyoutRequested += (_, _) => _taskbarFlyoutWindow?.ToggleFlyout();
         _islandWindow.Activate();
         _islandWindow.ShowIsland();
+
+        // When a user launches Pulse again, surface the running instance instead of crashing.
+        var islandWindow = _islandWindow;
+        _showIslandSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowIslandEventName);
+        _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _showIslandSignal,
+            (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() =>
+            {
+                islandWindow.ReassertTopmost();
+
+                if (islandWindow.IsIslandHidden)
+                {
+                    islandWindow.UnhideIslandAnimated();
+                }
+
+                // Visible feedback so a re-launch clearly surfaces the running island.
+                if (!_islandViewModel.IsExpanded)
+                {
+                    _islandViewModel.ToggleExpanded();
+                }
+
+                islandWindow.Activate();
+            }),
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: false);
 
         _taskbarFlyoutWindow = new TaskbarFlyoutWindow(_mediaViewModel);
 
@@ -152,11 +207,14 @@ public partial class App : Application
 
     private async void OnExitRequested(object? sender, EventArgs args)
     {
+        _showIslandRegistration?.Unregister(null);
+        _showIslandSignal?.Dispose();
         _trayService?.Dispose();
         _settingsWindow?.Close();
         _taskbarFlyoutWindow?.Close();
         _islandWindow?.Close();
         _islandViewModel.Dispose();
+        _downloadsWatcherService.Dispose();
         await _mediaViewModel.DisposeAsync();
         await _mediaSessionService.DisposeAsync();
         _systemControlService.Dispose();

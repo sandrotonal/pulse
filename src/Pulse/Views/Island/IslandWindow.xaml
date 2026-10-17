@@ -28,6 +28,17 @@
             <SolidColorBrush x:Key="PlayButtonForeground" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="PillControlBackground" Color="#24FFFFFF" />
 
+            <!-- Monochrome slider palette (Apple Control Center style) -->
+            <SolidColorBrush x:Key="SliderTrackValueFill" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="#E6FFFFFF" />
+            <SolidColorBrush x:Key="SliderTrackFill" Color="#26FFFFFF" />
+            <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#33FFFFFF" />
+            <SolidColorBrush x:Key="SliderThumbBackground" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FFFFFFFF" />
+            <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#E6FFFFFF" />
+
             <!-- Clean base button style -->
             <Style x:Key="IslandButtonStyle" TargetType="Button">
                 <Setter Property="Background"           Value="Transparent" />
@@ -38,24 +49,52 @@
                 <Setter Property="Template">
                     <Setter.Value>
                         <ControlTemplate TargetType="Button">
-                            <ContentPresenter
-                                HorizontalContentAlignment="Center"
-                                VerticalContentAlignment="Center"
-                                Background="{TemplateBinding Background}"
-                                Foreground="{TemplateBinding Foreground}"
-                                CornerRadius="{TemplateBinding CornerRadius}" />
+                            <Grid x:Name="RootGrid"
+                                  Background="{TemplateBinding Background}"
+                                  CornerRadius="{TemplateBinding CornerRadius}">
+                                <VisualStateManager.VisualStateGroups>
+                                    <VisualStateGroup x:Name="CommonStates">
+                                        <VisualState x:Name="Normal" />
+                                        <VisualState x:Name="PointerOver">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="RootGrid"
+                                                                 Storyboard.TargetProperty="Opacity"
+                                                                 To="0.72" Duration="0:0:0.08" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Pressed">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="RootGrid"
+                                                                 Storyboard.TargetProperty="Opacity"
+                                                                 To="0.5" Duration="0:0:0.06" />
+                                            </Storyboard>
+                                        </VisualState>
+                                        <VisualState x:Name="Disabled">
+                                            <Storyboard>
+                                                <DoubleAnimation Storyboard.TargetName="RootGrid"
+                                                                 Storyboard.TargetProperty="Opacity"
+                                                                 To="0.35" Duration="0" />
+                                            </Storyboard>
+                                        </VisualState>
+                                    </VisualStateGroup>
+                                </VisualStateManager.VisualStateGroups>
+                                <ContentPresenter
+                                    HorizontalContentAlignment="Center"
+                                    VerticalContentAlignment="Center"
+                                    Foreground="{TemplateBinding Foreground}" />
+                            </Grid>
                         </ControlTemplate>
                     </Setter.Value>
                 </Setter>
             </Style>
 
-            <!-- Circular header button style -->
+            <!-- Circular header button style (bare glyph, Apple live-activity chrome) -->
             <Style x:Key="CircularHeaderButtonStyle" TargetType="Button" BasedOn="{StaticResource IslandButtonStyle}">
                 <Setter Property="Width"        Value="28" />
                 <Setter Property="Height"       Value="28" />
                 <Setter Property="CornerRadius" Value="14" />
-                <Setter Property="Background"   Value="{ThemeResource PillControlBackground}" />
-                <Setter Property="Foreground"   Value="#FFDDE3EA" />
+                <Setter Property="Background"   Value="Transparent" />
+                <Setter Property="Foreground"   Value="{ThemeResource PrimaryText}" />
             </Style>
 
             <!-- Transport capsule button style (-15 and +15) -->
@@ -203,26 +242,24 @@
                     <Grid x:Name="NotificationContent"
                           Visibility="{Binding NotificationVisibility}"
                           ColumnDefinitions="Auto,*,Auto"
+                          Background="Transparent"
+                          PointerReleased="OnEventContentPointerReleased"
                           VerticalAlignment="Center">
-                        <Border Grid.Column="0"
-                                Width="26" Height="26"
-                                CornerRadius="13"
-                                Margin="0,0,8,0"
-                                Background="{ThemeResource PillControlBackground}">
-                            <FontIcon Glyph="{Binding NotificationGlyph}"
-                                      FontSize="12"
-                                      Foreground="{ThemeResource PrimaryText}"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
+                        <FontIcon Grid.Column="0"
+                                  Glyph="{Binding NotificationGlyph}"
+                                  FontSize="15"
+                                  Foreground="{ThemeResource PrimaryText}"
+                                  Margin="2,0,10,0"
+                                  VerticalAlignment="Center" />
 
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0.5">
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                             <TextBlock Text="{Binding NotificationTitle}"
-                                       FontSize="11.5" FontWeight="SemiBold"
+                                       FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        TextTrimming="CharacterEllipsis"
                                        MaxLines="1" />
                             <TextBlock Text="{Binding NotificationSubtitle}"
-                                       FontSize="9.5" FontWeight="Normal"
+                                       FontSize="10.5" FontWeight="Medium"
                                        Foreground="{ThemeResource SecondaryText}"
                                        TextTrimming="CharacterEllipsis"
                                        MaxLines="1" />
@@ -233,6 +270,8 @@
                                 Width="22" Height="22" CornerRadius="11"
                                 Margin="6,0,0,0"
                                 Command="{Binding DismissActiveEventCommand}"
+                                PointerPressed="OnButtonPointerPressed"
+                                PointerReleased="OnButtonPointerReleased"
                                 ToolTipService.ToolTip="Kapat">
                             <FontIcon Glyph="&#xE711;" FontSize="9" Foreground="{ThemeResource SecondaryText}" />
                         </Button>
@@ -242,25 +281,24 @@
                     <Grid x:Name="FocusTimerContent"
                           Visibility="{Binding FocusTimerVisibility}"
                           ColumnDefinitions="Auto,*,Auto"
+                          Background="Transparent"
+                          PointerReleased="OnCompactFocusPointerReleased"
+                          ToolTipService.ToolTip="Odak panelini aç"
                           VerticalAlignment="Center">
-                        <Border Grid.Column="0"
-                                Width="26" Height="26"
-                                CornerRadius="13"
-                                Margin="0,0,8,0"
-                                Background="{ThemeResource PillControlBackground}">
-                            <FontIcon Glyph="&#xE916;"
-                                      FontSize="12"
-                                      Foreground="{ThemeResource Accent}"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
+                        <FontIcon Grid.Column="0"
+                                  Glyph="&#xE916;"
+                                  FontSize="15"
+                                  Foreground="{ThemeResource Accent}"
+                                  Margin="2,0,10,0"
+                                  VerticalAlignment="Center" />
 
-                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0.5">
+                        <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
                             <TextBlock Text="{Binding FocusTimerText}"
-                                       FontSize="12" FontWeight="SemiBold"
+                                       FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        MaxLines="1" />
                             <TextBlock Text="{Binding FocusTimerModeText}"
-                                       FontSize="9" FontWeight="Normal"
+                                       FontSize="10.5" FontWeight="Medium"
                                        Foreground="{ThemeResource SecondaryText}"
                                        MaxLines="1" />
                         </StackPanel>
@@ -270,8 +308,10 @@
                                 Width="24" Height="24" CornerRadius="12"
                                 Margin="6,0,0,0"
                                 Command="{Binding ToggleFocusTimerCommand}"
+                                PointerPressed="OnButtonPointerPressed"
+                                PointerReleased="OnButtonPointerReleased"
                                 ToolTipService.ToolTip="Başlat / Duraklat">
-                            <FontIcon Glyph="&#xE768;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
+                            <FontIcon Glyph="{Binding FocusPlayPauseGlyph}" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
                         </Button>
                     </Grid>
 
@@ -279,21 +319,20 @@
                     <Grid x:Name="FileOperationContent"
                           Visibility="{Binding FileOperationVisibility}"
                           ColumnDefinitions="Auto,*,Auto"
+                          Background="Transparent"
+                          PointerReleased="OnEventContentPointerReleased"
+                          ToolTipService.ToolTip="Klasörde göster"
                           VerticalAlignment="Center">
-                        <Border Grid.Column="0"
-                                Width="26" Height="26"
-                                CornerRadius="13"
-                                Margin="0,0,8,0"
-                                Background="{ThemeResource PillControlBackground}">
-                            <FontIcon Glyph="&#xE896;"
-                                      FontSize="12"
-                                      Foreground="{ThemeResource Accent}"
-                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
-                        </Border>
+                        <FontIcon Grid.Column="0"
+                                  Glyph="&#xE896;"
+                                  FontSize="15"
+                                  Foreground="{ThemeResource Accent}"
+                                  Margin="2,0,10,0"
+                                  VerticalAlignment="Center" />
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
                             <TextBlock Text="{Binding FileOperationName}"
-                                       FontSize="11" FontWeight="SemiBold"
+                                       FontSize="12" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        TextTrimming="CharacterEllipsis"
                                        MaxLines="1" />
@@ -307,7 +346,7 @@
 
                         <TextBlock Grid.Column="2"
                                    Text="{Binding FileOperationStatusText}"
-                                   FontSize="9.5"
+                                   FontSize="10.5" FontWeight="Medium"
                                    Foreground="{ThemeResource SecondaryText}"
                                    Margin="8,0,0,0"
                                    VerticalAlignment="Center" />
@@ -324,7 +363,9 @@
                                 Width="26" Height="26"
                                 CornerRadius="7"
                                 Margin="0,0,8,0"
-                                Background="{ThemeResource PillControlBackground}">
+                                Background="{ThemeResource PillControlBackground}"
+                                PointerReleased="OnMediaSourcePointerReleased"
+                                ToolTipService.ToolTip="Uygulamada aç">
                             <Grid CornerRadius="7">
                                 <FontIcon Glyph="&#xEC4F;" FontSize="11" Foreground="{ThemeResource SecondaryText}"
                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -436,6 +477,8 @@
                                     Width="18" Height="5" CornerRadius="2.5"
                                     Background="{ThemeResource Accent}"
                                     Padding="0"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
                                     Click="OnPageDot0Click"
                                     ToolTipService.ToolTip="Medya Çalar" />
                             <Button x:Name="PageDot1"
@@ -444,6 +487,8 @@
                                     Background="{ThemeResource PrimaryText}"
                                     Opacity="0.35"
                                     Padding="0"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
                                     Click="OnPageDot1Click"
                                     ToolTipService.ToolTip="Odak Sayacı" />
                             <Button x:Name="PageDot2"
@@ -452,6 +497,8 @@
                                     Background="{ThemeResource PrimaryText}"
                                     Opacity="0.35"
                                     Padding="0"
+                                    PointerPressed="OnButtonPointerPressed"
+                                    PointerReleased="OnButtonPointerReleased"
                                     Click="OnPageDot2Click"
                                     ToolTipService.ToolTip="Sistem &amp; Denetim" />
                         </StackPanel>
@@ -496,6 +543,8 @@
                                         Background="#1C232D"
                                         BorderBrush="#24FFFFFF"
                                         BorderThickness="1"
+                                        PointerReleased="OnMediaSourcePointerReleased"
+                                        ToolTipService.ToolTip="Uygulamada aç"
                                         VerticalAlignment="Center">
                                     <Grid CornerRadius="18">
                                         <FontIcon Glyph="&#xEC4F;" FontSize="28" Foreground="{ThemeResource SecondaryText}"
@@ -513,11 +562,11 @@
                                         <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
-                                    <TextBlock Grid.Row="0"
-                                               Text="{Binding CurrentTrack.Title, TargetNullValue='Müzik başlatın'}"
-                                               FontSize="19" FontWeight="SemiBold"
-                                               Foreground="{ThemeResource PrimaryText}"
-                                               TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                     <TextBlock Grid.Row="0"
+                                                Text="{Binding CurrentTrack.Title, TargetNullValue='Müzik başlatın'}"
+                                                FontSize="19" FontWeight="SemiBold"
+                                                Foreground="{ThemeResource PrimaryText}"
+                                                TextTrimming="CharacterEllipsis" MaxLines="1" />
 
                                     <TextBlock Grid.Row="1"
                                                Text="{Binding CurrentTrack.Artist, TargetNullValue='Pulse'}"
@@ -550,30 +599,22 @@
                                 </Grid>
                             </Grid>
 
-                            <!-- Media Transport Controls -->
+                            <!-- Media Transport Controls (Apple live-activity layout: bare glyphs, filled play) -->
                             <Grid Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,0">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="6">
-                                    <Button Style="{StaticResource IslandButtonStyle}"
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
+                                    <Button Style="{StaticResource TransportNavButtonStyle}"
                                             Width="32" Height="32" CornerRadius="16"
-                                            Command="{Binding ToggleShuffleCommand}"
-                                            PointerPressed="OnButtonPointerPressed"
-                                            PointerReleased="OnButtonPointerReleased"
-                                            ToolTipService.ToolTip="Karıştır">
-                                        <FontIcon Glyph="&#xE8B1;" FontSize="14" Foreground="{Binding ShuffleBrush}" />
-                                    </Button>
-
-                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Command="{Binding SeekBackwardCommand}"
                                             IsEnabled="{Binding CurrentTrack.CanSeek}"
                                             Visibility="{Binding SeekPanelVisibility}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
                                             ToolTipService.ToolTip="15 sn geri">
-                                        <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <Path Data="M 11,3 A 8,8 0 1,0 18.5,11 M 11,3 L 8.5,0.5 M 11,3 L 8.5,5.5"
-                                                  Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.5"
+                                        <Grid Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Path Data="M 10,2.5 A 7.5,7.5 0 1,0 17,10.5 M 10,2.5 L 7.6,0.1 M 10,2.5 L 7.6,4.9"
+                                                  Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.4"
                                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                            <TextBlock Text="-15" FontSize="7" FontWeight="Bold"
+                                            <TextBlock Text="-15" FontSize="6.5" FontWeight="Bold"
                                                        Foreground="{ThemeResource PrimaryText}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                                        Margin="0,0.5,0,0" />
@@ -607,31 +648,23 @@
                                         <FontIcon Glyph="&#xE893;" FontSize="16" />
                                     </Button>
 
-                                    <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                    <Button Style="{StaticResource TransportNavButtonStyle}"
+                                            Width="32" Height="32" CornerRadius="16"
                                             Command="{Binding SeekForwardCommand}"
                                             IsEnabled="{Binding CurrentTrack.CanSeek}"
                                             Visibility="{Binding SeekPanelVisibility}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
                                             ToolTipService.ToolTip="15 sn ileri">
-                                        <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
-                                            <Path Data="M 11,3 A 8,8 0 1,1 3.5,11 M 11,3 L 13.5,0.5 M 11,3 L 13.5,5.5"
-                                                  Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.5"
+                                        <Grid Width="20" Height="20" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Path Data="M 10,2.5 A 7.5,7.5 0 1,1 3,10.5 M 10,2.5 L 12.4,0.1 M 10,2.5 L 12.4,4.9"
+                                                  Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.4"
                                                   StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
-                                            <TextBlock Text="+15" FontSize="7" FontWeight="Bold"
+                                            <TextBlock Text="+15" FontSize="6.5" FontWeight="Bold"
                                                        Foreground="{ThemeResource PrimaryText}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center"
                                                        Margin="0,0.5,0,0" />
                                         </Grid>
-                                    </Button>
-
-                                    <Button Style="{StaticResource IslandButtonStyle}"
-                                            Width="32" Height="32" CornerRadius="16"
-                                            Command="{Binding ToggleFavoriteCommand}"
-                                            PointerPressed="OnButtonPointerPressed"
-                                            PointerReleased="OnButtonPointerReleased"
-                                            ToolTipService.ToolTip="Favorilere Ekle">
-                                        <FontIcon Glyph="{Binding FavoriteGlyph}" FontSize="14" Foreground="{Binding FavoriteBrush}" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -646,9 +679,10 @@
                                            CharacterSpacing="240"
                                            HorizontalAlignment="Center" />
                                 <TextBlock Text="{Binding FocusTimerText, TargetNullValue='25:00'}"
-                                           FontSize="40" FontWeight="Light"
+                                           FontSize="38" FontWeight="SemiBold"
+                                           Typography.NumeralAlignment="Tabular"
                                            Foreground="{ThemeResource PrimaryText}"
-                                           CharacterSpacing="40"
+                                           CharacterSpacing="20"
                                            HorizontalAlignment="Center" />
                             </StackPanel>
 
@@ -724,30 +758,26 @@
                         <!-- Panel 2: Sistem & Denetim (flat, Apple Control Center feel — no cards) -->
                         <Grid x:Name="SystemExpandedPanel" Visibility="Collapsed">
                             <StackPanel VerticalAlignment="Center" Spacing="14" Margin="6,0">
-                                <!-- Volume row -->
-                                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                <!-- Volume row (flat Apple Control Center style) -->
+                                <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
                                     <Button Style="{StaticResource IslandButtonStyle}"
-                                            Width="32" Height="32" CornerRadius="16"
-                                            Background="{Binding SystemMuteBrush}"
+                                            Width="30" Height="30" CornerRadius="15"
+                                            Background="Transparent"
                                             Command="{Binding SystemToggleMuteCommand}"
-                                            Margin="0,0,10,0"
+                                            Margin="0,0,12,0"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
                                             ToolTipService.ToolTip="Sesi Kapat / Aç">
-                                        <FontIcon Glyph="{Binding SystemMuteGlyph}" FontSize="13" Foreground="{ThemeResource PrimaryText}" />
+                                        <FontIcon Glyph="{Binding SystemMuteGlyph}"
+                                                  FontSize="15"
+                                                  Foreground="{ThemeResource PrimaryText}" />
                                     </Button>
 
                                     <Slider Grid.Column="1"
                                             Value="{Binding MasterVolume, Mode=TwoWay}"
                                             Minimum="0" Maximum="100" StepFrequency="1"
                                             VerticalAlignment="Center"
-                                            Margin="0,0,10,0" />
-
-                                    <TextBlock Text="{Binding MasterVolumeLabel}"
-                                               FontSize="11.5" FontWeight="SemiBold"
-                                               Foreground="{ThemeResource PrimaryText}"
-                                               VerticalAlignment="Center"
-                                               Width="34" TextAlignment="Right" />
+                                            AutomationProperties.Name="Ses düzeyi" />
                                 </Grid>
 
                                 <!-- Battery + quick capture row -->

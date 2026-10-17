@@ -57,6 +57,7 @@ public sealed partial class IslandWindow : Window
     private const long WheelDebounceTicks = 200 * TimeSpan.TicksPerMillisecond;
     private DispatcherQueueTimer? _pageTransitionCleanupTimer;
     private DispatcherQueueTimer? _hideAnimationTimer;
+    private DispatcherQueueTimer? _topmostGuardTimer;
     private string? _lastPulseTrackKey;
 
     private double _dpiScale = 1.0;
@@ -68,7 +69,6 @@ public sealed partial class IslandWindow : Window
     private readonly DispatcherQueueTimer _collapseDelayTimer;
     private bool _isPointerOverSurface;
     private bool _isInteractingWithControl;
-
     private long _transitionGeneration;
     private double _animStartWidth;
     private double _animStartHeight;
@@ -141,6 +141,12 @@ public sealed partial class IslandWindow : Window
         // Apply initial layout without animation
         UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
 
+        // Guard against other apps/Win32 calls demoting the island out of the topmost band.
+        _topmostGuardTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _topmostGuardTimer.Interval = TimeSpan.FromMilliseconds(3000);
+        _topmostGuardTimer.Tick += (_, _) => ReassertTopmost();
+        _topmostGuardTimer.Start();
+
         if (_viewModel.IsPlaying)
         {
             StartEqualizerWave();
@@ -149,6 +155,17 @@ public sealed partial class IslandWindow : Window
 
     public XamlRoot IslandXamlRoot => WindowRoot.XamlRoot;
     public bool IsIslandHidden => _isIslandHidden;
+
+    /// <summary>Keeps the island above everything, even if another app demoted its z-order.</summary>
+    public void ReassertTopmost()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
 
     public void ShowIsland()
     {
@@ -213,6 +230,7 @@ public sealed partial class IslandWindow : Window
         if (!_isIslandHidden) return;
         _isIslandHidden = false;
 
+        ReassertTopmost();
         HiddenAnchor.Visibility = Visibility.Collapsed;
         Surface.Visibility = Visibility.Visible;
 
@@ -350,6 +368,13 @@ public sealed partial class IslandWindow : Window
                  or nameof(IslandViewModel.IsFocusTimerActive)
                  or nameof(IslandViewModel.IsFileOperationActive))
         {
+            // Apple Dynamic Island behaviour: an alert takes over the presentation.
+            if (e.PropertyName == nameof(IslandViewModel.IsNotificationActive)
+                && _viewModel.IsNotificationActive
+                && _viewModel.IsExpanded)
+            {
+                _viewModel.Collapse();
+            }
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
         }
         else if (e.PropertyName is nameof(IslandViewModel.FocusProgress) or nameof(IslandViewModel.PreserveFocusPanel))
@@ -357,6 +382,8 @@ public sealed partial class IslandWindow : Window
             UpdateFocusProgressFill();
         }
     }
+
+    private Microsoft.UI.Xaml.Media.Animation.Storyboard? _focusFillStoryboard;
 
     private void UpdateFocusProgressFill()
     {
@@ -367,7 +394,25 @@ public sealed partial class IslandWindow : Window
             trackWidth = 336; // fall back to XAML margin-derived width until layout settles
         }
         var progress = Math.Clamp(_viewModel.FocusProgress, 0, 1);
-        FocusProgressFill.Width = Math.Max(0, progress * trackWidth);
+        var target = Math.Max(0, progress * trackWidth);
+
+        // Smoothly glide the hairline between per-second ticks instead of jumping.
+        _focusFillStoryboard?.Stop();
+        var anim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
+        {
+            To = target,
+            Duration = TimeSpan.FromMilliseconds(400),
+            EnableDependentAnimation = true,
+            EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase
+            {
+                EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut
+            }
+        };
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(anim, FocusProgressFill);
+        Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(anim, "Width");
+        _focusFillStoryboard = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
+        _focusFillStoryboard.Children.Add(anim);
+        _focusFillStoryboard.Begin();
     }
 
     private void AnimateSurfaceDimensions(double toWidth, double toHeight, double toCornerRadius, double durationMs, Action? onCompleted = null)
@@ -750,6 +795,34 @@ public sealed partial class IslandWindow : Window
         if (!_viewModel.IsExpanded)
         {
             e.Handled = true;
+            // Land on the page that matches what the island is currently showing.
+            if (_viewModel.IsFocusTimerActive && !_viewModel.HasTrack)
+            {
+                _viewModel.SelectPage(1);
+            }
+            _viewModel.ToggleExpanded();
+        }
+    }
+
+    private void OnMediaSourcePointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        // Tapping the artwork/title opens the app that owns the media session (Spotify, browser...).
+        e.Handled = true;
+        _viewModel.ActivateMediaSourceApp();
+    }
+
+    private void OnEventContentPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+        _viewModel.ActivateActiveEventTarget();
+    }
+
+    private void OnCompactFocusPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        e.Handled = true;
+        _viewModel.SelectPage(1);
+        if (!_viewModel.IsExpanded)
+        {
             _viewModel.ToggleExpanded();
         }
     }
@@ -1302,7 +1375,7 @@ public sealed partial class IslandWindow : Window
         WindowRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
 
         var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
-        var accentColor  = isLight ? 0xFF007AFFu : artworkAccent;
+        var accentColor  = artworkAccent;
         // Solid surfaces stay near-opaque; glass surfaces go translucent so acrylic really shows.
         var bgColor      = isLight
             ? (_glassEnabled ? 0xB8F2F5F7u : 0xF2F5F5F7u)
@@ -1310,8 +1383,8 @@ public sealed partial class IslandWindow : Window
         var borderColor  = isLight ? 0x22000000u : Blend(0x33FFFFFFu, artworkAccent, 0.22);
         var primaryText  = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
         var secondaryTxt = isLight ? 0xFF8E8E93u : 0xFFA4ABB6u;
-        var pillCtrlBg   = isLight ? 0xFFE5E5EAu : Blend(0x24FFFFFFu, artworkAccent, 0.14);
-        var playBg       = isLight ? 0xFF007AFFu : accentColor;
+        var pillCtrlBg   = isLight ? 0x14000000u : Blend(0x24FFFFFFu, artworkAccent, 0.14);
+        var playBg       = accentColor;
         var playFg       = 0xFFFFFFFFu;
         var seekAccent   = accentColor;
 
@@ -1320,6 +1393,21 @@ public sealed partial class IslandWindow : Window
         UpdateBrush("PrimaryText", primaryText);
         UpdateBrush("SecondaryText", secondaryTxt);
         UpdateBrush("PillControlBackground", pillCtrlBg);
+        var sliderFill = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
+        var sliderFillPressed = isLight ? 0xFF3A3A3Cu : 0xE6FFFFFFu;
+        var sliderTrack = isLight ? 0x1F000000u : 0x26FFFFFFu;
+        var sliderTrackHover = isLight ? 0x29000000u : 0x33FFFFFFu;
+        var sliderThumb = isLight ? 0xFFFFFFFFu : 0xFFFFFFFFu;
+        var sliderThumbPressed = isLight ? 0xFFE5E5EAu : 0xE6FFFFFFu;
+        UpdateBrush("SliderTrackValueFill", sliderFill);
+        UpdateBrush("SliderTrackValueFillPointerOver", sliderFill);
+        UpdateBrush("SliderTrackValueFillPressed", sliderFillPressed);
+        UpdateBrush("SliderTrackFill", sliderTrack);
+        UpdateBrush("SliderTrackFillPointerOver", sliderTrackHover);
+        UpdateBrush("SliderTrackFillPressed", sliderTrackHover);
+        UpdateBrush("SliderThumbBackground", sliderThumb);
+        UpdateBrush("SliderThumbBackgroundPointerOver", sliderThumb);
+        UpdateBrush("SliderThumbBackgroundPressed", sliderThumbPressed);
         UpdateBrush("PlayButtonBackground", playBg);
         UpdateBrush("PlayButtonForeground", playFg);
         UpdateBrush("Accent", accentColor);
@@ -1333,6 +1421,12 @@ public sealed partial class IslandWindow : Window
         if (ExpandedSeekBar is not null)
             ExpandedSeekBar.AccentBrush = Brush(seekAccent);
         UpdatePageDots(_viewModel.SelectedPageIndex, animated: false);
+
+        // Re-capture the frost snapshot so the glass tint matches the new theme right away.
+        if (_glassEnabled)
+        {
+            _ = RefreshFrostAsync(force: true);
+        }
     }
 
     private void UpdateBrush(string key, uint color)
