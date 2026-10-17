@@ -560,6 +560,7 @@
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
                                         <RowDefinition Height="Auto" />
+                                        <RowDefinition Height="Auto" />
                                     </Grid.RowDefinitions>
 
                                      <TextBlock Grid.Row="0"
@@ -573,11 +574,11 @@
                                                FontSize="13.5" FontWeight="Normal"
                                                Foreground="{ThemeResource SecondaryText}"
                                                TextTrimming="CharacterEllipsis" MaxLines="1"
-                                               Margin="0,2,0,8" />
+                                               Margin="0,2,0,6" />
 
                                     <controls:PulseSeekBar Grid.Row="2"
                                                            x:Name="ExpandedSeekBar"
-                                                           Height="18"
+                                                           Height="16"
                                                            Value="{Binding SeekPercent, Mode=TwoWay}"
                                                            CanSeek="{Binding CurrentTrack.CanSeek, FallbackValue=True}"
                                                            AccentBrush="{ThemeResource SeekAccent}"
@@ -596,6 +597,23 @@
                                                    Foreground="{ThemeResource SecondaryText}"
                                                    HorizontalAlignment="Right" />
                                     </Grid>
+
+                                    <!-- Synced lyrics: current line + upcoming line -->
+                                    <StackPanel Grid.Row="4" Margin="1,5,1,0" Spacing="0"
+                                                Visibility="{Binding LyricsVisibility}">
+                                        <TextBlock Text="{Binding CurrentLyricLine}"
+                                                   FontSize="11" FontWeight="Medium"
+                                                   Foreground="{ThemeResource PrimaryText}"
+                                                   Opacity="0.92"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxLines="1" />
+                                        <TextBlock Text="{Binding NextLyricLine}"
+                                                   FontSize="9"
+                                                   Foreground="{ThemeResource SecondaryText}"
+                                                   Opacity="0.7"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxLines="1" />
+                                    </StackPanel>
                                 </Grid>
                             </Grid>
 

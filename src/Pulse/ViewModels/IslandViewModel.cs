@@ -444,6 +444,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public BitmapImage? ArtworkImage => _media.ArtworkImage;
     public uint ArtworkAccentColor => _media.ArtworkAccentColor;
     public bool HasLyrics => _media.HasLyrics;
+    public Microsoft.UI.Xaml.Visibility LyricsVisibility => HasLyrics
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
     public string CurrentLyricLine => _media.CurrentLyricLine;
     public string NextLyricLine => _media.NextLyricLine;
     public bool IsScrubbing => _media.IsScrubbing;
@@ -648,7 +651,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         OnPropertyChanged(e.PropertyName);
 
-        if (e.PropertyName == nameof(MediaViewModel.HasTrack) || e.PropertyName == nameof(MediaViewModel.CurrentTrack))
+        if (e.PropertyName == nameof(MediaViewModel.HasLyrics))
+        {
+            OnPropertyChanged(nameof(LyricsVisibility));
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.HasTrack) || e.PropertyName == nameof(MediaViewModel.CurrentTrack))
         {
             OnPropertyChanged(nameof(IsMediaActive));
             OnPropertyChanged(nameof(TrackContentVisibility));

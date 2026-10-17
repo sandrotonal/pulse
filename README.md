@@ -17,17 +17,21 @@
 
 <em>Compact state: live track pill with album art, title, artist and playback control.</em>
 
-<img src="docs/images/island-expanded-media.png" width="585" alt="Pulse media panel" />
+<img src="docs/images/island-expanded-media.png" width="585" alt="Pulse media panel with synced lyrics" />
 
-<em>Expanded media panel: album art, seek timeline, transport controls, adaptive accent colors.</em>
+<em>Expanded media panel: album art, seek timeline, synced lyrics (current + upcoming line) and Apple-style transport controls. Tap the artwork to jump to the source app.</em>
 
 <img src="docs/images/island-expanded-focus.png" width="585" alt="Pulse focus timer" />
 
-<em>Focus timer panel: Pomodoro presets (25/50 min work, 5/15 min break) with one-tap start.</em>
+<em>Focus timer panel: Pomodoro presets (25/50 min work, 5/15 min break), tabular countdown digits and a spring-animated progress hairline.</em>
 
 <img src="docs/images/island-expanded-system.png" width="585" alt="Pulse system panel" />
 
-<em>System panel: master volume with mute state, livebattery status, one-click screenshot capture.</em>
+<em>System panel: monochrome volume control with mute state, live battery status and one-click screenshot capture.</em>
+
+<img src="docs/images/settings-dark.png" width="420" alt="Pulse settings window" />
+
+<em>Settings: dark and light theme support with live theme transitions, motion intensity (spring profiles), glass effect and layout controls.</em>
 
 ---
 
@@ -48,6 +52,10 @@
 - **Apple-Style Alert Takeover**: Incoming alerts briefly take over the presentation and then hand back to the current activity.
 - **Single-Instance Launch Guard**: Re-launching Pulse never spawns a broken second copy - the running island surfaces (and expands) instead.
 - **Alive Controls**: Every island button has hover, pressed and disabled feedback; the focus countdown uses tabular digits and an animated progress hairline.
+- **Synced Lyrics**: lrclib-backed word-timed lyrics shown in the expanded media panel with graceful query fallbacks (album/duration drift tolerant).
+- **Global Hotkeys**: Win+Alt+I shows/hides the island; Win+Shift+F starts or pauses the focus timer from anywhere.
+- **Spring Motion Profiles**: expand/collapse runs on a damped harmonic spring; the motion-intensity setting (Minimal/Balanced/Fluid) changes damping and duration for real.
+- **Unstealable Topmost**: z-order changes are forced back to topmost in WM_WINDOWPOSCHANGING, so the island can never be buried by other apps.
 - **System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup toggle and quick exit.
 - **Multi-Monitor & DPI Aware**: Adapts to DPI scale factors and monitor layouts per cursor position without clipping or blurred rendering.
 - **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage (39 automated tests).
@@ -124,6 +132,7 @@ Stop-Process -Name Pulse -Force -ErrorAction SilentlyContinue
 
 - **Mouse Wheel**: change pages (Media, Focus Timer, System Controls) while expanded.
 - **Click Pill**: toggle the expanded dashboard.
+- **Hotkeys**: Win+Alt+I toggles the island, Win+Shift+F toggles the focus timer.
 - **Click Artwork**: open the app that is currently playing (deep link to Spotify/browser/VLC etc.).
 - **Click Alert Capsule**: open the related target (screenshot file, downloads folder, focus panel).
 - **Hover**: quick state (media wave animation, track details).
