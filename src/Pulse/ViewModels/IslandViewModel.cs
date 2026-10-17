@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Pulse.Core.Events;
 using Pulse.Core.Interfaces;
@@ -23,6 +24,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private int _batteryPercent = -1;
     private bool _batteryIsCharging;
     private bool _batteryIsLow;
+    private bool _batteryOnAc;
 
     public IslandViewModel(
         MediaViewModel media,
@@ -51,6 +53,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             if (_focusTimer.IsRunning)
             {
                 _focusTimer.Pause();
+            }
+            else if (_focusTimer.State == FocusTimerState.Completed)
+            {
+                // Completed sessions restart as a fresh work session instead of doing nothing.
+                _focusTimer.Restart();
             }
             else
             {
@@ -122,6 +129,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         _activeEvent = _eventRouter.CurrentActiveEvent;
         RefreshBattery();
+        StartSystemPolling();
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -185,7 +193,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(MasterVolumeLabel));
                 _systemControl?.SetMasterVolume(clamped);
-                _systemEvents.ReportAudioStatus(_masterVolume, IsSystemMuted);
             }
         }
     }
@@ -211,7 +218,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsSystemMuted));
         OnPropertyChanged(nameof(SystemMuteGlyph));
         OnPropertyChanged(nameof(SystemMuteBrush));
-        _systemEvents.ReportAudioStatus(_masterVolume, _systemMuted);
     }
 
     public bool HasBattery => _batteryPercent >= 0;
@@ -225,7 +231,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
 
-    private void RefreshBattery()
+    private void RefreshBattery(bool notify = false)
     {
         var status = _systemControl?.GetBatteryStatus();
         if (status is null)
@@ -238,13 +244,31 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        var (percent, isCharging, isLow) = status.Value;
-        if (_batteryPercent != percent || _batteryIsCharging != isCharging || _batteryIsLow != isLow)
+        var (percent, isCharging, isLow, isOnAc) = status.Value;
+        if (_batteryPercent != percent || _batteryIsCharging != isCharging || _batteryIsLow != isLow || _batteryOnAc != isOnAc)
         {
+            var wasPrimed = _batteryPercent >= 0;
+            var wasLow = _batteryIsLow;
+            var wasOnAc = _batteryOnAc;
             _batteryPercent = percent;
             _batteryIsCharging = isCharging;
             _batteryIsLow = isLow;
+            _batteryOnAc = isOnAc;
             NotifyBatteryChanged();
+
+            if (notify && wasPrimed)
+            {
+                if (!wasOnAc && isOnAc)
+                {
+                    // Plugging in must be visible even when the battery is full and Windows
+                    // reports the pack as idle rather than charging.
+                    _systemEvents.ReportPowerConnected(percent);
+                }
+                else if (!wasLow && isLow)
+                {
+                    _systemEvents.ReportBatteryStatus(percent, isCharging, true);
+                }
+            }
         }
     }
 
@@ -456,6 +480,32 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public void UpdateScrub(double percent) => _media.UpdateScrub(percent);
     public Task EndScrubAsync(double percent) => _media.EndScrubAsync(percent);
 
+    /// <summary>Launches (or foregrounds) the app that is currently providing the media session.</summary>
+    public void ActivateMediaSourceApp()
+    {
+        var appId = _media.SourceAppUserModelId;
+        if (!string.IsNullOrWhiteSpace(appId))
+        {
+            _systemControl?.TryActivateApp(appId);
+        }
+    }
+
+    /// <summary>Opens the destination related to the active event (screenshot file, download folder...).</summary>
+    public void ActivateActiveEventTarget()
+    {
+        var target = _activeEvent switch
+        {
+            SystemNotificationEvent notification => notification.LaunchTarget,
+            FileOperationEvent fileOperation => fileOperation.DestinationPath,
+            _ => null
+        };
+
+        if (!string.IsNullOrWhiteSpace(target))
+        {
+            _systemControl?.TryOpenPath(target);
+        }
+    }
+
     private void OnActiveEventChanged(object? sender, IslandEvent? newEvent)
     {
         if (_dispatcherQueue.HasThreadAccess)
@@ -514,6 +564,52 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(FocusPlayPauseGlyph));
         OnPropertyChanged(nameof(FocusProgress));
         OnPropertyChanged(nameof(PreserveFocusPanel));
+    }
+
+    private DispatcherTimer? _systemPollTimer;
+
+    private void StartSystemPolling()
+    {
+        if (_systemControl is null)
+        {
+            return;
+        }
+
+        _systemPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        _systemPollTimer.Tick += (_, _) => PollSystemState();
+        _systemPollTimer.Start();
+    }
+
+    private void PollSystemState()
+    {
+        if (_systemControl is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var volume = _systemControl.GetMasterVolume();
+            var muted = _systemControl.IsMuted();
+            if (volume != _masterVolume || muted != _systemMuted)
+            {
+                // Changed outside the island (hardware keys, other apps) — mirror it and show a HUD capsule.
+                _masterVolume = volume;
+                _systemMuted = muted;
+                OnPropertyChanged(nameof(MasterVolume));
+                OnPropertyChanged(nameof(MasterVolumeLabel));
+                OnPropertyChanged(nameof(IsSystemMuted));
+                OnPropertyChanged(nameof(SystemMuteGlyph));
+                OnPropertyChanged(nameof(SystemMuteBrush));
+                _systemEvents.ReportAudioStatus(volume, muted);
+            }
+        }
+        catch
+        {
+            // endpoint may be temporarily unavailable; next tick retries
+        }
+
+        RefreshBattery(notify: true);
     }
 
     /// <summary>Re-reads endpoint volume and mute state from the real audio device.</summary>
@@ -576,6 +672,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
+        _systemPollTimer?.Stop();
+        _systemPollTimer = null;
         _media.PropertyChanged -= OnMediaPropertyChanged;
         _eventRouter.ActiveEventChanged -= OnActiveEventChanged;
         _focusTimer.Tick -= OnFocusTimerTick;

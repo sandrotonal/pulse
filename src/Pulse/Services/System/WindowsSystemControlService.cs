@@ -193,7 +193,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
     // ---- Battery ----
 
-    public (int Percent, bool IsCharging, bool IsLow)? GetBatteryStatus()
+    public (int Percent, bool IsCharging, bool IsLow, bool IsOnAc)? GetBatteryStatus()
     {
         try
         {
@@ -205,11 +205,100 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
             var percent = global::Windows.System.Power.PowerManager.RemainingChargePercent;
             var isCharging = battery == global::Windows.System.Power.BatteryStatus.Charging;
-            return (percent, isCharging, percent <= 20 && !isCharging);
+            var isOnAc = global::Windows.System.Power.PowerManager.PowerSupplyStatus
+                == global::Windows.System.Power.PowerSupplyStatus.Adequate;
+            return (percent, isCharging, percent <= 20 && !isCharging, isOnAc);
         }
         catch (Exception)
         {
             return null;
+        }
+    }
+
+    public bool TryActivateApp(string appId)
+    {
+        if (string.IsNullOrWhiteSpace(appId))
+        {
+            return false;
+        }
+
+        // Win32 media sessions report the bare exe name (e.g. "Spotify.exe").
+        var fileName = Path.GetFileName(appId.Trim());
+        if (fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                var processName = Path.GetFileNameWithoutExtension(fileName);
+                foreach (var process in global::System.Diagnostics.Process.GetProcessesByName(processName))
+                {
+                    if (process.MainWindowHandle != IntPtr.Zero)
+                    {
+                        _ = ShowWindow(process.MainWindowHandle, SwRestore);
+                        _ = SetForegroundWindow(process.MainWindowHandle);
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        // Packaged apps (e.g. "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify").
+        try
+        {
+            global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
+                "explorer.exe",
+                $"shell:AppsFolder\\{appId}")
+            {
+                UseShellExecute = true
+            });
+            return true;
+        }
+        catch
+        {
+        }
+
+        try
+        {
+            global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(appId) { UseShellExecute = true });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public bool TryOpenPath(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        try
+        {
+            if (File.Exists(path))
+            {
+                global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
+                    "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+                return true;
+            }
+
+            if (Directory.Exists(path))
+            {
+                global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                return true;
+            }
+
+            global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
+                "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+            return true;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -249,6 +338,14 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int nIndex);
+
+    private const int SwRestore = 9;
+
+    [DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
 
     [Flags]
     private enum CLSCTX : uint

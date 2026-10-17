@@ -58,7 +58,14 @@ public sealed partial class SettingsWindow : Window
         var accent = isLight ? 0xFF248A3Du : 0xFF30D158u;
         SettingsRoot.Resources["SettingsAccent"] = Brush(accent);
         SettingsRoot.Resources["SystemAccentColor"] = Color(accent);
+        SettingsRoot.Resources["SystemAccentColorLight1"] = Color(Mix(accent, 0xFFFFFFFFu, 0.25));
+        SettingsRoot.Resources["SystemAccentColorLight2"] = Color(Mix(accent, 0xFFFFFFFFu, 0.45));
+        SettingsRoot.Resources["SystemAccentColorLight3"] = Color(Mix(accent, 0xFFFFFFFFu, 0.65));
+        SettingsRoot.Resources["SystemAccentColorDark1"] = Color(Mix(accent, 0xFF000000u, 0.25));
+        SettingsRoot.Resources["SystemAccentColorDark2"] = Color(Mix(accent, 0xFF000000u, 0.45));
+        SettingsRoot.Resources["SystemAccentColorDark3"] = Color(Mix(accent, 0xFF000000u, 0.65));
         SettingsRoot.Resources["SettingsDivider"] = Brush(isLight ? 0x26000000u : 0x26FFFFFFu);
+        SettingsRoot.Resources["SettingsCard"] = Brush(isLight ? 0x0D808080u : 0x14FFFFFFu);
         var neutral = Brush(isLight ? 0xFFE5E5EAu : 0xFF3A3A3Cu);
         var knob = Brush(isLight ? 0xFFFFFFFFu : 0xFFF5F5F7u);
         SettingsRoot.Resources["AccentFillColorDefaultBrush"] = Brush(accent);
@@ -96,6 +103,17 @@ public sealed partial class SettingsWindow : Window
 
     private static Microsoft.UI.Xaml.Media.SolidColorBrush Brush(uint color)
         => new() { Color = Color(color) };
+
+    private static uint Mix(uint from, uint to, double t)
+    {
+        double fromR = (from >> 16) & 0xFF, toR = (to >> 16) & 0xFF;
+        double fromG = (from >> 8) & 0xFF, toG = (to >> 8) & 0xFF;
+        double fromB = from & 0xFF, toB = to & 0xFF;
+        uint R = (uint)Math.Round(fromR + (toR - fromR) * t);
+        uint G = (uint)Math.Round(fromG + (toG - fromG) * t);
+        uint B = (uint)Math.Round(fromB + (toB - fromB) * t);
+        return 0xFF000000u | (R << 16) | (G << 8) | B;
+    }
 
     private static Windows.UI.Color Color(uint color)
         => Windows.UI.Color.FromArgb((byte)(color >> 24), (byte)(color >> 16), (byte)(color >> 8), (byte)color);

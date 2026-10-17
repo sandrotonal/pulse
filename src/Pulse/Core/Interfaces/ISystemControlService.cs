@@ -17,6 +17,12 @@ public interface ISystemControlService
     /// <summary>Captures the primary screen. Returns the saved file path, or empty on failure.</summary>
     string CaptureScreenshot();
 
-    /// <summary>Returns battery charge percent and charging state, or null when no battery exists.</summary>
-    (int Percent, bool IsCharging, bool IsLow)? GetBatteryStatus();
+    /// <summary>Returns battery charge percent, charging state and AC power state, or null when no battery exists.</summary>
+    (int Percent, bool IsCharging, bool IsLow, bool IsOnAc)? GetBatteryStatus();
+
+    /// <summary>Brings the app identified by an AUMID (packaged) or exe name (Win32) to the foreground.</summary>
+    bool TryActivateApp(string appId);
+
+    /// <summary>Opens a file or folder with the shell (files are revealed in Explorer).</summary>
+    bool TryOpenPath(string path);
 }
