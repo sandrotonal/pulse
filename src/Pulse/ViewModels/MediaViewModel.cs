@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Pulse.Core.Events;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
@@ -17,6 +18,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly IPlaybackController _playbackController;
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ISettingsService _settingsService;
+    private readonly IEventRouter? _eventRouter;
     private readonly LyricsService _lyricsService = new();
     private readonly IslandStateMachine _stateMachine = new();
     private readonly DispatcherQueueTimer _stateTimer;
@@ -33,12 +35,18 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string? _seekStatus;
     private bool _isInitialized;
 
-    public MediaViewModel(IMediaSessionService mediaSessionService, IPlaybackController playbackController, ISettingsService settingsService, DispatcherQueue dispatcherQueue)
+    public MediaViewModel(
+        IMediaSessionService mediaSessionService,
+        IPlaybackController playbackController,
+        ISettingsService settingsService,
+        DispatcherQueue dispatcherQueue,
+        IEventRouter? eventRouter = null)
     {
         _mediaSessionService = mediaSessionService;
         _playbackController = playbackController;
         _settingsService = settingsService;
         _dispatcherQueue = dispatcherQueue;
+        _eventRouter = eventRouter;
         _stateTimer = dispatcherQueue.CreateTimer();
         _stateTimer.Interval = TimeSpan.FromSeconds(2.4);
         _stateTimer.Tick += OnStateTimerTick;
@@ -165,6 +173,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool EnableHoverExpand => _settingsService.Current.EnableHoverExpand;
     public bool DynamicColorTint => _settingsService.Current.DynamicColorTint;
     public bool ShowEqualizer => _settingsService.Current.ShowEqualizer;
+    public bool UseTransparency => _settingsService.Current.UseTransparency;
     public int TopOffset => _settingsService.Current.TopOffset;
     public double IslandScale => _settingsService.Current.IslandScale / 100d;
     public string AnimationIntensity => _settingsService.Current.AnimationIntensity;
@@ -388,6 +397,14 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         _stateMachine.ToggleExpanded();
         _stateTimer.Stop();
+        if (_stateMachine.CurrentState == IslandState.Expanded)
+        {
+            _eventRouter?.LockUserInteraction();
+        }
+        else
+        {
+            _eventRouter?.UnlockUserInteraction();
+        }
     }
 
     public void Collapse()
@@ -395,6 +412,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         if (CurrentIslandState == IslandState.Expanded)
         {
             _stateMachine.ToggleExpanded();
+            _eventRouter?.UnlockUserInteraction();
         }
     }
 
@@ -448,6 +466,19 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
 
         _stateMachine.SetHasMedia(track is not null);
+        if (track is not null)
+        {
+            _eventRouter?.Publish(new MediaEvent(
+                "active_media",
+                track,
+                track.PlaybackStatus == PlaybackStatus.Playing,
+                DateTimeOffset.UtcNow));
+        }
+        else
+        {
+            _eventRouter?.Dismiss("active_media");
+        }
+
         if (changedTrack && !NotificationsPaused)
         {
             _stateMachine.ShowTrackChanged();
@@ -527,6 +558,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(EnableHoverExpand));
         OnPropertyChanged(nameof(DynamicColorTint));
         OnPropertyChanged(nameof(ShowEqualizer));
+        OnPropertyChanged(nameof(UseTransparency));
         OnPropertyChanged(nameof(TopOffset));
         OnPropertyChanged(nameof(IslandScale));
         OnPropertyChanged(nameof(AnimationIntensity));

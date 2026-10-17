@@ -165,6 +165,19 @@
                                 <ComboBoxItem Content="Az" /><ComboBoxItem Content="Dengeli" /><ComboBoxItem Content="Akıcı" />
                             </ComboBox>
                         </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Glass effect -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Cam efekti (Glassmorphism)" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Adanın arkasında Windows 11 dondurulmuş cam (Desktop Acrylic) efekti kullanır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding UseTransparency, Mode=TwoWay}"
+                                          AutomationProperties.Name="Cam efekti" />
+                        </Grid>
                     </StackPanel>
                 </Border>
 

@@ -2,6 +2,7 @@ using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Pulse.Core.Interfaces;
+using Pulse.Core.Services;
 using Pulse.Services.Artwork;
 using Pulse.Services.Media;
 using Pulse.Services.Settings;
@@ -18,7 +19,13 @@ public partial class App : Application
     private readonly ISettingsService _settingsService;
     private readonly IStartupService _startupService;
     private readonly IMediaSessionService _mediaSessionService;
+    private readonly EventRouter _eventRouter;
+    private readonly FocusTimerService _focusTimerService;
+    private readonly SystemEventService _systemEventService;
+    private readonly FileOperationService _fileOperationService;
+    private readonly WindowsSystemControlService _systemControlService;
     private readonly MediaViewModel _mediaViewModel;
+    private readonly IslandViewModel _islandViewModel;
     private IslandWindow? _islandWindow;
     private TaskbarFlyoutWindow? _taskbarFlyoutWindow;
     private SettingsWindow? _settingsWindow;
@@ -32,11 +39,29 @@ public partial class App : Application
         _startupService = new StartupService();
         _mediaSessionService = new WindowsMediaSessionService(new ArtworkCacheService());
         var playbackController = new PlaybackController(_mediaSessionService);
+        var dispatcherQueue = DispatcherQueue.GetForCurrentThread();
+
+        _eventRouter = new EventRouter();
+        _focusTimerService = new FocusTimerService(_eventRouter);
+        _systemEventService = new SystemEventService(_eventRouter);
+        _fileOperationService = new FileOperationService(_eventRouter);
+        _systemControlService = new WindowsSystemControlService();
+
         _mediaViewModel = new MediaViewModel(
             _mediaSessionService,
             playbackController,
             _settingsService,
-            DispatcherQueue.GetForCurrentThread());
+            dispatcherQueue,
+            _eventRouter);
+
+        _islandViewModel = new IslandViewModel(
+            _mediaViewModel,
+            _eventRouter,
+            _focusTimerService,
+            _systemEventService,
+            _fileOperationService,
+            dispatcherQueue,
+            _systemControlService);
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -44,7 +69,7 @@ public partial class App : Application
         await _settingsService.LoadAsync();
         await _mediaViewModel.InitializeAsync();
 
-        _islandWindow = new IslandWindow(_mediaViewModel);
+        _islandWindow = new IslandWindow(_islandViewModel);
         _islandWindow.SettingsRequested += OnSettingsRequested;
         _islandWindow.TaskbarFlyoutRequested += (_, _) => _taskbarFlyoutWindow?.ToggleFlyout();
         _islandWindow.Activate();
@@ -131,8 +156,10 @@ public partial class App : Application
         _settingsWindow?.Close();
         _taskbarFlyoutWindow?.Close();
         _islandWindow?.Close();
+        _islandViewModel.Dispose();
         await _mediaViewModel.DisposeAsync();
         await _mediaSessionService.DisposeAsync();
+        _systemControlService.Dispose();
         Exit();
     }
 }
