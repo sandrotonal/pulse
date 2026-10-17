@@ -6,14 +6,20 @@ namespace Pulse.Core.Services;
 public sealed class SystemEventService : ISystemEventService
 {
     private readonly IEventRouter _eventRouter;
+    private readonly ISettingsService? _settings;
 
-    public SystemEventService(IEventRouter eventRouter)
+    public SystemEventService(IEventRouter eventRouter, ISettingsService? settings = null)
     {
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
+        _settings = settings;
     }
 
     public void ReportBatteryStatus(int percentage, bool isCharging, bool isLowBattery)
     {
+        if (_settings is not null && !_settings.Current.PowerNotifications)
+        {
+            return;
+        }
         var clamped = Math.Clamp(percentage, 0, 100);
         var priority = isLowBattery ? EventPriority.Warning : EventPriority.Informational;
         var title = isLowBattery ? "Düşük Pil" : (isCharging ? "Şarj Oluyor" : "Pil");
@@ -35,6 +41,11 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportPowerConnected(int percentage)
     {
+        if (_settings is not null && !_settings.Current.PowerNotifications)
+        {
+            return;
+        }
+
         var clamped = Math.Clamp(percentage, 0, 100);
         var evt = new SystemNotificationEvent(
             "power_connected",
@@ -67,6 +78,11 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportAudioStatus(int volumePercentage, bool isMuted)
     {
+        if (_settings is not null && !_settings.Current.AudioNotifications)
+        {
+            return;
+        }
+
         var clamped = Math.Clamp(volumePercentage, 0, 100);
         var evt = new SystemNotificationEvent(
             "audio_status",

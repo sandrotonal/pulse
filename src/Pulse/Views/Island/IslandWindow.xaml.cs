@@ -434,6 +434,11 @@ public sealed partial class IslandWindow : Window
         _ => (0.82, 1.0)
     };
 
+    private static readonly Windows.UI.ViewManagement.UISettings SystemUiSettings = new();
+
+    /// <summary>Respects the Windows "animation effects" accessibility setting.</summary>
+    private static bool ReducedMotion => !SystemUiSettings.AnimationsEnabled;
+
     /// <summary>Normalized damped-spring easing curve evaluated over the animation duration.</summary>
     private static double SpringEase(double t, double damping)
     {
@@ -448,7 +453,20 @@ public sealed partial class IslandWindow : Window
     }
 
     private void AnimateSurfaceDimensions(double toWidth, double toHeight, double toCornerRadius, double durationMs, Action? onCompleted = null)
-    {        _animStartWidth = Surface.Width > 0 ? Surface.Width : Surface.ActualWidth;
+    {
+        if (ReducedMotion)
+        {
+            _isDimensionAnimating = false;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDimensionRendering;
+            Surface.Width = toWidth;
+            Surface.Height = toHeight;
+            Surface.CornerRadius = new CornerRadius(toCornerRadius);
+            _currentPillWidth = toWidth;
+            _currentPillHeight = toHeight;
+            onCompleted?.Invoke();
+            return;
+        }
+        _animStartWidth = Surface.Width > 0 ? Surface.Width : Surface.ActualWidth;
         if (_animStartWidth <= 0) _animStartWidth = 216.0;
 
         _animStartHeight = Surface.Height > 0 ? Surface.Height : Surface.ActualHeight;
@@ -509,6 +527,11 @@ public sealed partial class IslandWindow : Window
 
     private void UpdateStateLayout(IslandState state, bool animated)
     {
+        if (ReducedMotion)
+        {
+            animated = false;
+        }
+
         var generation = ++_transitionGeneration;
         var isExpanded = state == IslandState.Expanded;
         var isCollapsing = state == IslandState.Collapsing;
@@ -604,6 +627,11 @@ public sealed partial class IslandWindow : Window
             _surfaceVisual.StopAnimation("Translation");
             Surface.Translation = Vector3.Zero;
             _surfaceVisual.Opacity = 1;
+
+            if (state == IslandState.Collapsing)
+            {
+                _viewModel.CompleteCollapse();
+            }
             return;
         }
 
@@ -1146,6 +1174,11 @@ public sealed partial class IslandWindow : Window
 
     private void AnimateButtonScale(FrameworkElement element, float targetScale)
     {
+        if (ReducedMotion)
+        {
+            return;
+        }
+
         try
         {
             var visual = ElementCompositionPreview.GetElementVisual(element);

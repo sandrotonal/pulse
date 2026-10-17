@@ -6,6 +6,9 @@ public sealed record AppSettings
     public bool AutoCollapse { get; init; } = true;
     public bool ShowSeekControls { get; init; } = true;
     public bool NotificationsPaused { get; init; }
+    public bool AudioNotifications { get; init; } = true;
+    public bool PowerNotifications { get; init; } = true;
+    public bool DownloadNotifications { get; init; } = true;
     public bool EnableHoverExpand { get; init; } = true;
     public bool DynamicColorTint { get; init; } = true;
     public bool ShowEqualizer { get; init; } = true;

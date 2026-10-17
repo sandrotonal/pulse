@@ -71,10 +71,10 @@ public partial class App : Application
 
         _eventRouter = new EventRouter();
         _focusTimerService = new FocusTimerService(_eventRouter);
-        _systemEventService = new SystemEventService(_eventRouter);
+        _systemEventService = new SystemEventService(_eventRouter, _settingsService);
         _fileOperationService = new FileOperationService(_eventRouter);
         _systemControlService = new WindowsSystemControlService();
-        _downloadsWatcherService = new DownloadsWatcherService(_eventRouter);
+        _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
 
         _mediaViewModel = new MediaViewModel(
             _mediaSessionService,
