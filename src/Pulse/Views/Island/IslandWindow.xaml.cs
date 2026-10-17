@@ -38,6 +38,13 @@ public sealed partial class IslandWindow : Window
     private const uint SwpShowWindow = 0x0040;
     private const uint SwpHideWindow = 0x0080;
     private const uint MonitorDefaultToNearest = 2;
+    private const uint ModWin = 0x0008;
+    private const uint ModShift = 0x0004;
+    private const uint ModAlt = 0x0001;
+    private const int HotkeyToggleIsland = 0x5053;
+    private const int HotkeyToggleFocus = 0x464F;
+    private const uint VkI = 0x49;
+    private const uint VkF = 0x46;
     private static readonly IntPtr HwndTopmost = new(-1);
 
     private readonly IslandViewModel _viewModel;
@@ -115,6 +122,10 @@ public sealed partial class IslandWindow : Window
         // Subclass window to intercept WM_NCHITTEST and WM_GETMINMAXINFO:
         _subclassProc = WndProc;
         SetWindowSubclass(_hwnd, _subclassProc, UIntPtr.Zero, IntPtr.Zero);
+
+        // Global hotkeys: Win+Alt+I toggles the island, Win+Shift+F toggles the focus timer.
+        RegisterHotKey(_hwnd, HotkeyToggleIsland, ModWin | ModAlt, VkI);
+        RegisterHotKey(_hwnd, HotkeyToggleFocus, ModWin | ModShift, VkF);
 
         AppWindow.SetPresenter(AppWindowPresenterKind.Overlapped);
         if (AppWindow.Presenter is OverlappedPresenter presenter)
@@ -295,7 +306,7 @@ public sealed partial class IslandWindow : Window
 
         var scale = Math.Max(1.0, _viewModel.IslandScale);
         var hostWidthDip = Math.Max(420.0, 384.0 * scale + 24.0);
-        var hostHeightDip = Math.Max(260.0, 220.0 * scale + 24.0);
+        var hostHeightDip = Math.Max(264.0, 240.0 * scale + 24.0);
 
         WindowRoot.Width = hostWidthDip;
         WindowRoot.Height = hostHeightDip;
@@ -415,9 +426,29 @@ public sealed partial class IslandWindow : Window
         _focusFillStoryboard.Begin();
     }
 
-    private void AnimateSurfaceDimensions(double toWidth, double toHeight, double toCornerRadius, double durationMs, Action? onCompleted = null)
+    /// <summary>Motion intensity from settings: damping + duration profile for spring animations.</summary>
+    private (double Damping, double DurationScale) AnimationProfile => _viewModel.AnimationIntensity switch
     {
-        _animStartWidth = Surface.Width > 0 ? Surface.Width : Surface.ActualWidth;
+        "Minimal" => (0.95, 0.72),
+        "Dynamic" => (0.60, 1.18),
+        _ => (0.82, 1.0)
+    };
+
+    /// <summary>Normalized damped-spring easing curve evaluated over the animation duration.</summary>
+    private static double SpringEase(double t, double damping)
+    {
+        if (t <= 0.0) return 0.0;
+        if (t >= 1.0) return 1.0;
+
+        const double Omega = 8.0;
+        double zeta = Math.Clamp(damping, 0.2, 0.98);
+        double omegaD = Omega * Math.Sqrt(1.0 - zeta * zeta);
+        double decay = Math.Exp(-zeta * Omega * t);
+        return 1.0 - decay * (Math.Cos(omegaD * t) + (zeta * Omega / omegaD) * Math.Sin(omegaD * t));
+    }
+
+    private void AnimateSurfaceDimensions(double toWidth, double toHeight, double toCornerRadius, double durationMs, Action? onCompleted = null)
+    {        _animStartWidth = Surface.Width > 0 ? Surface.Width : Surface.ActualWidth;
         if (_animStartWidth <= 0) _animStartWidth = 216.0;
 
         _animStartHeight = Surface.Height > 0 ? Surface.Height : Surface.ActualHeight;
@@ -428,7 +459,7 @@ public sealed partial class IslandWindow : Window
         _animTargetWidth = toWidth;
         _animTargetHeight = toHeight;
         _animTargetCornerRadius = toCornerRadius;
-        _animDurationMs = Math.Max(1.0, durationMs);
+        _animDurationMs = Math.Max(1.0, durationMs * AnimationProfile.DurationScale);
         _animStartTimeTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         _onAnimationCompleted = onCompleted;
 
@@ -445,9 +476,8 @@ public sealed partial class IslandWindow : Window
         double elapsedMs = (now - _animStartTimeTicks) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
         double progress = Math.Clamp(elapsedMs / _animDurationMs, 0.0, 1.0);
 
-        // Apple fluid cubic ease-out: 1 - (1 - t)^3
-        double inv = 1.0 - progress;
-        double ease = 1.0 - (inv * inv * inv);
+        // Damped harmonic spring: overshoot and settle according to the motion-intensity setting.
+        double ease = SpringEase(progress, AnimationProfile.Damping);
 
         double currentW = _animStartWidth + (_animTargetWidth - _animStartWidth) * ease;
         double currentH = _animStartHeight + (_animTargetHeight - _animStartHeight) * ease;
@@ -492,7 +522,7 @@ public sealed partial class IslandWindow : Window
         if (isExpanded)
         {
             targetWidth = 384;
-            targetHeight = 220;
+            targetHeight = 240;
             targetCornerRadius = 32;
         }
         else if (_viewModel.IsNotificationActive || _viewModel.IsFileOperationActive)
@@ -582,6 +612,7 @@ public sealed partial class IslandWindow : Window
             var compositor = _surfaceVisual.Compositor;
             var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
             var quickEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.6f, 1f));
+            var durScale = AnimationProfile.DurationScale;
 
             _surfaceVisual.Scale = Vector3.One;
             _surfaceVisual.StopAnimation("Scale");
@@ -607,19 +638,19 @@ public sealed partial class IslandWindow : Window
 
                 // Coordinated cross-fade & reveal
                 var compactFade = compositor.CreateScalarKeyFrameAnimation();
-                compactFade.Duration = TimeSpan.FromMilliseconds(90);
+                compactFade.Duration = TimeSpan.FromMilliseconds(90 * durScale);
                 compactFade.InsertKeyFrame(1f, 0f, quickEasing);
                 _compactVisual.StartAnimation("Opacity", compactFade);
 
                 var expandedFade = compositor.CreateScalarKeyFrameAnimation();
-                expandedFade.Duration = TimeSpan.FromMilliseconds(260);
+                expandedFade.Duration = TimeSpan.FromMilliseconds(260 * durScale);
                 expandedFade.InsertKeyFrame(0f, 0f);
                 expandedFade.InsertKeyFrame(0.15f, 0f);
                 expandedFade.InsertKeyFrame(1f, 1f, springEasing);
                 _expandedVisual.StartAnimation("Opacity", expandedFade);
 
                 var expandTranslate = compositor.CreateVector3KeyFrameAnimation();
-                expandTranslate.Duration = TimeSpan.FromMilliseconds(280);
+                expandTranslate.Duration = TimeSpan.FromMilliseconds(280 * durScale);
                 expandTranslate.InsertKeyFrame(0f, new Vector3(0, 8, 0));
                 expandTranslate.InsertKeyFrame(1f, Vector3.Zero, springEasing);
                 _expandedVisual.StartAnimation("Translation", expandTranslate);
@@ -637,12 +668,12 @@ public sealed partial class IslandWindow : Window
                 ExpandedView.IsHitTestVisible = false;
 
                 var expandedFade = compositor.CreateScalarKeyFrameAnimation();
-                expandedFade.Duration = TimeSpan.FromMilliseconds(110);
+                expandedFade.Duration = TimeSpan.FromMilliseconds(110 * durScale);
                 expandedFade.InsertKeyFrame(1f, 0f, quickEasing);
                 _expandedVisual.StartAnimation("Opacity", expandedFade);
 
                 var compactFade = compositor.CreateScalarKeyFrameAnimation();
-                compactFade.Duration = TimeSpan.FromMilliseconds(220);
+                compactFade.Duration = TimeSpan.FromMilliseconds(220 * durScale);
                 compactFade.InsertKeyFrame(0f, 0f);
                 compactFade.InsertKeyFrame(0.15f, 0f);
                 compactFade.InsertKeyFrame(1f, 1f, springEasing);
@@ -1485,6 +1516,41 @@ public sealed partial class IslandWindow : Window
     {
         const uint WM_GETMINMAXINFO = 0x0024;
         const uint WM_NCHITTEST = 0x0084;
+        const uint WM_HOTKEY = 0x0312;
+        const uint WM_WINDOWPOSCHANGING = 0x0046;
+        const uint SwpNoZOrder = 0x0004;
+
+        if (uMsg == WM_WINDOWPOSCHANGING)
+        {
+            // Immune to z-order demotion: any real z-order change is forced back to topmost.
+            var wp = Marshal.PtrToStructure<WINDOWPOS>(lParam);
+            if ((wp.flags & SwpNoZOrder) == 0)
+            {
+                wp.hwndInsertAfter = HwndTopmost;
+                Marshal.StructureToPtr(wp, lParam, false);
+            }
+            return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+        }
+
+        if (uMsg == WM_HOTKEY)
+        {
+            var hotkeyId = wParam.ToInt32();
+            if (hotkeyId == HotkeyToggleIsland)
+            {
+                ToggleHideIsland();
+                return IntPtr.Zero;
+            }
+
+            if (hotkeyId == HotkeyToggleFocus)
+            {
+                if (_isIslandHidden)
+                {
+                    UnhideIslandAnimated();
+                }
+                _viewModel.ToggleFocusTimerCommand.Execute(null);
+                return IntPtr.Zero;
+            }
+        }
 
         if (uMsg == WM_GETMINMAXINFO)
         {
@@ -1591,6 +1657,9 @@ public sealed partial class IslandWindow : Window
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
+    private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
     [DllImport("user32.dll")]
@@ -1623,6 +1692,18 @@ public sealed partial class IslandWindow : Window
 
     [StructLayout(LayoutKind.Sequential)]
     private struct Rect { public int Left, Top, Right, Bottom; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WINDOWPOS
+    {
+        public IntPtr hwnd;
+        public IntPtr hwndInsertAfter;
+        public int x;
+        public int y;
+        public int cx;
+        public int cy;
+        public uint flags;
+    }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Auto)]
     private struct MonitorInfo

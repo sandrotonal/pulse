@@ -29,6 +29,7 @@ public sealed class FocusTimerService : IFocusTimerService
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
         RemainingTime = _workDuration;
         TotalDuration = _workDuration;
+        _pausedRemaining = _workDuration;
     }
 
     public void Start(TimeSpan workDuration, TimeSpan breakDuration)

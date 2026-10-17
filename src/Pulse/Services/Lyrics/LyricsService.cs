@@ -31,28 +31,51 @@ public sealed class LyricsService
 
         try
         {
-            var query = $"api/get?track_name={Uri.EscapeDataString(title)}&artist_name={Uri.EscapeDataString(artist)}";
+            var baseQuery = $"api/get?track_name={Uri.EscapeDataString(title)}&artist_name={Uri.EscapeDataString(artist)}";
+            var attempts = new List<string>();
+
+            // lrclib's strict endpoint 404s when album/duration drift between sources,
+            // so progressively loosen the query until something matches.
+            if (!string.IsNullOrWhiteSpace(album) && duration is { TotalSeconds: > 0 })
+            {
+                attempts.Add($"{baseQuery}&album_name={Uri.EscapeDataString(album)}&duration={(int)Math.Round(duration.Value.TotalSeconds)}");
+            }
+
             if (!string.IsNullOrWhiteSpace(album))
             {
-                query += $"&album_name={Uri.EscapeDataString(album)}";
+                attempts.Add($"{baseQuery}&album_name={Uri.EscapeDataString(album)}");
             }
 
             if (duration is { TotalSeconds: > 0 })
             {
-                query += $"&duration={(int)Math.Round(duration.Value.TotalSeconds)}";
+                attempts.Add($"{baseQuery}&duration={(int)Math.Round(duration.Value.TotalSeconds)}");
             }
 
-            var response = await _httpClient.GetFromJsonAsync<LrcLibResponse>(query);
-            var result = response is null
-                ? null
-                : new LyricsResult(ParseSyncedLyrics(response.SyncedLyrics), string.IsNullOrWhiteSpace(response.PlainLyrics) ? null : response.PlainLyrics.Trim());
-            if (result?.HasLyrics != true)
+            attempts.Add(baseQuery);
+
+            foreach (var query in attempts)
             {
-                result = null;
+                try
+                {
+                    var response = await _httpClient.GetFromJsonAsync<LrcLibResponse>(query);
+                    var result = response is null
+                        ? null
+                        : new LyricsResult(ParseSyncedLyrics(response.SyncedLyrics), string.IsNullOrWhiteSpace(response.PlainLyrics) ? null : response.PlainLyrics.Trim());
+
+                    if (result?.HasLyrics == true)
+                    {
+                        _cache[cacheKey] = result;
+                        return result;
+                    }
+                }
+                catch
+                {
+                    // Try the next, looser query variant.
+                }
             }
 
-            _cache[cacheKey] = result;
-            return result;
+            _cache[cacheKey] = null;
+            return null;
         }
         catch
         {
