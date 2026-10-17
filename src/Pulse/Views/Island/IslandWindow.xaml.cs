@@ -76,6 +76,8 @@ public sealed partial class IslandWindow : Window
     private readonly DispatcherQueueTimer _collapseDelayTimer;
     private bool _isPointerOverSurface;
     private bool _isInteractingWithControl;
+    private long _hostResizeGuardTicks;
+    private static readonly long HostResizeGuardTicks = (long)(300 * (System.Diagnostics.Stopwatch.Frequency / 1000.0));
     private long _transitionGeneration;
     private double _animStartWidth;
     private double _animStartHeight;
@@ -333,10 +335,9 @@ public sealed partial class IslandWindow : Window
         AppWindow.Move(new PointInt32(x, y));
         SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
 
-        if (_glassEnabled)
-        {
-            _ = RefreshFrostAsync();
-        }
+        // Window moves under the cursor can synthesize pointer exit/enter pairs in WinUI;
+        // suppress them briefly so hover state cannot oscillate with the resize itself.
+        _hostResizeGuardTicks = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -846,6 +847,11 @@ public sealed partial class IslandWindow : Window
 
     private void OnPointerEntered(object sender, PointerRoutedEventArgs e)
     {
+        if (System.Diagnostics.Stopwatch.GetTimestamp() - _hostResizeGuardTicks < HostResizeGuardTicks)
+        {
+            return;
+        }
+
         _isPointerOverSurface = true;
         _collapseDelayTimer.Stop();
         _viewModel.OnPointerEntered();
@@ -856,6 +862,13 @@ public sealed partial class IslandWindow : Window
         // Frost capture briefly hides the window, which synthesizes a synthetic
         // PointerExited — ignore it so the island doesn't collapse mid-capture.
         if (_frostBusy) return;
+
+        // Window resize/move under the cursor can fake an exit; ignore quick echoes too.
+        if (System.Diagnostics.Stopwatch.GetTimestamp() - _hostResizeGuardTicks < HostResizeGuardTicks)
+        {
+            return;
+        }
+
         _isPointerOverSurface = false;
         _viewModel.OnPointerExited();
 
@@ -1222,26 +1235,17 @@ public sealed partial class IslandWindow : Window
         FrostLayer.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
         if (_glassEnabled)
         {
-            EnsureFrostTimer();
+            // No periodic re-capture: each capture briefly hides the window, which
+            // reads as a visible blink. Frost refreshes on launch, expand and theme change.
             _ = RefreshFrostAsync();
         }
         else
         {
-            _frostTimer?.Stop();
             FrostLayer.Fill = null;
         }
     }
 
-    private DispatcherQueueTimer? _frostTimer;
     private bool _frostBusy;
-
-    private void EnsureFrostTimer()
-    {
-        if (_frostTimer is not null) return;
-        _frostTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _frostTimer.Interval = TimeSpan.FromMilliseconds(2500);
-        _frostTimer.Tick += (_, _) => _ = RefreshFrostAsync();
-    }
 
     /// <summary>Samples the desktop area under the island, blurs + tints it into the frost brush.</summary>
     private async Task RefreshFrostAsync(bool force = false)
