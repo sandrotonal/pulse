@@ -4,9 +4,6 @@
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     Title="Pulse Ayarları">
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
     <Grid x:Name="SettingsRoot" Padding="28,0,28,22" Background="Transparent">
         <Grid.Resources>
             <SolidColorBrush x:Key="SettingsText" Color="#FF1C1C1E" />
@@ -118,6 +115,18 @@
                                           OnContent="" OffContent="" IsOn="{Binding DynamicColorTint, Mode=TwoWay}"
                                           AutomationProperties.Name="Albüm kapağına göre dinamik renk tonlaması" />
                         </Grid>
+
+                        <!-- Artwork Tint Strength -->
+                        <StackPanel Spacing="4" Margin="0,2,0,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Kapak rengi yoğunluğu" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding ArtworkTintStrengthLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="Albüm kapağının ada arka planına yansıma şiddeti. Düşük değerler daha sakin, yüksek değerler daha canlı bir ton verir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="0" Maximum="100" StepFrequency="1" IsEnabled="{Binding DynamicColorTint}" Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding ArtworkTintStrength, Mode=TwoWay}" AutomationProperties.Name="Kapak rengi yoğunluğu" Margin="0,2,0,0" />
+                        </StackPanel>
                         <Border Style="{StaticResource DividerStyle}" />
 
                         <!-- Seek Controls -->
@@ -218,6 +227,18 @@
                                 <ComboBoxItem Content="Az" /><ComboBoxItem Content="Dengeli" /><ComboBoxItem Content="Akıcı" />
                             </ComboBox>
                         </Grid>
+
+                        <!-- Motion Speed -->
+                        <StackPanel Spacing="4" Margin="0,2,0,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Animasyon hızı" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding MotionSpeedLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="Geçişlerin genel hızı. Yüksek değerler daha çevik, düşük değerler daha sakin bir akış verir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="70" Maximum="140" StepFrequency="5" Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding MotionSpeed, Mode=TwoWay}" AutomationProperties.Name="Animasyon hızı" Margin="0,2,0,0" />
+                        </StackPanel>
                         <Border Style="{StaticResource DividerStyle}" />
 
                         <!-- Glass effect -->
@@ -231,6 +252,18 @@
                                           OnContent="" OffContent="" IsOn="{Binding UseTransparency, Mode=TwoWay}"
                                           AutomationProperties.Name="Cam efekti" />
                         </Grid>
+
+                        <!-- Transparency Strength -->
+                        <StackPanel Spacing="4" Margin="0,2,0,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Saydamlık" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding TransparencyLevelLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="Cam efektinin şeffaflığı. 0% opak, 100% en saydam görünüm." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="0" Maximum="100" StepFrequency="1" IsEnabled="{Binding UseTransparency}" Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding TransparencyLevel, Mode=TwoWay}" AutomationProperties.Name="Saydamlık" Margin="0,2,0,0" />
+                        </StackPanel>
                     </StackPanel>
                 </Border>
 

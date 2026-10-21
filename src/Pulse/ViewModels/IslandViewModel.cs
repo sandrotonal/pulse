@@ -488,7 +488,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Microsoft.UI.Xaml.Visibility NotificationVisibility => (!IsSplitModeActive && IsNotificationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FocusTimerVisibility => (!IsSplitModeActive && !IsNotificationActive && IsFocusTimerActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FileOperationVisibility => (!IsSplitModeActive && !IsNotificationActive && !IsFocusTimerActive && IsFileOperationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility TrackContentVisibility => ((HasTrack || _isSplitDemoForced) && (!IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive || IsSplitModeActive) && IsCompact) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility TrackContentVisibility => ((HasTrack || _isSplitDemoForced) && (!IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive || IsSplitModeActive) && ShowsCompactContent) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility CustomIdleVisibility => (!HasTrack && !_isSplitDemoForced && !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && CurrentIslandState is (IslandState.Idle or IslandState.Hover)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     // Delegated Media ViewModel properties for unified XAML binding compatibility
@@ -502,6 +502,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsIdle => _media.IsIdle;
     public bool IsExpanded => _media.IsExpanded;
     public bool IsCompact => _media.IsCompact;
+    public bool ShowsCompactContent => _media.ShowsCompactContent;
     public bool IsCollapsing => CurrentIslandState == IslandState.Collapsing;
     public bool ShowSeekControls => _media.ShowSeekControls;
     public bool NotificationsPaused => _media.NotificationsPaused;
@@ -514,6 +515,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool DynamicColorTint => _media.DynamicColorTint;
     public bool ShowEqualizer => _media.ShowEqualizer;
     public bool UseTransparency => _media.UseTransparency;
+    public int TransparencyLevel => _media.TransparencyLevel;
+    public int ArtworkTintStrength => _media.ArtworkTintStrength;
+    public int MotionSpeed => _media.MotionSpeed;
     public int TopOffset => _media.TopOffset;
     public double IslandScale => _media.IslandScale;
     public string AnimationIntensity => _media.AnimationIntensity;

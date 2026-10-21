@@ -69,4 +69,43 @@ public sealed class IslandStateMachineTests
 
         Assert.Equal(IslandState.Compact, machine.CurrentState);
     }
+
+    [Fact]
+    public void TrackChangeKeepsExpandedIslandOpen()
+    {
+        var machine = new IslandStateMachine();
+        machine.SetHasMedia(true);
+        machine.ToggleExpanded();
+
+        var announced = machine.ShowTrackChanged();
+
+        Assert.False(announced);
+        Assert.Equal(IslandState.Expanded, machine.CurrentState);
+    }
+
+    [Fact]
+    public void TrackChangeAnnouncesItselfWhileCompact()
+    {
+        var machine = new IslandStateMachine();
+        machine.SetHasMedia(true);
+
+        var announced = machine.ShowTrackChanged();
+
+        Assert.True(announced);
+        Assert.Equal(IslandState.TrackChanged, machine.CurrentState);
+    }
+
+    [Fact]
+    public void TrackChangeDuringCollapseLetsTheCollapseFinish()
+    {
+        var machine = new IslandStateMachine();
+        machine.SetHasMedia(true);
+        machine.ToggleExpanded();
+        machine.ToggleExpanded();
+
+        var announced = machine.ShowTrackChanged();
+
+        Assert.False(announced);
+        Assert.Equal(IslandState.Collapsing, machine.CurrentState);
+    }
 }

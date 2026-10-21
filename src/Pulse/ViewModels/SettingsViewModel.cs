@@ -20,6 +20,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _dynamicColorTint = true;
     private bool _showEqualizer = true;
     private bool _useTransparency;
+    private double _transparencyLevel = 60;
+    private double _artworkTintStrength = 25;
+    private double _motionSpeed = 100;
     private int _themeIndex;
     private int _animationIndex = 1;
     private double _topOffset = 14;
@@ -60,6 +63,45 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool DynamicColorTint { get => _dynamicColorTint; set { if (SetProperty(ref _dynamicColorTint, value)) Save(); } }
     public bool ShowEqualizer { get => _showEqualizer; set { if (SetProperty(ref _showEqualizer, value)) Save(); } }
     public bool UseTransparency { get => _useTransparency; set { if (SetProperty(ref _useTransparency, value)) Save(); } }
+    public double TransparencyLevel
+    {
+        get => _transparencyLevel;
+        set
+        {
+            if (SetProperty(ref _transparencyLevel, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TransparencyLevelLabel)));
+                Save();
+            }
+        }
+    }
+    public string TransparencyLevelLabel => $"{(int)Math.Round(TransparencyLevel)}%";
+    public double ArtworkTintStrength
+    {
+        get => _artworkTintStrength;
+        set
+        {
+            if (SetProperty(ref _artworkTintStrength, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ArtworkTintStrengthLabel)));
+                Save();
+            }
+        }
+    }
+    public string ArtworkTintStrengthLabel => $"{(int)Math.Round(ArtworkTintStrength)}%";
+    public double MotionSpeed
+    {
+        get => _motionSpeed;
+        set
+        {
+            if (SetProperty(ref _motionSpeed, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(MotionSpeedLabel)));
+                Save();
+            }
+        }
+    }
+    public string MotionSpeedLabel => $"{(int)Math.Round(MotionSpeed)}%";
     public int ThemeIndex { get => _themeIndex; set { if (SetProperty(ref _themeIndex, value)) Save(); } }
     public int AnimationIndex { get => _animationIndex; set { if (SetProperty(ref _animationIndex, value)) Save(); } }
     public double TopOffset
@@ -111,6 +153,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         DynamicColorTint = settings.DynamicColorTint;
         ShowEqualizer = settings.ShowEqualizer;
         UseTransparency = settings.UseTransparency;
+        TransparencyLevel = settings.TransparencyLevel;
+        ArtworkTintStrength = settings.ArtworkTintStrength;
+        MotionSpeed = settings.MotionSpeed;
         ThemeIndex = settings.Theme switch { "Dark" => 1, "Light" => 2, _ => 0 };
         AnimationIndex = settings.AnimationIntensity switch { "Minimal" => 0, "Dynamic" => 2, _ => 1 };
         TopOffset = settings.TopOffset;
@@ -156,6 +201,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             DynamicColorTint = DynamicColorTint,
             ShowEqualizer = ShowEqualizer,
             UseTransparency = UseTransparency,
+            TransparencyLevel = (int)Math.Round(TransparencyLevel),
+            ArtworkTintStrength = (int)Math.Round(ArtworkTintStrength),
+            MotionSpeed = (int)Math.Round(MotionSpeed),
             Theme = ThemeIndex switch { 1 => "Dark", 2 => "Light", _ => "System" },
             AnimationIntensity = AnimationIndex switch { 0 => "Minimal", 2 => "Dynamic", _ => "Normal" },
             TopOffset = (int)Math.Round(TopOffset),

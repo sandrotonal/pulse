@@ -230,6 +230,33 @@
                            VerticalAlignment="Stretch"
                            IsHitTestVisible="False" />
 
+                <!-- Live album tint over the neutral blur. Keeping the tint separate
+                     lets track changes recolor the glass instantly without re-capturing
+                     the desktop (which briefly hides the window and blinks). -->
+                <Rectangle x:Name="FrostTintLayer"
+                           RadiusX="20" RadiusY="20"
+                           Visibility="Collapsed"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Stretch"
+                           IsHitTestVisible="False" />
+
+                <!-- Specular sheen stays proportional to the surface instead of being
+                     baked into the desktop snapshot, so it survives every morph. -->
+                <Rectangle x:Name="FrostSheen"
+                           RadiusX="20" RadiusY="20"
+                           Height="18"
+                           Visibility="Collapsed"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Top"
+                           IsHitTestVisible="False">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop Color="#24FFFFFF" Offset="0" />
+                            <GradientStop Color="#00FFFFFF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+
 
                 <!-- 01 & 02: COMPACT VIEW (Capsule mode: 216-252 x 40) -->
                 <Grid x:Name="CompactView"
@@ -438,7 +465,7 @@
 
                 <!-- 03: EXPANDED VIEW (Multi-Panel Apple Dynamic Island Carousel) -->
                 <Grid x:Name="ExpandedView"
-                      Opacity="0"
+                      Visibility="Collapsed"
                       IsHitTestVisible="False"
                       Padding="16,14,16,14"
                       PointerReleased="OnExpandedViewPointerReleased"
