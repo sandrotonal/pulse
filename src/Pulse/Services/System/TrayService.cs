@@ -9,6 +9,7 @@ public sealed class TrayService : IDisposable
     private const uint WmLButtonUp = 0x0202;
     private const uint WmRButtonUp = 0x0205;
     private const uint NimAdd = 0;
+    private const uint NimModify = 1;
     private const uint NimDelete = 2;
     private const uint NimSetVersion = 4;
     private const uint NifMessage = 0x01;
@@ -74,13 +75,22 @@ public sealed class TrayService : IDisposable
         }
 
         var data = CreateIconData();
+        // Remove orphan if previous session terminated abruptly
+        _ = Shell_NotifyIcon(NimDelete, ref data);
+
         if (!Shell_NotifyIcon(NimAdd, ref data))
         {
-            throw new InvalidOperationException($"Pulse tray icon could not be added ({Marshal.GetLastWin32Error()}).");
+            // Fallback without NifGuid if Windows Explorer locked the GUID to a previous process
+            data.Flags &= ~NifGuid;
+            data.Guid = Guid.Empty;
+            if (!Shell_NotifyIcon(NimAdd, ref data))
+            {
+                _ = Shell_NotifyIcon(NimModify, ref data);
+            }
         }
 
         data.Version = 4;
-        Shell_NotifyIcon(NimSetVersion, ref data);
+        _ = Shell_NotifyIcon(NimSetVersion, ref data);
     }
 
     public void SetStartupEnabled(bool enabled) => _startupEnabled = enabled;

@@ -1,0 +1,100 @@
+{
+  "audit_version": "1.0",
+  "target_assembly": "Pulse.dll",
+  "target_framework": "net9.0-windows10.0.26100.0",
+  "audit_date": "2026-10-18T23:05:00Z",
+  "status": "PASS",
+  "pinvoke_boundaries": [
+    {
+      "module": "gdi32.dll",
+      "method": "CreateRoundRectRgn",
+      "calling_convention": "StdCall",
+      "signature": "IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse)",
+      "status": "verified",
+      "marshaling_safety": "safe_blittable"
+    },
+    {
+      "module": "gdi32.dll",
+      "method": "CreateRectRgn",
+      "calling_convention": "StdCall",
+      "signature": "IntPtr CreateRectRgn(int left, int top, int right, int bottom)",
+      "status": "verified",
+      "marshaling_safety": "safe_blittable"
+    },
+    {
+      "module": "gdi32.dll",
+      "method": "CombineRgn",
+      "calling_convention": "StdCall",
+      "signature": "int CombineRgn(IntPtr hrgnDest, IntPtr hrgnSrc1, IntPtr hrgnSrc2, int fnCombineMode)",
+      "status": "verified",
+      "marshaling_safety": "safe_blittable"
+    },
+    {
+      "module": "gdi32.dll",
+      "method": "DeleteObject",
+      "calling_convention": "StdCall",
+      "signature": "bool DeleteObject(IntPtr hObject)",
+      "status": "verified",
+      "marshaling_safety": "safe_blittable"
+    },
+    {
+      "module": "user32.dll",
+      "method": "SetWindowRgn",
+      "calling_convention": "StdCall",
+      "signature": "int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw)",
+      "status": "verified",
+      "marshaling_safety": "safe_blittable"
+    },
+    {
+      "module": "user32.dll",
+      "method": "SetWindowPos",
+      "calling_convention": "StdCall",
+      "signature": "bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags)",
+      "status": "verified",
+      "marshaling_safety": "safe_blittable"
+    },
+    {
+      "module": "comctl32.dll",
+      "method": "SetWindowSubclass",
+      "calling_convention": "StdCall",
+      "signature": "bool SetWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, UIntPtr uIdSubclass, IntPtr dwRefData)",
+      "status": "verified",
+      "marshaling_safety": "pinned_delegate"
+    },
+    {
+      "module": "comctl32.dll",
+      "method": "DefSubclassProc",
+      "calling_convention": "StdCall",
+      "signature": "IntPtr DefSubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam)",
+      "status": "verified",
+      "marshaling_safety": "safe_blittable"
+    },
+    {
+      "module": "dwmapi.dll",
+      "method": "DwmSetWindowAttribute",
+      "calling_convention": "StdCall",
+      "signature": "int DwmSetWindowAttribute(IntPtr hwnd, uint dwAttribute, ref int pvAttribute, int cbAttribute)",
+      "status": "verified",
+      "marshaling_safety": "ref_blittable"
+    }
+  ],
+  "spring_engine_verification": {
+    "engine": "DampedSpringOscillator",
+    "damping_ratio": 0.82,
+    "frequency_response_seconds": 0.35,
+    "test_suite": "Pulse.Tests.Animation.DampedSpringOscillatorTests",
+    "total_tests": 3,
+    "passed_tests": 3,
+    "status": "PASS"
+  },
+  "split_island_verification": {
+    "feature": "Dual-Capsule Detached Island Architecture",
+    "leading_pill": "Surface (X=-25f)",
+    "trailing_capsule": "DetachedPill (40x40 circle, X=(targetWidth/2 + 5.0)f)",
+    "win32_region_masking": "CombineRgn(..., RGN_OR)",
+    "test_suite": "Pulse.Tests.IslandSplitModeTests",
+    "total_tests": 1,
+    "passed_tests": 1,
+    "status": "PASS"
+  }
+}

@@ -43,10 +43,19 @@
                        Foreground="{ThemeResource SettingsSecondary}" VerticalAlignment="Center" />
         </Grid>
 
-        <StackPanel Grid.Row="1" Spacing="4" Margin="0,18,0,14">
-            <TextBlock Text="Ayarlar" FontSize="30" FontWeight="SemiBold" Foreground="{ThemeResource SettingsText}" />
-            <TextBlock Text="Pulse deneyimini kendine göre düzenle." FontSize="14" Foreground="{ThemeResource SettingsSecondary}" />
-        </StackPanel>
+        <Grid Grid.Row="1" Margin="0,18,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Width="48" Height="48" CornerRadius="12" Margin="0,0,14,0" VerticalAlignment="Center">
+                <Image Source="ms-appx:///Assets/Square44x44Logo.scale-200.png" Width="48" Height="48" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="Ayarlar" FontSize="28" FontWeight="SemiBold" Foreground="{ThemeResource SettingsText}" />
+                <TextBlock Text="Pulse deneyimini kendine göre düzenle." FontSize="13" Foreground="{ThemeResource SettingsSecondary}" />
+            </StackPanel>
+        </Grid>
 
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
             <StackPanel Spacing="0">

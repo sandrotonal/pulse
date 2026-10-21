@@ -780,6 +780,53 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         return true;
     }
 
+    public void SimulateDemoTrack(string title = "Blinding Lights", string artist = "The Weeknd", string album = "After Hours")
+    {
+        var track = new MediaTrack
+        {
+            SourceApplicationId = "Spotify",
+            Title = title,
+            Artist = artist,
+            Album = album,
+            Position = TimeSpan.FromSeconds(74),
+            Duration = TimeSpan.FromSeconds(200),
+            PlaybackStatus = PlaybackStatus.Playing,
+            CanPause = true,
+            CanPlay = true,
+            CanNext = true,
+            CanPrevious = true,
+            CanSeek = true,
+            Artwork = null
+        };
+        ApplyTrackUpdate(track);
+        _artworkAccentColor = 0xFFFF0055u;
+        OnPropertyChanged(nameof(ArtworkAccentColor));
+        OnPropertyChanged(nameof(PositionLabel));
+        OnPropertyChanged(nameof(DurationLabel));
+        OnPropertyChanged(nameof(SeekPercent));
+        OnPropertyChanged(nameof(HasTrack));
+        OnPropertyChanged(nameof(IsPlaying));
+    }
+
+    public void ClearDemoTrack()
+    {
+        ApplyTrackUpdate(null);
+        OnPropertyChanged(nameof(HasTrack));
+        OnPropertyChanged(nameof(IsPlaying));
+    }
+
+    public void ToggleDemoTrack()
+    {
+        if (HasTrack)
+        {
+            ClearDemoTrack();
+        }
+        else
+        {
+            SimulateDemoTrack();
+        }
+    }
+
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
         => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 }
