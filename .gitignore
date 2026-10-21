@@ -27,3 +27,8 @@ Desktop.ini
 .idea/
 *.log
 scratch/
+
+## Local scratch output
+err.txt
+out.txt
+Gemini_Generated_Image_*.jpg

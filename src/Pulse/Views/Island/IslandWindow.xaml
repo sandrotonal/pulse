@@ -12,6 +12,7 @@
     </Window.SystemBackdrop>
 
     <Grid x:Name="WindowRoot"
+          Width="424" Height="260"
           Background="{x:Null}"
           HorizontalAlignment="Center"
           VerticalAlignment="Top">
@@ -153,8 +154,10 @@
                 BorderThickness="1"
                 PointerEntered="OnPointerEntered"
                 PointerExited="OnPointerExited"
+                PointerPressed="OnSurfacePointerPressed"
                 PointerReleased="OnSurfacePointerReleased"
                 PointerWheelChanged="OnSurfacePointerWheelChanged">
+
 
                 <Border.ContextFlyout>
                 <MenuFlyout>
@@ -165,6 +168,17 @@
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                     <MenuFlyoutSeparator />
+
+                    <!-- Test ve Demo Modları -->
+                    <MenuFlyoutSubItem Text="Test ve Demo Modları">
+                        <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE7C4;" /></MenuFlyoutSubItem.Icon>
+                        <MenuFlyoutItem Text="Çift Kapsül (Split Island) Modunu Başlat / Kapat" Command="{Binding ToggleSplitIslandDemoCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7C4;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Müzik Simülatörü (Test Şarkısı Çal / Durdur)" Command="{Binding ToggleDemoTrackCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8D6;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyoutSubItem>
 
                     <!-- Odak Sayacı (Pomodoro) -->
                     <MenuFlyoutSubItem Text="Odak Sayacı (Pomodoro)">
@@ -230,7 +244,9 @@
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center">
                         <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                            <Ellipse Width="6" Height="6" Fill="{ThemeResource Accent}" />
+                            <Border Width="12" Height="12" CornerRadius="3">
+                                <Image Source="ms-appx:///Assets/Square44x44Logo.targetsize-24_altform-unplated.png" Width="12" Height="12" />
+                            </Border>
                             <TextBlock Text="PULSE"
                                        FontSize="10" FontWeight="SemiBold"
                                        CharacterSpacing="120"
@@ -689,23 +705,24 @@
                         </Grid>
 
                         <!-- Panel 1: Odak Sayacı (Pomodoro) -->
-                        <Grid x:Name="FocusExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto,Auto">
+                        <Grid x:Name="FocusExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto,Auto" Margin="0,4,0,8">
                             <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="4">
                                 <TextBlock Text="{Binding FocusTimerModeText, TargetNullValue='Odaklanma'}"
-                                           FontSize="10" FontWeight="SemiBold"
+                                           FontSize="11" FontWeight="SemiBold"
                                            Foreground="{ThemeResource SecondaryText}"
-                                           CharacterSpacing="240"
+                                           CharacterSpacing="200"
                                            HorizontalAlignment="Center" />
                                 <TextBlock Text="{Binding FocusTimerText, TargetNullValue='25:00'}"
                                            FontSize="38" FontWeight="SemiBold"
                                            Typography.NumeralAlignment="Tabular"
                                            Foreground="{ThemeResource PrimaryText}"
-                                           CharacterSpacing="20"
+                                           MinWidth="180"
+                                           TextAlignment="Center"
                                            HorizontalAlignment="Center" />
                             </StackPanel>
 
                             <!-- Progress hairline: iOS-style thin scrubber under the timer -->
-                            <Grid x:Name="FocusProgressTrack" Grid.Row="1" Height="3" Margin="24,2,24,6" CornerRadius="1.5"
+                            <Grid x:Name="FocusProgressTrack" Grid.Row="1" Height="3" Margin="24,10,24,16" CornerRadius="1.5"
                                   Background="{ThemeResource PillControlBackground}">
                                 <Rectangle x:Name="FocusProgressFill"
                                            HorizontalAlignment="Left"
@@ -716,11 +733,11 @@
                             </Grid>
 
                             <!-- Presets & Actions -->
-                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" VerticalAlignment="Center">
+                            <Grid Grid.Row="2" ColumnDefinitions="*,Auto" VerticalAlignment="Center" Margin="0,0,0,8">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                                     <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Content="25 dk" FontSize="10.5"
-                                            Width="52" Height="30" CornerRadius="15"
+                                            Width="50" Height="30" CornerRadius="15"
                                             Background="{Binding FocusPreset25Brush}"
                                             Command="{Binding SetFocusTimer25Command}"
                                             PointerPressed="OnButtonPointerPressed"
@@ -728,7 +745,7 @@
                                             ToolTipService.ToolTip="25 Dakika Odaklanma" />
                                     <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Content="50 dk" FontSize="10.5"
-                                            Width="52" Height="30" CornerRadius="15"
+                                            Width="50" Height="30" CornerRadius="15"
                                             Background="{Binding FocusPreset50Brush}"
                                             Command="{Binding SetFocusTimer50Command}"
                                             PointerPressed="OnButtonPointerPressed"
@@ -736,7 +753,7 @@
                                             ToolTipService.ToolTip="50 Dakika Derin Çalışma" />
                                     <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Content="5 dk" FontSize="10.5"
-                                            Width="46" Height="30" CornerRadius="15"
+                                            Width="50" Height="30" CornerRadius="15"
                                             Background="{Binding BreakPreset5Brush}"
                                             Command="{Binding SetBreakTimer5Command}"
                                             PointerPressed="OnButtonPointerPressed"
@@ -744,7 +761,7 @@
                                             ToolTipService.ToolTip="5 Dakika Kısa Mola" />
                                     <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Content="15 dk" FontSize="10.5"
-                                            Width="52" Height="30" CornerRadius="15"
+                                            Width="50" Height="30" CornerRadius="15"
                                             Background="{Binding BreakPreset15Brush}"
                                             Command="{Binding SetBreakTimer15Command}"
                                             PointerPressed="OnButtonPointerPressed"
@@ -825,6 +842,39 @@
                     </Grid>
                 </Grid>
             </Grid>
+        </Border>
+
+        <!-- Trailing Detached Capsule for Secondary Contextual Events (Apple Split Island) -->
+        <Border x:Name="DetachedPill"
+                Width="66" Height="40"
+                CornerRadius="20"
+                HorizontalAlignment="Center"
+                VerticalAlignment="Top"
+                Background="{ThemeResource IslandBackground}"
+                BorderBrush="{ThemeResource IslandBorder}"
+                BorderThickness="1"
+                Opacity="0"
+                Visibility="Collapsed"
+                PointerEntered="OnDetachedPillPointerEntered"
+                PointerExited="OnDetachedPillPointerExited"
+                PointerPressed="OnDetachedPillPointerPressed"
+                PointerReleased="OnDetachedPillPointerReleased"
+                ToolTipService.ToolTip="{Binding DetachedToolTip}">
+
+            <StackPanel Orientation="Horizontal" Spacing="3"
+                        HorizontalAlignment="Center" VerticalAlignment="Center"
+                        Padding="4,0,4,0">
+                <FontIcon Glyph="{Binding DetachedGlyph}"
+                          FontSize="11"
+                          Foreground="{ThemeResource Accent}"
+                          VerticalAlignment="Center" />
+                <TextBlock Text="{Binding DetachedBadgeText}"
+                           FontSize="10.5"
+                           FontWeight="SemiBold"
+                           Foreground="{ThemeResource PrimaryText}"
+                           VerticalAlignment="Center"
+                           MaxLines="1" />
+            </StackPanel>
         </Border>
     </Grid>
 </Window>

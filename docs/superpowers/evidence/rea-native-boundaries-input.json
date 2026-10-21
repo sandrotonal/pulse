@@ -1,0 +1,66 @@
+{
+  "managed_boundaries": {
+    "CreateRoundRectRgn": {
+      "module": "gdi32.dll",
+      "entry_point": "CreateRoundRectRgn",
+      "calling_convention": "StdCall",
+      "parameters": ["int", "int", "int", "int", "int", "int"],
+      "return_type": "IntPtr"
+    },
+    "CombineRgn": {
+      "module": "gdi32.dll",
+      "entry_point": "CombineRgn",
+      "calling_convention": "StdCall",
+      "parameters": ["IntPtr", "IntPtr", "IntPtr", "int"],
+      "return_type": "int"
+    },
+    "SetWindowRgn": {
+      "module": "user32.dll",
+      "entry_point": "SetWindowRgn",
+      "calling_convention": "StdCall",
+      "parameters": ["IntPtr", "IntPtr", "bool"],
+      "return_type": "int"
+    },
+    "SetWindowPos": {
+      "module": "user32.dll",
+      "entry_point": "SetWindowPos",
+      "calling_convention": "StdCall",
+      "parameters": ["IntPtr", "IntPtr", "int", "int", "int", "int", "uint"],
+      "return_type": "bool"
+    }
+  },
+  "native_observations": [
+    {
+      "symbol": "CreateRoundRectRgn",
+      "library": "gdi32.dll",
+      "address": "0x7ffb12341000",
+      "calling_convention": "stdcall",
+      "parameters": ["int", "int", "int", "int", "int", "int"],
+      "return_type": "HRGN"
+    },
+    {
+      "symbol": "CombineRgn",
+      "library": "gdi32.dll",
+      "address": "0x7ffb12341050",
+      "calling_convention": "stdcall",
+      "parameters": ["HRGN", "HRGN", "HRGN", "int"],
+      "return_type": "int"
+    },
+    {
+      "symbol": "SetWindowRgn",
+      "library": "user32.dll",
+      "address": "0x7ffb12502000",
+      "calling_convention": "stdcall",
+      "parameters": ["HWND", "HRGN", "BOOL"],
+      "return_type": "int"
+    },
+    {
+      "symbol": "SetWindowPos",
+      "library": "user32.dll",
+      "address": "0x7ffb12502100",
+      "calling_convention": "stdcall",
+      "parameters": ["HWND", "HWND", "int", "int", "int", "int", "UINT"],
+      "return_type": "BOOL"
+    }
+  ]
+}

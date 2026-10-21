@@ -38,7 +38,8 @@ public sealed class IslandCarouselNavigationTests
         var active = router.CurrentActiveEvent as SystemNotificationEvent;
         Assert.NotNull(active);
         Assert.Equal(EventCategory.Audio, active.Category);
-        Assert.Contains("Ses: %80", active.Title);
+        Assert.Equal("Ses", active.Title);
+        Assert.Equal("%80", active.Subtitle);
 
         systemService.ReportAudioStatus(0, isMuted: true);
         var activeMuted = router.CurrentActiveEvent as SystemNotificationEvent;

@@ -16,6 +16,15 @@ public sealed partial class SettingsWindow : Window
         AppWindow.TitleBar.ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
         SetTitleBar(TitleBarDragRegion);
+        try
+        {
+            var iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            if (System.IO.File.Exists(iconPath))
+            {
+                AppWindow.SetIcon(iconPath);
+            }
+        }
+        catch { }
         viewModel.PropertyChanged += OnSettingsPropertyChanged;
         SettingsRoot.ActualThemeChanged += OnActualThemeChanged;
         Closed += (_, _) =>

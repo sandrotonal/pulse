@@ -28,9 +28,12 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
         try
         {
-            _deviceEnumerator ??= (IMMDeviceEnumerator)Activator.CreateInstance(
-                Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E"))!);
-            if (_deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, out var device) != 0 || device is null)
+            var comType = Type.GetTypeFromCLSID(new Guid("BCDE0395-E52F-467C-8E3D-C4579291692E"));
+            if (comType is not null && Activator.CreateInstance(comType) is IMMDeviceEnumerator enumerator)
+            {
+                _deviceEnumerator ??= enumerator;
+            }
+            if (_deviceEnumerator is null || _deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, out var device) != 0 || device is null)
             {
                 return null;
             }

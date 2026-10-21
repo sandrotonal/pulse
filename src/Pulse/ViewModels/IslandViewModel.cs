@@ -47,7 +47,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _eventRouter.ActiveEventChanged += OnActiveEventChanged;
         _focusTimer.Tick += OnFocusTimerTick;
 
-        StartFocusTimerCommand = new RelayCommand(() => _focusTimer.Start(TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5)));
+        StartFocusTimerCommand = new RelayCommand(() =>
+        {
+            _focusTimer.Start(TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5));
+            NotifySplitStateChanged();
+        });
         ToggleFocusTimerCommand = new RelayCommand(() =>
         {
             if (_focusTimer.IsRunning)
@@ -64,11 +68,44 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 _focusTimer.Resume();
             }
             NotifyFocusTick();
+            NotifySplitStateChanged();
         });
         ResetFocusTimerCommand = new RelayCommand(() =>
         {
             _focusTimer.Reset();
             NotifyFocusTick();
+            NotifySplitStateChanged();
+        });
+
+        ToggleDemoTrackCommand = new RelayCommand(() =>
+        {
+            _media.ToggleDemoTrack();
+            NotifySplitStateChanged();
+        });
+
+        ToggleSplitIslandDemoCommand = new RelayCommand(() =>
+        {
+            if (!_isSplitDemoForced && !IsSplitModeActive)
+            {
+                if (!_media.HasTrack)
+                {
+                    _media.SimulateDemoTrack();
+                }
+                if (!_focusTimer.IsRunning && _focusTimer.State != FocusTimerState.Running)
+                {
+                    _focusTimer.Start(TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5));
+                }
+                _isSplitDemoForced = true;
+                _media.Collapse();
+            }
+            else
+            {
+                _isSplitDemoForced = false;
+                _focusTimer.Reset();
+                _media.ClearDemoTrack();
+                _media.Collapse();
+            }
+            NotifySplitStateChanged();
         });
 
         // Real system audio controls (endpoint volume), replacing the demo reporting path
@@ -304,6 +341,23 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand TestBluetoothNotificationCommand { get; }
     public RelayCommand TestScreenshotNotificationCommand { get; }
     public RelayCommand TestFileProgressCommand { get; }
+    public RelayCommand ToggleDemoTrackCommand { get; }
+    public RelayCommand ToggleSplitIslandDemoCommand { get; }
+
+    private bool _isSplitDemoForced;
+    public bool IsSplitDemoForced
+    {
+        get => _isSplitDemoForced;
+        set
+        {
+            if (_isSplitDemoForced != value)
+            {
+                _isSplitDemoForced = value;
+                OnPropertyChanged();
+                NotifySplitStateChanged();
+            }
+        }
+    }
 
     // Active Event Context
     public IslandEvent? ActiveEvent => _activeEvent;
@@ -340,6 +394,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         NotifyFocusBrushes();
         _focusTimer.Start(focus, breakTime);
         OnPropertyChanged(nameof(PreserveFocusPanel));
+        NotifySplitStateChanged();
     }
 
     public Microsoft.UI.Xaml.Media.SolidColorBrush FocusPreset25Brush => FocusTipBrush("25");
@@ -404,13 +459,37 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public bool IsMediaActive => !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && (_media.HasTrack || _activeEvent is MediaEvent);
+    public bool IsMediaActive => !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && (_media.HasTrack || _isSplitDemoForced || _activeEvent is MediaEvent);
 
-    public Microsoft.UI.Xaml.Visibility NotificationVisibility => IsNotificationActive ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility FocusTimerVisibility => (!IsNotificationActive && IsFocusTimerActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility FileOperationVisibility => (!IsNotificationActive && !IsFocusTimerActive && IsFileOperationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility TrackContentVisibility => (IsMediaActive && HasTrack && !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && IsCompact) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility CustomIdleVisibility => (!HasTrack && !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && CurrentIslandState is (IslandState.Idle or IslandState.Hover)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public bool IsSplitModeActive => IsCompact && (
+        _isSplitDemoForced ||
+        (HasTrack && (IsFocusTimerActive || IsNotificationActive || IsFileOperationActive)) ||
+        (IsFocusTimerActive && (IsNotificationActive || IsFileOperationActive))
+    );
+    public Microsoft.UI.Xaml.Visibility SplitModeVisibility => IsSplitModeActive ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public string DetachedGlyph => IsFocusTimerActive ? "\uE916" : (IsNotificationActive ? NotificationGlyph : (_isSplitDemoForced ? "\uE916" : "\uE896"));
+    public string DetachedBadgeText => IsFocusTimerActive ? FocusTimerText : (IsNotificationActive ? "!" : (_isSplitDemoForced ? "25:00" : $"{FileOperationProgress:F0}%"));
+    public string DetachedToolTip => IsFocusTimerActive ? "Odak Sayacı" : (IsNotificationActive ? NotificationTitle : (_isSplitDemoForced ? "Odak Sayacı (Demo)" : FileOperationName));
+
+    public void OnDetachedPillClicked()
+    {
+        if (IsFocusTimerActive || _isSplitDemoForced)
+        {
+            SelectedPageIndex = 1;
+        }
+        else if (IsNotificationActive || IsFileOperationActive)
+        {
+            SelectedPageIndex = 2;
+        }
+        ToggleExpanded();
+    }
+
+    public Microsoft.UI.Xaml.Visibility NotificationVisibility => (!IsSplitModeActive && IsNotificationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility FocusTimerVisibility => (!IsSplitModeActive && !IsNotificationActive && IsFocusTimerActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility FileOperationVisibility => (!IsSplitModeActive && !IsNotificationActive && !IsFocusTimerActive && IsFileOperationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility TrackContentVisibility => ((HasTrack || _isSplitDemoForced) && (!IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive || IsSplitModeActive) && IsCompact) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility CustomIdleVisibility => (!HasTrack && !_isSplitDemoForced && !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && CurrentIslandState is (IslandState.Idle or IslandState.Hover)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     // Delegated Media ViewModel properties for unified XAML binding compatibility
     public MediaTrack? CurrentTrack => _media.CurrentTrack;
@@ -423,6 +502,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsIdle => _media.IsIdle;
     public bool IsExpanded => _media.IsExpanded;
     public bool IsCompact => _media.IsCompact;
+    public bool IsCollapsing => CurrentIslandState == IslandState.Collapsing;
     public bool ShowSeekControls => _media.ShowSeekControls;
     public bool NotificationsPaused => _media.NotificationsPaused;
     public Microsoft.UI.Xaml.Visibility IdleVisibility => _media.IdleVisibility;
@@ -523,28 +603,43 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private void ApplyActiveEvent(IslandEvent? newEvent)
     {
+        var prevEvent = _activeEvent;
         _activeEvent = newEvent;
         OnPropertyChanged(nameof(ActiveEvent));
-        OnPropertyChanged(nameof(IsNotificationActive));
+
+        bool stateChanged = (prevEvent is null) != (newEvent is null) ||
+                            (prevEvent?.GetType() != newEvent?.GetType()) ||
+                            (prevEvent is FocusTimerEvent pF && newEvent is FocusTimerEvent nF && pF.State != nF.State) ||
+                            (prevEvent is FileOperationEvent pO && newEvent is FileOperationEvent nO && pO.Status != nO.Status);
+
+        if (stateChanged)
+        {
+            OnPropertyChanged(nameof(IsNotificationActive));
+            OnPropertyChanged(nameof(IsFocusTimerActive));
+            OnPropertyChanged(nameof(IsFileOperationActive));
+            OnPropertyChanged(nameof(IsMediaActive));
+            OnPropertyChanged(nameof(NotificationVisibility));
+            OnPropertyChanged(nameof(FocusTimerVisibility));
+            OnPropertyChanged(nameof(FileOperationVisibility));
+            OnPropertyChanged(nameof(TrackContentVisibility));
+            OnPropertyChanged(nameof(CustomIdleVisibility));
+            NotifySplitStateChanged();
+        }
+
         OnPropertyChanged(nameof(NotificationTitle));
         OnPropertyChanged(nameof(NotificationSubtitle));
         OnPropertyChanged(nameof(NotificationGlyph));
         OnPropertyChanged(nameof(IsNotificationWarning));
-        OnPropertyChanged(nameof(IsFocusTimerActive));
         OnPropertyChanged(nameof(FocusTimerText));
         OnPropertyChanged(nameof(FocusTimerModeText));
         OnPropertyChanged(nameof(FocusTimerIsRunning));
         OnPropertyChanged(nameof(FocusPlayPauseGlyph));
-        OnPropertyChanged(nameof(IsFileOperationActive));
         OnPropertyChanged(nameof(FileOperationName));
         OnPropertyChanged(nameof(FileOperationProgress));
         OnPropertyChanged(nameof(FileOperationStatusText));
-        OnPropertyChanged(nameof(IsMediaActive));
-        OnPropertyChanged(nameof(NotificationVisibility));
-        OnPropertyChanged(nameof(FocusTimerVisibility));
-        OnPropertyChanged(nameof(FileOperationVisibility));
-        OnPropertyChanged(nameof(TrackContentVisibility));
-        OnPropertyChanged(nameof(CustomIdleVisibility));
+        OnPropertyChanged(nameof(DetachedGlyph));
+        OnPropertyChanged(nameof(DetachedBadgeText));
+        OnPropertyChanged(nameof(DetachedToolTip));
     }
 
     private void OnFocusTimerTick(object? sender, FocusTimerEvent e)
@@ -567,6 +662,30 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(FocusPlayPauseGlyph));
         OnPropertyChanged(nameof(FocusProgress));
         OnPropertyChanged(nameof(PreserveFocusPanel));
+        OnPropertyChanged(nameof(DetachedBadgeText));
+    }
+
+    private bool _lastSplitModeActive;
+
+    private void NotifySplitStateChanged()
+    {
+        var isSplitNow = IsSplitModeActive;
+        if (_lastSplitModeActive != isSplitNow)
+        {
+            _lastSplitModeActive = isSplitNow;
+            OnPropertyChanged(nameof(IsSplitModeActive));
+            OnPropertyChanged(nameof(SplitModeVisibility));
+        }
+
+        OnPropertyChanged(nameof(DetachedGlyph));
+        OnPropertyChanged(nameof(DetachedBadgeText));
+        OnPropertyChanged(nameof(DetachedToolTip));
+        OnPropertyChanged(nameof(TrackContentVisibility));
+        OnPropertyChanged(nameof(NotificationVisibility));
+        OnPropertyChanged(nameof(FocusTimerVisibility));
+        OnPropertyChanged(nameof(FileOperationVisibility));
+        OnPropertyChanged(nameof(CustomIdleVisibility));
+        OnPropertyChanged(nameof(IsMediaActive));
     }
 
     private DispatcherTimer? _systemPollTimer;
@@ -660,11 +779,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(IsMediaActive));
             OnPropertyChanged(nameof(TrackContentVisibility));
             OnPropertyChanged(nameof(CustomIdleVisibility));
+            NotifySplitStateChanged();
         }
         else if (e.PropertyName is nameof(MediaViewModel.CurrentIslandState) or nameof(MediaViewModel.CompactVisibility) or nameof(MediaViewModel.IdleVisibility))
         {
             OnPropertyChanged(nameof(TrackContentVisibility));
             OnPropertyChanged(nameof(CustomIdleVisibility));
+            NotifySplitStateChanged();
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) or nameof(MediaViewModel.ArtworkAccentColor) or nameof(MediaViewModel.DynamicColorTint))
         {

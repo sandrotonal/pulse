@@ -62,6 +62,36 @@ public partial class App : Application
         }
 
         InitializeComponent();
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] AppDomain.UnhandledException: {e.ExceptionObject}\n\n");
+            }
+            catch { }
+        };
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] TaskScheduler.UnobservedTaskException: {e.Exception}\n\n");
+            }
+            catch { }
+            e.SetObserved();
+        };
+        UnhandledException += (sender, args) =>
+        {
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] UnhandledException: {args.Message}\nException: {args.Exception}\nStackTrace: {args.Exception?.StackTrace}\n\n");
+            }
+            catch { }
+            args.Handled = true;
+        };
+
         _settingsService = new SettingsService();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _startupService = new StartupService();
@@ -71,10 +101,10 @@ public partial class App : Application
 
         _eventRouter = new EventRouter();
         _focusTimerService = new FocusTimerService(_eventRouter);
-        _systemEventService = new SystemEventService(_eventRouter);
+        _systemEventService = new SystemEventService(_eventRouter, _settingsService);
         _fileOperationService = new FileOperationService(_eventRouter);
         _systemControlService = new WindowsSystemControlService();
-        _downloadsWatcherService = new DownloadsWatcherService(_eventRouter);
+        _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
 
         _mediaViewModel = new MediaViewModel(
             _mediaSessionService,
@@ -98,7 +128,26 @@ public partial class App : Application
         await _settingsService.LoadAsync();
         await _mediaViewModel.InitializeAsync();
 
+        AppDomain.CurrentDomain.ProcessExit += (s, e) =>
+        {
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] ProcessExit fired! Environment.ExitCode={Environment.ExitCode}\n");
+            }
+            catch { }
+        };
+
         _islandWindow = new IslandWindow(_islandViewModel);
+        _islandWindow.Closed += (s, e) =>
+        {
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] IslandWindow.Closed fired!\n");
+            }
+            catch { }
+        };
         _islandWindow.SettingsRequested += OnSettingsRequested;
         _islandWindow.TaskbarFlyoutRequested += (_, _) => _taskbarFlyoutWindow?.ToggleFlyout();
         _islandWindow.Activate();
@@ -132,24 +181,36 @@ public partial class App : Application
 
         _taskbarFlyoutWindow = new TaskbarFlyoutWindow(_mediaViewModel);
 
-        var startupEnabled = await _startupService.IsEnabledAsync();
-        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
-        _trayService = new TrayService(iconPath, startupEnabled);
-        _trayService.ShowRequested += (_, _) =>
+        try
         {
-            if (_islandWindow?.IsIslandHidden == true)
+            var startupEnabled = await _startupService.IsEnabledAsync();
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            _trayService = new TrayService(iconPath, startupEnabled);
+            _trayService.ShowRequested += (_, _) =>
             {
-                _islandWindow.UnhideIslandAnimated();
+                if (_islandWindow?.IsIslandHidden == true)
+                {
+                    _islandWindow.UnhideIslandAnimated();
+                }
+                _taskbarFlyoutWindow?.ToggleFlyout();
+            };
+            _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
+            _trayService.SettingsRequested += OnSettingsRequested;
+            _trayService.AboutRequested += OnAboutRequested;
+            _trayService.ExitRequested += OnExitRequested;
+            _trayService.StartupRequested += OnStartupRequested;
+            _trayService.SetNotificationsPaused(_settingsService.Current.NotificationsPaused);
+            _trayService.NotificationsPauseRequested += OnNotificationsPauseRequested;
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
+                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] TrayService warning: {ex.Message}\n");
             }
-            _taskbarFlyoutWindow?.ToggleFlyout();
-        };
-        _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
-        _trayService.SettingsRequested += OnSettingsRequested;
-        _trayService.AboutRequested += OnAboutRequested;
-        _trayService.ExitRequested += OnExitRequested;
-        _trayService.StartupRequested += OnStartupRequested;
-        _trayService.SetNotificationsPaused(_settingsService.Current.NotificationsPaused);
-        _trayService.NotificationsPauseRequested += OnNotificationsPauseRequested;
+            catch { }
+        }
     }
 
     private void OnSettingsRequested(object? sender, EventArgs args)

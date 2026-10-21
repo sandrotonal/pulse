@@ -15,13 +15,15 @@ public sealed class DownloadsWatcherService : IDisposable
         [".crdownload", ".part", ".partial", ".opdownload", ".tmp", ".download"];
 
     private readonly IEventRouter _eventRouter;
+    private readonly ISettingsService? _settings;
     private readonly FileSystemWatcher? _watcher;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _pending = new();
     private bool _isDisposed;
 
-    public DownloadsWatcherService(IEventRouter eventRouter)
+    public DownloadsWatcherService(IEventRouter eventRouter, ISettingsService? settings = null)
     {
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
+        _settings = settings;
 
         var downloads = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
@@ -104,6 +106,12 @@ public sealed class DownloadsWatcherService : IDisposable
             }
 
             _pending.TryRemove(path, out _);
+
+            if (_settings is not null && !_settings.Current.DownloadNotifications)
+            {
+                return;
+            }
+
             _eventRouter.Publish(new FileOperationEvent(
                 $"download_{path}",
                 info.Name,

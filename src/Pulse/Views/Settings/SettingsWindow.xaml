@@ -43,10 +43,19 @@
                        Foreground="{ThemeResource SettingsSecondary}" VerticalAlignment="Center" />
         </Grid>
 
-        <StackPanel Grid.Row="1" Spacing="4" Margin="0,18,0,14">
-            <TextBlock Text="Ayarlar" FontSize="30" FontWeight="SemiBold" Foreground="{ThemeResource SettingsText}" />
-            <TextBlock Text="Pulse deneyimini kendine göre düzenle." FontSize="14" Foreground="{ThemeResource SettingsSecondary}" />
-        </StackPanel>
+        <Grid Grid.Row="1" Margin="0,18,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <Border Grid.Column="0" Width="48" Height="48" CornerRadius="12" Margin="0,0,14,0" VerticalAlignment="Center">
+                <Image Source="ms-appx:///Assets/Square44x44Logo.scale-200.png" Width="48" Height="48" />
+            </Border>
+            <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
+                <TextBlock Text="Ayarlar" FontSize="28" FontWeight="SemiBold" Foreground="{ThemeResource SettingsText}" />
+                <TextBlock Text="Pulse deneyimini kendine göre düzenle." FontSize="13" Foreground="{ThemeResource SettingsSecondary}" />
+            </StackPanel>
+        </Grid>
 
         <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Padding="0,0,8,0">
             <StackPanel Spacing="0">
@@ -138,7 +147,50 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 3. GÖRÜNÜM VE ANİMASYON -->
+                <!-- 3. BİLDİRİMLER -->
+                <TextBlock Text="BİLDİRİMLER" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                    <StackPanel Spacing="0">
+                        <!-- Audio HUD -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Ses değişimi göstergesi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Ses donanım tuşlarıyla veya başka uygulamalardan değiştiğinde adada kısa bir gösterge çıkarır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding AudioNotifications, Mode=TwoWay}"
+                                          AutomationProperties.Name="Ses değişimi göstergesi" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Power -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Pil ve güç olayları" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Şarj bağlandığında ve pil azaldığında adada bildirim gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding PowerNotifications, Mode=TwoWay}"
+                                          AutomationProperties.Name="Pil ve güç olayları" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Downloads -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="İndirme bildirimleri" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="İndirilenler klasörüne tamamlanan her dosya için adada kısa bir bildirim gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding DownloadNotifications, Mode=TwoWay}"
+                                          AutomationProperties.Name="İndirme bildirimleri" />
+                        </Grid>
+                    </StackPanel>
+                </Border>
+                <!-- 4. GÖRÜNÜM VE ANİMASYON -->
                 <TextBlock Text="GÖRÜNÜM VE ANİMASYON" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
                 <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,6,16,6" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
@@ -182,7 +234,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 4. KONUM VE BOYUT -->
+                <!-- 5. KONUM VE BOYUT -->
                 <TextBlock Text="KONUM VE BOYUT" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
                 <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,10,16,12" Margin="0,0,0,16">
                     <StackPanel Spacing="10">
@@ -214,7 +266,7 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 5. SİSTEM -->
+                <!-- 6. SİSTEM -->
                 <TextBlock Text="SİSTEM" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
                 <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
                     <Grid MinHeight="54">

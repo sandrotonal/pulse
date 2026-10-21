@@ -13,6 +13,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _autoCollapse = true;
     private bool _showSeekControls = true;
     private bool _notificationsPaused;
+    private bool _audioNotifications = true;
+    private bool _powerNotifications = true;
+    private bool _downloadNotifications = true;
     private bool _enableHoverExpand = true;
     private bool _dynamicColorTint = true;
     private bool _showEqualizer = true;
@@ -50,6 +53,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool AutoCollapse { get => _autoCollapse; set { if (SetProperty(ref _autoCollapse, value)) Save(); } }
     public bool ShowSeekControls { get => _showSeekControls; set { if (SetProperty(ref _showSeekControls, value)) Save(); } }
     public bool NotificationsPaused { get => _notificationsPaused; set { if (SetProperty(ref _notificationsPaused, value)) Save(); } }
+    public bool AudioNotifications { get => _audioNotifications; set { if (SetProperty(ref _audioNotifications, value)) Save(); } }
+    public bool PowerNotifications { get => _powerNotifications; set { if (SetProperty(ref _powerNotifications, value)) Save(); } }
+    public bool DownloadNotifications { get => _downloadNotifications; set { if (SetProperty(ref _downloadNotifications, value)) Save(); } }
     public bool EnableHoverExpand { get => _enableHoverExpand; set { if (SetProperty(ref _enableHoverExpand, value)) Save(); } }
     public bool DynamicColorTint { get => _dynamicColorTint; set { if (SetProperty(ref _dynamicColorTint, value)) Save(); } }
     public bool ShowEqualizer { get => _showEqualizer; set { if (SetProperty(ref _showEqualizer, value)) Save(); } }
@@ -98,6 +104,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AutoCollapse = settings.AutoCollapse;
         ShowSeekControls = settings.ShowSeekControls;
         NotificationsPaused = settings.NotificationsPaused;
+        AudioNotifications = settings.AudioNotifications;
+        PowerNotifications = settings.PowerNotifications;
+        DownloadNotifications = settings.DownloadNotifications;
         EnableHoverExpand = settings.EnableHoverExpand;
         DynamicColorTint = settings.DynamicColorTint;
         ShowEqualizer = settings.ShowEqualizer;
@@ -140,6 +149,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             AutoCollapse = AutoCollapse,
             ShowSeekControls = ShowSeekControls,
             NotificationsPaused = NotificationsPaused,
+            AudioNotifications = AudioNotifications,
+            PowerNotifications = PowerNotifications,
+            DownloadNotifications = DownloadNotifications,
             EnableHoverExpand = EnableHoverExpand,
             DynamicColorTint = DynamicColorTint,
             ShowEqualizer = ShowEqualizer,
