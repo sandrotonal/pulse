@@ -31,7 +31,7 @@
 
 <img src="docs/images/settings-dark.png" width="420" alt="Pulse settings window" />
 
-<em>Settings: dark and light theme support with live theme transitions, motion intensity (spring profiles), glass effect and layout controls.</em>
+<em>Settings: dark, light and system themes with live transitions, motion profiles plus a 70-140% speed slider, artwork tint strength, glass transparency and layout controls.</em>
 
 ---
 
@@ -40,10 +40,11 @@
 ## Key Features
 
 - **Dynamic Island UI**: Floating, top-aligned desktop widget with multi-state transitions (Idle, Compact, Hover, Expanded, Track Change pulse).
+- **Fully Configurable Appearance**: Dark/Light/System themes, glass transparency (0-100%), artwork tint strength (0-100%), motion profile and speed (70-140%), island scale and top offset are all live-adjustable from Settings.
 - **Live Media Session Control**: Synchronizes automatically with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC and more.
-- **Album Art & Adaptive Theming**: Dynamic artwork extraction, caching, accent-color sampling and pre-blended color tinting across both dark and light themes.
+- **Album Art & Adaptive Theming**: Dynamic artwork extraction, caching, accent-color sampling and adjustable tint strength (0-100%) across dark, light and system themes.
 - **Interactive Timeline & Seeking**: Real-time progress with drag-to-seek support and ±15s skip controls, laid out like Apple's expanded Live Activity.
-- **Liquid-Glass Frost Effect**: Optional transparency mode that samples and blurs the live desktop behind the island for a true frosted-glass look.
+- **Liquid-Glass Frost Effect**: Toggleable glass mode with a 0-100% transparency slider that samples and blurs the live desktop behind the island, then layers the current album-art tint on top for a true frosted-glass look.
 - **Focus Timer (Pomodoro)**: Preset work/break chips (25/50, 5/15 minutes), live countdown, session auto-switching that keeps the island pinned while a session runs.
 - **System Controls Panel**: Master volume with integer stepping and visual mute state, live battery telemetry (charging/level states), and instant screenshot capture that saves locally and copies to the clipboard.
 - **Avatar Pulse (Track Change)**: Smooth scale-in/out micro animations on track changes, plus layout snap animations.
@@ -54,13 +55,13 @@
 - **Alive Controls**: Every island button has hover, pressed and disabled feedback; the focus countdown uses tabular digits and an animated progress hairline.
 - **Synced Lyrics**: lrclib-backed word-timed lyrics shown in the expanded media panel with graceful query fallbacks (album/duration drift tolerant).
 - **Global Hotkeys**: Win+Alt+I shows/hides the island; Win+Shift+F starts or pauses the focus timer from anywhere.
-- **Spring Motion Profiles**: expand/collapse runs on a damped harmonic spring; the motion-intensity setting (Minimal/Balanced/Fluid) changes damping and duration for real.
+- **Spring Motion Profiles**: expand/collapse runs on a damped harmonic spring; the motion-intensity setting (Minimal/Balanced/Fluid) plus a 70-140% speed slider changes damping and duration for real.
 - **Notification Controls**: Per-category toggles in Settings for the audio HUD, power/charging alerts and download notifications.
 - **Reduced Motion**: Respects the Windows animation-effects setting - motion is disabled instantly when the OS asks for it.
 - **Unstealable Topmost**: z-order changes are forced back to topmost in WM_WINDOWPOSCHANGING, so the island can never be buried by other apps.
 - **System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup toggle and quick exit.
 - **Multi-Monitor & DPI Aware**: Adapts to DPI scale factors and monitor layouts per cursor position without clipping or blurred rendering.
-- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage (39 automated tests).
+- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage (61 automated tests).
 
 ---
 
@@ -68,7 +69,7 @@
 
 - **Framework**: .NET 9.0 / C# 13
 - **UI Platform**: WinUI 3 (Windows App SDK 2.5.1, unpackaged & self-contained deployment)
-- **Effects**: Microsoft Composition (Spring/Fluid animations), DWM-blended acrylic panels, GDI-based frosted-desktop sampling
+- **Effects**: Microsoft Composition (Spring/Fluid animations), DWM-backed transparent window surfaces, GDI-based frosted-desktop sampling
 - **Media API**: `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager`
 - **System APIs**: WASAPI endpoint volume, Win32 power status (`GetSystemPowerStatus`), GDI screen capture
 - **MVVM Pattern**: `CommunityToolkit.Mvvm`
