@@ -52,7 +52,7 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _surfaceVisual;
     private CompositionRoundedRectangleGeometry? _surfaceClipGeometry;
     private readonly Visual _compactVisual;
-    private readonly Visual _expandedVisual;
+    private Visual _expandedVisual;
     private readonly Visual _wave1Visual;
     private readonly Visual _wave2Visual;
     private readonly Visual _wave3Visual;
@@ -74,6 +74,7 @@ public sealed partial class IslandWindow : Window
     private double _dpiScale = 1.0;
     private bool _isIslandHidden;
     private bool _glassEnabled;
+    private bool _islandExpandedMaterial;
     private double _currentPillWidth = 216;
     private double _currentPillHeight = 40;
     private bool _regionCommitted;
@@ -850,12 +851,17 @@ public sealed partial class IslandWindow : Window
         var isHover = state == IslandState.Hover;
         var hasTrack = _viewModel.HasTrack;
 
+        ApplyIslandMaterial(isExpanded);
+
         if (isExpanded && ExpandedView.Visibility != Visibility.Visible)
         {
             // The tree is parked while compact; wake it before the fade so the first
-            // animation frame already has expanded content to show.
-            _expandedVisual.Opacity = 0;
+            // animation frame already has expanded content to show. A re-realized XAML
+            // element can expose a fresh visual, so re-acquire it instead of animating
+            // a stale reference (which would leave the card opaque but empty).
             ExpandedView.Visibility = Visibility.Visible;
+            _expandedVisual = ElementCompositionPreview.GetElementVisual(ExpandedView);
+            _expandedVisual.Opacity = 0;
         }
 
         double targetWidth;
@@ -871,7 +877,9 @@ public sealed partial class IslandWindow : Window
         {
             targetWidth = 384;
             targetHeight = 240;
-            targetCornerRadius = 32;
+            // Continuous island corners: large enough to read as an Apple surface
+            // instead of a generic rounded card, still inside the content insets.
+            targetCornerRadius = 56;
         }
         else if (isSplit)
         {
@@ -1666,20 +1674,43 @@ public sealed partial class IslandWindow : Window
     public void ApplyGlass()
     {
         _glassEnabled = _viewModel.UseTransparency;
-        FrostLayer.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
-        if (FrostSheen is not null)
-        {
-            FrostSheen.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
-        }
+        UpdateFrostVisibility();
         if (_glassEnabled)
         {
             // No periodic re-capture: each capture briefly hides the window, which
-            // reads as a visible blink. Frost refreshes on launch, expand and theme change.
+            // reads as a visible blink. Frost refreshes on launch and theme change.
             _ = RefreshFrostAsync();
         }
         else
         {
             FrostLayer.Fill = null;
+        }
+    }
+
+    /// <summary>
+    /// Apple's island is an opaque black surface. The frosted glass material lets the
+    /// desktop bleed through behind expanded content, so swap to opaque while expanded
+    /// and restore the glass when the capsule comes back.
+    /// </summary>
+    private void ApplyIslandMaterial(bool expanded)
+    {
+        if (_islandExpandedMaterial == expanded) return;
+        _islandExpandedMaterial = expanded;
+
+        Surface.Background = expanded
+            ? Brush(0xFF0B1018)
+            : (Microsoft.UI.Xaml.Media.Brush)WindowRoot.Resources["IslandBackground"];
+
+        UpdateFrostVisibility();
+    }
+
+    private void UpdateFrostVisibility()
+    {
+        var show = _glassEnabled && !_islandExpandedMaterial;
+        FrostLayer.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        if (FrostSheen is not null)
+        {
+            FrostSheen.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         }
     }
 

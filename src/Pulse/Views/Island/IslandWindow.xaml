@@ -455,7 +455,7 @@
 
                 <!-- 03: EXPANDED VIEW (Multi-Panel Apple Dynamic Island Carousel) -->
                 <Grid x:Name="ExpandedView"
-                      Opacity="0"
+                      Visibility="Collapsed"
                       IsHitTestVisible="False"
                       Padding="16,14,16,14"
                       PointerReleased="OnExpandedViewPointerReleased"
