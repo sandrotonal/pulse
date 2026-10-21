@@ -160,13 +160,18 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public IslandState CurrentIslandState => _stateMachine.CurrentState;
     public bool IsIdle => CurrentIslandState == IslandState.Idle;
     public bool IsExpanded => CurrentIslandState == IslandState.Expanded;
-    public bool IsCompact => CurrentIslandState is IslandState.Compact or IslandState.Hover or IslandState.TrackChanged or IslandState.Notification;
+    public bool IsCompact => CurrentIslandState.IsCompactPill();
+    /// <summary>
+    /// Collapsing renders the compact layout while the card shrinks, so the compact
+    /// content must be laid out for the whole shrink — otherwise the pill is blank.
+    /// </summary>
+    public bool ShowsCompactContent => CurrentIslandState.ShowsCompactContent();
     public bool ShowSeekControls => _settingsService.Current.ShowSeekControls;
     public bool NotificationsPaused => _settingsService.Current.NotificationsPaused;
     public Microsoft.UI.Xaml.Visibility IdleVisibility => !HasTrack && CurrentIslandState is (IslandState.Idle or IslandState.Hover)
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility CompactVisibility => IsCompact ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility CompactVisibility => ShowsCompactContent ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility ExpandedVisibility => IsExpanded ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SeekPanelVisibility => ShowSeekControls ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public bool AutoCollapse => _settingsService.Current.AutoCollapse;
@@ -481,9 +486,8 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             _eventRouter?.Dismiss("active_media");
         }
 
-        if (changedTrack && !NotificationsPaused)
+        if (changedTrack && !NotificationsPaused && _stateMachine.ShowTrackChanged())
         {
-            _stateMachine.ShowTrackChanged();
             _stateTimer.Interval = TimeSpan.FromSeconds(2.4);
             _stateTimer.Start();
         }
@@ -520,11 +524,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private void OnStateTimerTick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (CurrentIslandState == IslandState.Expanded)
-        {
-            _stateMachine.ToggleExpanded();
-        }
-        else
+        // The timer only retires transient announcements. It must never collapse an
+        // island the user opened: expanded presentations stay open until dismissed.
+        if (CurrentIslandState is IslandState.TrackChanged or IslandState.Notification)
         {
             _stateMachine.ReturnToCompact(HasTrack);
         }

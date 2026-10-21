@@ -62,7 +62,23 @@ public sealed class IslandStateMachine
         }
     }
 
-    public void ShowTrackChanged() => SetState(IslandState.TrackChanged);
+    /// <summary>
+    /// Announces a track change in the compact presentation. An expanded island keeps
+    /// its layout and updates its content in place, matching Apple's guidance for
+    /// Live Activities; only compact presentations briefly morph to announce the change.
+    /// Returns true when the announcement actually became the current state.
+    /// </summary>
+    public bool ShowTrackChanged()
+    {
+        if (CurrentState is IslandState.Expanded or IslandState.Collapsing)
+        {
+            return false;
+        }
+
+        SetState(IslandState.TrackChanged);
+        return true;
+    }
+
     public void ShowNotification() => SetState(IslandState.Notification);
 
     public void ReturnToCompact(bool hasMedia) => SetState(hasMedia ? IslandState.Compact : IslandState.Idle);
