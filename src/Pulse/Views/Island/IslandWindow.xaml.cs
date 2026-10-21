@@ -75,6 +75,7 @@ public sealed partial class IslandWindow : Window
     private bool _isIslandHidden;
     private bool _glassEnabled;
     private bool _islandExpandedMaterial;
+    private const uint ExpandedIslandBackground = 0xFF0B1018;
     private double _currentPillWidth = 216;
     private double _currentPillHeight = 40;
     private bool _regionCommitted;
@@ -1698,7 +1699,7 @@ public sealed partial class IslandWindow : Window
         _islandExpandedMaterial = expanded;
 
         Surface.Background = expanded
-            ? Brush(0xFF0B1018)
+            ? Brush(ExpandedIslandBackground)
             : (Microsoft.UI.Xaml.Media.Brush)WindowRoot.Resources["IslandBackground"];
 
         UpdateFrostVisibility();
@@ -1972,7 +1973,9 @@ public sealed partial class IslandWindow : Window
         UpdateBrush("Accent", accentColor);
         UpdateBrush("SeekAccent", seekAccent);
 
-        Surface.Background = Brush(bgColor);
+        Surface.Background = _islandExpandedMaterial
+            ? Brush(ExpandedIslandBackground)
+            : Brush(bgColor);
         Surface.BorderBrush = Brush(borderColor);
         if (DetachedPill is not null)
         {
@@ -1987,7 +1990,9 @@ public sealed partial class IslandWindow : Window
         UpdatePageDots(_viewModel.SelectedPageIndex, animated: false);
 
         // Re-capture the frost snapshot so the glass tint matches the new theme right away.
-        if (_glassEnabled)
+        // Skip it while expanded: the frost is hidden, and the capture briefly hides the
+        // window, which would blink the open card on every track change.
+        if (_glassEnabled && !_islandExpandedMaterial)
         {
             _ = RefreshFrostAsync(force: true);
         }
