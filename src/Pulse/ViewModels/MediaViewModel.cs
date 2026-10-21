@@ -179,6 +179,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public bool DynamicColorTint => _settingsService.Current.DynamicColorTint;
     public bool ShowEqualizer => _settingsService.Current.ShowEqualizer;
     public bool UseTransparency => _settingsService.Current.UseTransparency;
+    public int TransparencyLevel => _settingsService.Current.TransparencyLevel;
+    public int ArtworkTintStrength => _settingsService.Current.ArtworkTintStrength;
+    public int MotionSpeed => _settingsService.Current.MotionSpeed;
     public int TopOffset => _settingsService.Current.TopOffset;
     public double IslandScale => _settingsService.Current.IslandScale / 100d;
     public string AnimationIntensity => _settingsService.Current.AnimationIntensity;
@@ -563,6 +566,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(DynamicColorTint));
         OnPropertyChanged(nameof(ShowEqualizer));
         OnPropertyChanged(nameof(UseTransparency));
+        OnPropertyChanged(nameof(TransparencyLevel));
+        OnPropertyChanged(nameof(ArtworkTintStrength));
+        OnPropertyChanged(nameof(MotionSpeed));
         OnPropertyChanged(nameof(TopOffset));
         OnPropertyChanged(nameof(IslandScale));
         OnPropertyChanged(nameof(AnimationIntensity));

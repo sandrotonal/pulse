@@ -515,6 +515,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool DynamicColorTint => _media.DynamicColorTint;
     public bool ShowEqualizer => _media.ShowEqualizer;
     public bool UseTransparency => _media.UseTransparency;
+    public int TransparencyLevel => _media.TransparencyLevel;
+    public int ArtworkTintStrength => _media.ArtworkTintStrength;
+    public int MotionSpeed => _media.MotionSpeed;
     public int TopOffset => _media.TopOffset;
     public double IslandScale => _media.IslandScale;
     public string AnimationIntensity => _media.AnimationIntensity;

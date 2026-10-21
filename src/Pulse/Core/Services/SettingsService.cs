@@ -26,7 +26,8 @@ public sealed class SettingsService : ISettingsService
             if (File.Exists(_settingsPath))
             {
                 await using var stream = File.OpenRead(_settingsPath);
-                Current = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions) ?? new AppSettings();
+                var loaded = await JsonSerializer.DeserializeAsync<AppSettings>(stream, JsonOptions) ?? new AppSettings();
+                Current = Normalize(loaded);
             }
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
@@ -39,13 +40,7 @@ public sealed class SettingsService : ISettingsService
 
     public async Task SaveAsync(AppSettings settings)
     {
-        Current = settings with
-        {
-            TopOffset = Math.Clamp(settings.TopOffset, 0, 200),
-            IslandScale = Math.Clamp(settings.IslandScale, 80, 125),
-            Theme = settings.Theme is "Dark" or "Light" ? settings.Theme : "System",
-            AnimationIntensity = settings.AnimationIntensity is "Minimal" or "Dynamic" ? settings.AnimationIntensity : "Normal"
-        };
+        Current = Normalize(settings);
 
         // Notify in-memory listeners immediately for instantaneous real-time UI response
         SettingsChanged?.Invoke(this, Current);
@@ -68,4 +63,16 @@ public sealed class SettingsService : ISettingsService
             _saveGate.Release();
         }
     }
+
+    /// <summary>Keeps persisted values inside the ranges the settings UI can represent.</summary>
+    private static AppSettings Normalize(AppSettings settings) => settings with
+    {
+        TopOffset = Math.Clamp(settings.TopOffset, 0, 200),
+        IslandScale = Math.Clamp(settings.IslandScale, 80, 125),
+        Theme = settings.Theme is "Dark" or "Light" ? settings.Theme : "System",
+        AnimationIntensity = settings.AnimationIntensity is "Minimal" or "Dynamic" ? settings.AnimationIntensity : "Normal",
+        TransparencyLevel = Math.Clamp(settings.TransparencyLevel, 0, 100),
+        ArtworkTintStrength = Math.Clamp(settings.ArtworkTintStrength, 0, 100),
+        MotionSpeed = Math.Clamp(settings.MotionSpeed, 70, 140)
+    };
 }

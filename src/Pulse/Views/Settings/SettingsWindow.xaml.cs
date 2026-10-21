@@ -2,7 +2,7 @@ using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using System.ComponentModel;
 using Pulse.ViewModels;
-using Windows.Graphics;
+using WinUIEx;
 
 namespace Pulse.Views.Settings;
 
@@ -12,7 +12,9 @@ public sealed partial class SettingsWindow : Window
     {
         InitializeComponent();
         SettingsRoot.DataContext = viewModel;
-        AppWindow.Resize(new SizeInt32(520, 700));
+        // DIP-aware sizing: AppWindow.Resize expects physical pixels, so at 125%
+        // the window shrank to 416x560 DIP and clipped descriptions.
+        this.SetWindowSize(520, 700);
         AppWindow.TitleBar.ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
         SetTitleBar(TitleBarDragRegion);
@@ -62,6 +64,9 @@ public sealed partial class SettingsWindow : Window
             2 => true,
             _ => SettingsRoot.ActualTheme != ElementTheme.Dark
         };
+        // The settings sheet is intentionally opaque: Mica/desktop bleed-through
+        // made cards and descriptions hard to read on some sessions.
+        SettingsRoot.Background = Brush(isLight ? 0xFFF2F2F7u : 0xFF1C1C1Eu);
         SettingsRoot.Resources["SettingsText"] = Brush(isLight ? 0xFF1C1C1E : 0xFFF5F5F7);
         SettingsRoot.Resources["SettingsSecondary"] = Brush(isLight ? 0xFF68686E : 0xFFAEAEB2);
         var accent = isLight ? 0xFF248A3Du : 0xFF30D158u;

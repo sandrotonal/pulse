@@ -230,6 +230,16 @@
                            VerticalAlignment="Stretch"
                            IsHitTestVisible="False" />
 
+                <!-- Live album tint over the neutral blur. Keeping the tint separate
+                     lets track changes recolor the glass instantly without re-capturing
+                     the desktop (which briefly hides the window and blinks). -->
+                <Rectangle x:Name="FrostTintLayer"
+                           RadiusX="20" RadiusY="20"
+                           Visibility="Collapsed"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Stretch"
+                           IsHitTestVisible="False" />
+
                 <!-- Specular sheen stays proportional to the surface instead of being
                      baked into the desktop snapshot, so it survives every morph. -->
                 <Rectangle x:Name="FrostSheen"

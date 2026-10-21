@@ -2,7 +2,7 @@
   "audit_version": "1.0",
   "target_assembly": "Pulse.dll",
   "target_framework": "net9.0-windows10.0.26100.0",
-  "audit_date": "2026-10-18T23:05:00Z",
+  "audit_date": "2026-10-22T01:20:00Z",
   "status": "PASS",
   "pinvoke_boundaries": [
     {
@@ -95,6 +95,24 @@
     "test_suite": "Pulse.Tests.IslandSplitModeTests",
     "total_tests": 1,
     "passed_tests": 1,
+    "status": "PASS"
+  },
+  "configurable_island_verification": {
+    "feature": "Configurable glass transparency, artwork tint strength, motion speed and System theme resolution",
+    "new_pinvoke_boundaries": 0,
+    "native_apis_reviewed": [
+      "WinUIEx SetWindowSize (package API, DIP-aware window sizing)",
+      "Windows.UI.ViewManagement.UISettings (WinRT, OS light/dark probe)"
+    ],
+    "notes": "Frost capture reuses the existing SetWindowPos/CopyFromScreen path; track and slider changes recolor the tint overlay without re-capturing the desktop.",
+    "build": {
+      "configuration": "Debug x64",
+      "warnings": 0,
+      "errors": 0
+    },
+    "test_suite": "Pulse.Tests",
+    "total_tests": 61,
+    "passed_tests": 61,
     "status": "PASS"
   }
 }

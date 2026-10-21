@@ -74,8 +74,6 @@ public sealed partial class IslandWindow : Window
     private double _dpiScale = 1.0;
     private bool _isIslandHidden;
     private bool _glassEnabled;
-    private bool _islandExpandedMaterial;
-    private const uint ExpandedIslandBackground = 0xFF0B1018;
     private double _currentPillWidth = 216;
     private double _currentPillHeight = 40;
     private bool _regionCommitted;
@@ -538,10 +536,20 @@ public sealed partial class IslandWindow : Window
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) 
                  or nameof(MediaViewModel.ArtworkAccentColor) 
-                 or nameof(MediaViewModel.DynamicColorTint)
-                 or nameof(MediaViewModel.UseTransparency))
+                 or nameof(MediaViewModel.DynamicColorTint))
+        {
+            // Theme/accent changes only recolor the glass; the captured blur is
+            // desktop-only and stays valid, so never re-capture here (no blink).
+            ApplyTheme(_viewModel.Theme);
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.UseTransparency))
         {
             ApplyGlass();
+            ApplyTheme(_viewModel.Theme);
+        }
+        else if (e.PropertyName is nameof(MediaViewModel.TransparencyLevel) or nameof(MediaViewModel.ArtworkTintStrength))
+        {
+            // Live slider feedback: recolor the tint overlay, no frost re-capture.
             ApplyTheme(_viewModel.Theme);
         }
         else if (e.PropertyName is nameof(MediaViewModel.TopOffset) or nameof(MediaViewModel.IslandScale))
@@ -618,12 +626,22 @@ public sealed partial class IslandWindow : Window
     }
 
     /// <summary>Motion intensity from settings: damping + duration profile for spring animations.</summary>
-    private (double Damping, double DurationScale) AnimationProfile => _viewModel.AnimationIntensity switch
+    private (double Damping, double DurationScale) AnimationProfile
     {
-        "Minimal" => (0.95, 0.72),
-        "Dynamic" => (0.60, 1.18),
-        _ => (0.82, 1.0)
-    };
+        get
+        {
+            var (damping, scale) = _viewModel.AnimationIntensity switch
+            {
+                "Minimal" => (0.95, 0.72),
+                "Dynamic" => (0.60, 1.18),
+                _ => (0.82, 1.0)
+            };
+            return (damping, scale / MotionSpeedScale);
+        }
+    }
+
+    /// <summary>70-140% user speed; higher values compress both durations and spring time.</summary>
+    private double MotionSpeedScale => Math.Clamp(_viewModel.MotionSpeed, 70, 140) / 100.0;
 
     private static readonly Windows.UI.ViewManagement.UISettings SystemUiSettings = new();
 
@@ -681,6 +699,12 @@ public sealed partial class IslandWindow : Window
         {
             FrostLayer.RadiusX = cornerRadius;
             FrostLayer.RadiusY = cornerRadius;
+        }
+
+        if (FrostTintLayer is not null)
+        {
+            FrostTintLayer.RadiusX = cornerRadius;
+            FrostTintLayer.RadiusY = cornerRadius;
         }
 
         if (FrostSheen is not null)
@@ -766,12 +790,13 @@ public sealed partial class IslandWindow : Window
     {
         long now = System.Diagnostics.Stopwatch.GetTimestamp();
         double elapsedSec = (now - _animStartTimeTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
+        double springElapsedSec = elapsedSec * MotionSpeedScale;
 
-        var stateW = _springOscillator.Evaluate(elapsedSec, _animStartWidth, _animTargetWidth);
-        var stateH = _springOscillator.Evaluate(elapsedSec, _animStartHeight, _animTargetHeight);
-        var stateR = _springOscillator.Evaluate(elapsedSec, _animStartCornerRadius, _animTargetCornerRadius);
-        var stateLX = _springOscillator.Evaluate(elapsedSec, _animStartLeadingX, _animTargetLeadingX);
-        var stateTX = _springOscillator.Evaluate(elapsedSec, _animStartTrailingX, _animTargetTrailingX);
+        var stateW = _springOscillator.Evaluate(springElapsedSec, _animStartWidth, _animTargetWidth);
+        var stateH = _springOscillator.Evaluate(springElapsedSec, _animStartHeight, _animTargetHeight);
+        var stateR = _springOscillator.Evaluate(springElapsedSec, _animStartCornerRadius, _animTargetCornerRadius);
+        var stateLX = _springOscillator.Evaluate(springElapsedSec, _animStartLeadingX, _animTargetLeadingX);
+        var stateTX = _springOscillator.Evaluate(springElapsedSec, _animStartTrailingX, _animTargetTrailingX);
 
         Surface.Width = stateW.Position;
         Surface.Height = stateH.Position;
@@ -851,8 +876,6 @@ public sealed partial class IslandWindow : Window
         var isCollapsing = state == IslandState.Collapsing;
         var isHover = state == IslandState.Hover;
         var hasTrack = _viewModel.HasTrack;
-
-        ApplyIslandMaterial(isExpanded);
 
         if (isExpanded && ExpandedView.Visibility != Visibility.Visible)
         {
@@ -1679,40 +1702,40 @@ public sealed partial class IslandWindow : Window
         if (_glassEnabled)
         {
             // No periodic re-capture: each capture briefly hides the window, which
-            // reads as a visible blink. Frost refreshes on launch and theme change.
-            _ = RefreshFrostAsync();
+            // reads as a visible blink. The blur is captured on launch/glass enable;
+            // track and slider changes only recolor the tint overlay above it.
+            _ = RefreshFrostAsync(force: true);
         }
-        else
-        {
-            FrostLayer.Fill = null;
-        }
-    }
-
-    /// <summary>
-    /// Apple's island is an opaque black surface. The frosted glass material lets the
-    /// desktop bleed through behind expanded content, so swap to opaque while expanded
-    /// and restore the glass when the capsule comes back.
-    /// </summary>
-    private void ApplyIslandMaterial(bool expanded)
-    {
-        if (_islandExpandedMaterial == expanded) return;
-        _islandExpandedMaterial = expanded;
-
-        Surface.Background = expanded
-            ? Brush(ExpandedIslandBackground)
-            : (Microsoft.UI.Xaml.Media.Brush)WindowRoot.Resources["IslandBackground"];
-
-        UpdateFrostVisibility();
     }
 
     private void UpdateFrostVisibility()
     {
-        var show = _glassEnabled && !_islandExpandedMaterial;
-        FrostLayer.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        var visible = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
+        FrostLayer.Visibility = visible;
+        if (FrostTintLayer is not null)
+        {
+            FrostTintLayer.Visibility = visible;
+        }
         if (FrostSheen is not null)
         {
-            FrostSheen.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            FrostSheen.Visibility = visible;
         }
+        if (_glassEnabled)
+        {
+            UpdateFrostTint();
+        }
+    }
+
+    /// <summary>Recolors the live glass tint without touching the captured blur.</summary>
+    private void UpdateFrostTint()
+    {
+        if (FrostTintLayer is null)
+        {
+            return;
+        }
+
+        FrostTintLayer.Fill = Brush(CurrentGlassTint());
+        FrostTintLayer.Opacity = FrostAlpha() / 255.0;
     }
 
     private bool _frostBusy;
@@ -1753,8 +1776,7 @@ public sealed partial class IslandWindow : Window
                 var bmp = CaptureDesktopSample(screenX, screenY, clientW, clientH);
                 if (bmp is null) return null;
 
-                var tint = CurrentGlassTint();
-                var result = FrostAndTint(bmp, tint);
+                var result = BlurDesktop(bmp);
                 bmp.Dispose();
 
                 var dip = ScaleToDip(result, dpiScale);
@@ -1793,6 +1815,7 @@ public sealed partial class IslandWindow : Window
                     AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Center,
                     AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Top
                 };
+                UpdateFrostTint();
             });
         }
         catch
@@ -1822,12 +1845,45 @@ public sealed partial class IslandWindow : Window
         _ = evt.WaitOne(200);
     }
 
+    private static bool IsSystemLightTheme()
+    {
+        try
+        {
+            var background = SystemUiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
+            return (background.R * 0.299 + background.G * 0.587 + background.B * 0.114) > 128;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Resolves the Settings "System" option to the real OS theme instead of forcing dark.</summary>
+    private static bool IsLightTheme(string theme) =>
+        theme == "Light" || (theme != "Dark" && IsSystemLightTheme());
+
+    /// <summary>Surface alpha from the transparency slider; 0xF2 = solid, 0x5E = most transparent.</summary>
+    private uint SurfaceAlpha()
+    {
+        if (!_glassEnabled) return 0xF2u;
+        var level = Math.Clamp(_viewModel.TransparencyLevel, 0, 100);
+        return (uint)Math.Round(0xF2 - (0xF2 - 0x5E) * level / 100.0);
+    }
+
+    /// <summary>Frost stays a little denser than the surface so text keeps its contrast.</summary>
+    private uint FrostAlpha()
+    {
+        if (!_glassEnabled) return 0xF2u;
+        return Math.Min(0xF2u, SurfaceAlpha() + 0x1E);
+    }
+
     private uint CurrentGlassTint()
     {
         var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
-        return _viewModel.Theme == "Light"
-            ? 0xB8F2F5F7u
-            : Blend(0xB20B1018u, artworkAccent, 0.20);
+        var tintAmount = Math.Clamp(_viewModel.ArtworkTintStrength, 0, 100) / 100.0;
+        var baseColor = IsLightTheme(_viewModel.Theme) ? 0xFFF2F5F7u : 0xFF0B1018u;
+        // Opaque RGB: FrostTintLayer applies the transparency as its Opacity.
+        return Blend(baseColor, artworkAccent, tintAmount);
     }
 
     /// <summary>
@@ -1870,7 +1926,7 @@ public sealed partial class IslandWindow : Window
         return captured;
     }
 
-    private static System.Drawing.Bitmap FrostAndTint(System.Drawing.Bitmap captured, uint tint)
+    private static System.Drawing.Bitmap BlurDesktop(System.Drawing.Bitmap captured)
     {
         var w = captured.Width;
         var h = captured.Height;
@@ -1901,12 +1957,6 @@ public sealed partial class IslandWindow : Window
         {
             g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
             g.DrawImage(mid, 0, 0, w, h);
-
-            // Tint blend (the ApplyTheme glass palette colour)
-            var tintBrush = new System.Drawing.SolidBrush(System.Drawing.Color.FromArgb(
-                (byte)(tint >> 24), (byte)(tint >> 16), (byte)(tint >> 8), (byte)tint));
-            g.FillRectangle(tintBrush, 0, 0, w, h);
-            tintBrush.Dispose();
         }
 
         return frost;
@@ -1931,15 +1981,18 @@ public sealed partial class IslandWindow : Window
 
     public void ApplyTheme(string theme)
     {
-        var isLight = theme == "Light";
+        var isLight = IsLightTheme(theme);
         WindowRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
 
         var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
+        var tintAmount   = Math.Clamp(_viewModel.ArtworkTintStrength, 0, 100) / 100.0;
         var accentColor  = artworkAccent;
-        // Solid surfaces stay near-opaque; glass surfaces go translucent so acrylic really shows.
+        // Glass is used in both compact and expanded states; the transparency slider
+        // controls how much desktop shows through, and the artwork accent tints it.
+        var bgAlpha      = SurfaceAlpha();
         var bgColor      = isLight
-            ? (_glassEnabled ? 0xB8F2F5F7u : 0xF2F5F5F7u)
-            : (_glassEnabled ? Blend(0x990B1018u, artworkAccent, 0.20) : Blend(0xF20B1018u, artworkAccent, 0.20));
+            ? Blend((bgAlpha << 24) | 0xF2F5F7u, artworkAccent, tintAmount)
+            : Blend((bgAlpha << 24) | 0x0B1018u, artworkAccent, tintAmount);
         var borderColor  = isLight ? 0x22000000u : Blend(0x33FFFFFFu, artworkAccent, 0.22);
         var primaryText  = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
         var secondaryTxt = isLight ? 0xFF8E8E93u : 0xFFA4ABB6u;
@@ -1973,9 +2026,7 @@ public sealed partial class IslandWindow : Window
         UpdateBrush("Accent", accentColor);
         UpdateBrush("SeekAccent", seekAccent);
 
-        Surface.Background = _islandExpandedMaterial
-            ? Brush(ExpandedIslandBackground)
-            : Brush(bgColor);
+        Surface.Background = Brush(bgColor);
         Surface.BorderBrush = Brush(borderColor);
         if (DetachedPill is not null)
         {
@@ -1989,13 +2040,9 @@ public sealed partial class IslandWindow : Window
             ExpandedSeekBar.AccentBrush = Brush(seekAccent);
         UpdatePageDots(_viewModel.SelectedPageIndex, animated: false);
 
-        // Re-capture the frost snapshot so the glass tint matches the new theme right away.
-        // Skip it while expanded: the frost is hidden, and the capture briefly hides the
-        // window, which would blink the open card on every track change.
-        if (_glassEnabled && !_islandExpandedMaterial)
-        {
-            _ = RefreshFrostAsync(force: true);
-        }
+        // The glass tint is a live overlay on the captured blur, so track/theme/slider
+        // changes recolor it instantly without a desktop re-capture (no blink).
+        UpdateFrostTint();
     }
 
     private void UpdateBrush(string key, uint color)
