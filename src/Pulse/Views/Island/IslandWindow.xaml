@@ -904,11 +904,29 @@
                                 <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
                                                 Visibility="{Binding BatteryVisibility}">
-                                        <FontIcon Glyph="{Binding BatteryGlyph}" FontSize="14" Foreground="{ThemeResource PrimaryText}" />
+                                        <Grid Width="14" Height="14" VerticalAlignment="Center">
+                                            <FontIcon Glyph="{Binding BatteryGlyph}" FontSize="14"
+                                                      Foreground="{ThemeResource PrimaryText}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                            <FontIcon Glyph="{Binding BatteryGlyph}" FontSize="14"
+                                                      Foreground="{Binding BatteryStatusBrush}"
+                                                      Visibility="{Binding BatteryStatusVisibility}"
+                                                      HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
                                         <TextBlock Text="{Binding BatterySummary}"
                                                    FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource PrimaryText}"
                                                    VerticalAlignment="Center" />
+                                        <Grid Width="9" Height="9" VerticalAlignment="Center"
+                                              Visibility="{Binding BatteryChargingVisibility}">
+                                            <Ellipse x:Name="BatteryChargeHalo"
+                                                     Width="9" Height="9"
+                                                     Fill="{Binding BatteryStatusBrush}"
+                                                     Opacity="0.18" />
+                                            <Ellipse Width="4" Height="4"
+                                                     Fill="{Binding BatteryStatusBrush}"
+                                                     HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Grid>
                                     </StackPanel>
 
                                     <Button Grid.Column="1"

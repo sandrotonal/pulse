@@ -305,6 +305,15 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Microsoft.UI.Xaml.Visibility BatteryVisibility => HasBattery
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility BatteryStatusVisibility => _batteryIsCharging || _batteryIsLow
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility BatteryChargingVisibility => _batteryIsCharging
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryStatusBrush => MakeBrush(_batteryIsCharging
+        ? 0xFF30D158u
+        : 0xFFFF453Au);
 
     private void RefreshBattery(bool notify = false)
     {
@@ -355,6 +364,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BatterySummary));
         OnPropertyChanged(nameof(BatteryGlyph));
         OnPropertyChanged(nameof(BatteryVisibility));
+        OnPropertyChanged(nameof(BatteryStatusVisibility));
+        OnPropertyChanged(nameof(BatteryChargingVisibility));
+        OnPropertyChanged(nameof(BatteryStatusBrush));
     }
 
     public MediaViewModel Media => _media;
