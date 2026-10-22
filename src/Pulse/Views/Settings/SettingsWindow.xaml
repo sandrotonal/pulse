@@ -100,7 +100,88 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 2. MEDYA VE KONTROLLER -->
+                <!-- 2. BOŞTA GÖRÜNÜM -->
+                <TextBlock Text="BOŞTA GÖRÜNÜM" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                    <StackPanel Spacing="0">
+                        <!-- Clock -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Saat" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Kompakt adada canlı saati gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding ShowIdleClock, Mode=TwoWay}"
+                                          AutomationProperties.Name="Boşta saati göster" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Date -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Tarih" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Saatin altında gün ve tarihi gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding ShowIdleDate, Mode=TwoWay}"
+                                          AutomationProperties.Name="Boşta tarihi göster" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Weather -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Hava durumu" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Sıcaklık ve hava durumu simgesini gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding ShowIdleWeather, Mode=TwoWay}"
+                                          AutomationProperties.Name="Boşta hava durumunu göster" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Location -->
+                        <StackPanel Spacing="9" Margin="0,10,0,10">
+                            <Grid MinHeight="46">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="152" /></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Spacing="2">
+                                    <TextBlock Text="Konum" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBlock Text="Hava durumu için konum kaynağı." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                </StackPanel>
+                                <ComboBox Grid.Column="1" SelectedIndex="{Binding IdleLocationSourceIndex, Mode=TwoWay}"
+                                          IsEnabled="{Binding ShowIdleWeather}"
+                                          AutomationProperties.Name="Konum kaynağı"
+                                          HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                                    <ComboBoxItem Content="Otomatik (IP)" />
+                                    <ComboBoxItem Content="Elle seç" />
+                                </ComboBox>
+                            </Grid>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBox Text="{Binding LocationCityDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                         PlaceholderText="Şehir adı (ör. İstanbul)"
+                                         AutomationProperties.Name="Şehir adı"
+                                         IsEnabled="{Binding IsManualLocation}"
+                                         VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Şehri doğrula"
+                                        Command="{Binding ApplyLocationCommand}"
+                                        IsEnabled="{Binding IsManualLocation}"
+                                        Margin="8,0,0,0" VerticalAlignment="Center" />
+                            </Grid>
+
+                            <TextBlock Text="{Binding LocationStatusMessage}" FontSize="12"
+                                       Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <TextBlock Text="Hava durumu Open-Meteo'dan alınır. Otomatik konum için IP adresiniz ipwho.is'e gönderilir."
+                                       FontSize="11" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 3. MEDYA VE KONTROLLER -->
                 <TextBlock Text="MEDYA VE KONTROLLER" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
                 <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsDivider}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
                     <StackPanel Spacing="0">

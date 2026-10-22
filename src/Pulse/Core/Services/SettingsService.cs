@@ -65,14 +65,35 @@ public sealed class SettingsService : ISettingsService
     }
 
     /// <summary>Keeps persisted values inside the ranges the settings UI can represent.</summary>
-    private static AppSettings Normalize(AppSettings settings) => settings with
+    private static AppSettings Normalize(AppSettings settings)
     {
-        TopOffset = Math.Clamp(settings.TopOffset, 0, 200),
-        IslandScale = Math.Clamp(settings.IslandScale, 80, 125),
-        Theme = settings.Theme is "Dark" or "Light" ? settings.Theme : "System",
-        AnimationIntensity = settings.AnimationIntensity is "Minimal" or "Dynamic" ? settings.AnimationIntensity : "Normal",
-        TransparencyLevel = Math.Clamp(settings.TransparencyLevel, 0, 100),
-        ArtworkTintStrength = Math.Clamp(settings.ArtworkTintStrength, 0, 100),
-        MotionSpeed = Math.Clamp(settings.MotionSpeed, 70, 140)
-    };
+        var hasValidCoordinates =
+            settings.IdleLocationLatitude is { } latitude &&
+            settings.IdleLocationLongitude is { } longitude &&
+            double.IsFinite(latitude) &&
+            double.IsFinite(longitude) &&
+            latitude is >= -90 and <= 90 &&
+            longitude is >= -180 and <= 180;
+
+        return settings with
+        {
+            TopOffset = Math.Clamp(settings.TopOffset, 0, 200),
+            IslandScale = Math.Clamp(settings.IslandScale, 80, 125),
+            Theme = settings.Theme is "Dark" or "Light" ? settings.Theme : "System",
+            AnimationIntensity = settings.AnimationIntensity is "Minimal" or "Dynamic" ? settings.AnimationIntensity : "Normal",
+            TransparencyLevel = Math.Clamp(settings.TransparencyLevel, 0, 100),
+            ArtworkTintStrength = Math.Clamp(settings.ArtworkTintStrength, 0, 100),
+            MotionSpeed = Math.Clamp(settings.MotionSpeed, 70, 140),
+            IdleLocationSource = settings.IdleLocationSource == "Manual" ? "Manual" : "Auto",
+            IdleLocationCity = NormalizeCity(settings.IdleLocationCity),
+            IdleLocationLatitude = hasValidCoordinates ? settings.IdleLocationLatitude : null,
+            IdleLocationLongitude = hasValidCoordinates ? settings.IdleLocationLongitude : null
+        };
+    }
+
+    private static string NormalizeCity(string? city)
+    {
+        var trimmed = (city ?? string.Empty).Trim();
+        return trimmed.Length <= 80 ? trimmed : trimmed[..80];
+    }
 }

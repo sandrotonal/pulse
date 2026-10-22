@@ -925,19 +925,21 @@ public sealed partial class IslandWindow : Window
         }
         else if (!hasTrack && state is IslandState.Idle)
         {
-            targetWidth = 76;
-            targetHeight = 32;
-            targetCornerRadius = 16;
+            // The smart idle strip needs the full compact width. This also removes
+            // the old 76 -> 86 hover jump when no media is playing.
+            targetWidth = 216;
+            targetHeight = 40;
+            targetCornerRadius = 20;
         }
         else if (isHover)
         {
-            targetWidth = hasTrack ? 252 : 86;
+            targetWidth = hasTrack ? 252 : 216;
             targetHeight = 40;
             targetCornerRadius = 20;
         }
         else
         {
-            targetWidth = hasTrack ? 216 : 76;
+            targetWidth = 216;
             targetHeight = 40;
             targetCornerRadius = 20;
         }

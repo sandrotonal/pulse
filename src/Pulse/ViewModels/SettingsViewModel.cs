@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
 
@@ -9,6 +10,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 {
     private readonly ISettingsService _settingsService;
     private readonly IStartupService _startupService;
+    private readonly ILocationService? _locationService;
     private bool _startWithWindows;
     private bool _autoCollapse = true;
     private bool _showSeekControls = true;
@@ -27,14 +29,28 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private int _animationIndex = 1;
     private double _topOffset = 14;
     private double _islandScale = 100;
+    private bool _showIdleClock = true;
+    private bool _showIdleDate = true;
+    private bool _showIdleWeather = true;
+    private int _idleLocationSourceIndex;
+    private string _idleLocationCity = string.Empty;
+    private double? _idleLocationLatitude;
+    private double? _idleLocationLongitude;
+    private string _locationCityDraft = string.Empty;
+    private string _locationStatusMessage = string.Empty;
     private string _statusMessage = string.Empty;
     private bool _loading;
     private bool _initialized;
 
-    public SettingsViewModel(ISettingsService settingsService, IStartupService startupService)
+    public SettingsViewModel(
+        ISettingsService settingsService,
+        IStartupService startupService,
+        ILocationService? locationService = null)
     {
         _settingsService = settingsService;
         _startupService = startupService;
+        _locationService = locationService;
+        ApplyLocationCommand = new AsyncCommand(ApplyLocationAsync);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -130,6 +146,67 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
     public string IslandScaleLabel => $"{(int)Math.Round(IslandScale)}%";
+
+    public bool ShowIdleClock { get => _showIdleClock; set { if (SetProperty(ref _showIdleClock, value)) Save(); } }
+    public bool ShowIdleDate { get => _showIdleDate; set { if (SetProperty(ref _showIdleDate, value)) Save(); } }
+    public bool ShowIdleWeather { get => _showIdleWeather; set { if (SetProperty(ref _showIdleWeather, value)) Save(); } }
+
+    public int IdleLocationSourceIndex
+    {
+        get => _idleLocationSourceIndex;
+        set
+        {
+            if (!SetProperty(ref _idleLocationSourceIndex, value))
+            {
+                return;
+            }
+
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsManualLocation)));
+            if (_loading)
+            {
+                return;
+            }
+
+            if (value == 1)
+            {
+                LocationStatusMessage = string.IsNullOrWhiteSpace(LocationCityDraft)
+                    ? "Şehir adı girin."
+                    : "Şehri doğrulayın.";
+            }
+            else
+            {
+                LocationStatusMessage = "Konum otomatik olarak algılanacak.";
+            }
+
+            Save();
+        }
+    }
+
+    public bool IsManualLocation => IdleLocationSourceIndex == 1;
+    public string IdleLocationCity { get => _idleLocationCity; private set => SetProperty(ref _idleLocationCity, value); }
+    public double? IdleLocationLatitude { get => _idleLocationLatitude; private set => SetProperty(ref _idleLocationLatitude, value); }
+    public double? IdleLocationLongitude { get => _idleLocationLongitude; private set => SetProperty(ref _idleLocationLongitude, value); }
+    public string LocationCityDraft
+    {
+        get => _locationCityDraft;
+        set
+        {
+            if (!SetProperty(ref _locationCityDraft, value))
+            {
+                return;
+            }
+
+            if (!_loading &&
+                IsManualLocation &&
+                !string.Equals(value?.Trim(), IdleLocationCity, StringComparison.Ordinal))
+            {
+                LocationStatusMessage = "Şehri doğrulayın.";
+            }
+        }
+    }
+    public string LocationStatusMessage { get => _locationStatusMessage; private set => SetProperty(ref _locationStatusMessage, value); }
+    public ICommand ApplyLocationCommand { get; }
+
     public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
 
     public async Task InitializeAsync()
@@ -160,8 +237,72 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AnimationIndex = settings.AnimationIntensity switch { "Minimal" => 0, "Dynamic" => 2, _ => 1 };
         TopOffset = settings.TopOffset;
         IslandScale = settings.IslandScale;
+        ShowIdleClock = settings.ShowIdleClock;
+        ShowIdleDate = settings.ShowIdleDate;
+        ShowIdleWeather = settings.ShowIdleWeather;
+        IdleLocationSourceIndex = settings.IdleLocationSource == "Manual" ? 1 : 0;
+        IdleLocationCity = settings.IdleLocationCity;
+        IdleLocationLatitude = settings.IdleLocationLatitude;
+        IdleLocationLongitude = settings.IdleLocationLongitude;
+        LocationCityDraft = settings.IdleLocationCity;
+        LocationStatusMessage = settings.IdleLocationSource == "Manual"
+            ? (string.IsNullOrWhiteSpace(settings.IdleLocationCity)
+                ? "Şehir adı girin."
+                : $"Konum: {settings.IdleLocationCity}")
+            : "Konum otomatik olarak algılanacak.";
         StartWithWindows = await _startupService.IsEnabledAsync();
         _loading = false;
+    }
+
+    private async Task ApplyLocationAsync()
+    {
+        if (_locationService is null)
+        {
+            LocationStatusMessage = "Konum servisi kullanılamıyor.";
+            return;
+        }
+
+        var city = LocationCityDraft.Trim();
+        if (city.Length == 0)
+        {
+            LocationStatusMessage = "Şehir adı girin.";
+            return;
+        }
+
+        LocationStatusMessage = "Şehir aranıyor…";
+        GeoLocation? location;
+        try
+        {
+            location = await _locationService.GeocodeAsync(city);
+        }
+        catch
+        {
+            LocationStatusMessage = "Konum alınamadı.";
+            return;
+        }
+
+        if (location is null)
+        {
+            LocationStatusMessage = "Şehir bulunamadı.";
+            return;
+        }
+
+        _loading = true;
+        try
+        {
+            IdleLocationSourceIndex = 1;
+            IdleLocationCity = location.City;
+            IdleLocationLatitude = location.Latitude;
+            IdleLocationLongitude = location.Longitude;
+            LocationCityDraft = location.City;
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        LocationStatusMessage = $"Konum: {location.City}";
+        Save();
     }
 
     private async Task ApplyStartupAsync(bool enabled)
@@ -207,7 +348,14 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             Theme = ThemeIndex switch { 1 => "Dark", 2 => "Light", _ => "System" },
             AnimationIntensity = AnimationIndex switch { 0 => "Minimal", 2 => "Dynamic", _ => "Normal" },
             TopOffset = (int)Math.Round(TopOffset),
-            IslandScale = (int)Math.Round(IslandScale)
+            IslandScale = (int)Math.Round(IslandScale),
+            ShowIdleClock = ShowIdleClock,
+            ShowIdleDate = ShowIdleDate,
+            ShowIdleWeather = ShowIdleWeather,
+            IdleLocationSource = IdleLocationSourceIndex == 1 ? "Manual" : "Auto",
+            IdleLocationCity = IdleLocationCity,
+            IdleLocationLatitude = IdleLocationLatitude,
+            IdleLocationLongitude = IdleLocationLongitude
         });
     }
 

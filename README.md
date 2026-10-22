@@ -9,7 +9,7 @@
 [![Windows App SDK](https://img.shields.io/badge/WindowsAppSDK-2.5.1-0078D4?style=for-the-badge)](https://github.com/microsoft/windowsappsdk)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-*Pulse brings a sleek, interactive, micro-animated Dynamic Island experience to your Windows desktop, with native system media control, live album art, a Pomodoro focus timer, system monitoring controls, and fluid dark/light theme adaptability.*
+*Pulse brings a sleek, interactive, micro-animated Dynamic Island experience to your Windows desktop, with native system media control, live album art, a Pomodoro focus timer, system monitoring controls, fluid dark/light theme adaptability, and a smart idle strip for the time, date and local weather.*
 
 ---
 
@@ -40,7 +40,8 @@
 ## Key Features
 
 - **Dynamic Island UI**: Floating, top-aligned desktop widget with multi-state transitions (Idle, Compact, Hover, Expanded, Track Change pulse).
-- **Fully Configurable Appearance**: Dark/Light/System themes, glass transparency (0-100%), artwork tint strength (0-100%), motion profile and speed (70-140%), island scale and top offset are all live-adjustable from Settings.
+- **Smart Idle Strip**: When no media is playing, the compact pill shows a live clock, Turkish date and local weather side by side. Weather uses Open-Meteo (no API key) and refreshes every 15 minutes; location comes from an approximate IP lookup or a manually verified city. Clock, date and weather can each be hidden. Automatic mode sends the public IP to `ipwho.is`; weather coordinates go to Open-Meteo.
+- **Fully Configurable Appearance**: Dark/Light/System themes, glass transparency (0-100%), artwork tint strength (0-100%), motion profile and speed (70-140%), island scale and top offset are all live-adjustable from Settings, along with idle clock/date/weather toggles and a manual city override.
 - **Live Media Session Control**: Synchronizes automatically with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC and more.
 - **Album Art & Adaptive Theming**: Dynamic artwork extraction, caching, accent-color sampling and adjustable tint strength (0-100%) across dark, light and system themes.
 - **Interactive Timeline & Seeking**: Real-time progress with drag-to-seek support and ±15s skip controls, laid out like Apple's expanded Live Activity.
@@ -61,7 +62,7 @@
 - **Unstealable Topmost**: z-order changes are forced back to topmost in WM_WINDOWPOSCHANGING, so the island can never be buried by other apps.
 - **System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup toggle and quick exit.
 - **Multi-Monitor & DPI Aware**: Adapts to DPI scale factors and monitor layouts per cursor position without clipping or blurred rendering.
-- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine test coverage (61 automated tests).
+- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine and weather/location coverage (107 automated tests).
 
 ---
 
@@ -71,6 +72,7 @@
 - **UI Platform**: WinUI 3 (Windows App SDK 2.5.1, unpackaged & self-contained deployment)
 - **Effects**: Microsoft Composition (Spring/Fluid animations), DWM-backed transparent window surfaces, GDI-based frosted-desktop sampling
 - **Media API**: `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager`
+- **Weather & Location**: Open-Meteo current conditions and geocoding, ipwho.is IP lookup, JSON disk caches
 - **System APIs**: WASAPI endpoint volume, Win32 power status (`GetSystemPowerStatus`), GDI screen capture
 - **MVVM Pattern**: `CommunityToolkit.Mvvm`
 - **Testing**: xUnit with Moq
@@ -84,6 +86,8 @@ The island exposes three pages while expanded. Switch pages by scrolling the mou
 1. **Media** - playback, timeline and transport controls.
 2. **Focus Timer** - Pomodoro focus timer with preset chips.
 3. **System & Control** - master volume, battery status, screenshot capture.
+
+When nothing is playing, the compact pill switches to the smart idle strip: clock and date on the left, local weather on the right. The wordmark remains as a fallback when all idle information is disabled or unavailable.
 
 Clicking the collapsed pill expands the island; clicking outside (or the collapse arrow) returns it to the compact state. The island can be hidden from the tray or the right-click menu and restored later.
 
@@ -140,6 +144,7 @@ Stop-Process -Name Pulse -Force -ErrorAction SilentlyContinue
 - **Click Alert Capsule**: open the related target (screenshot file, downloads folder, focus panel).
 - **Hover**: quick state (media wave animation, track details).
 - **Right Click / System Tray**: settings panel, focus timer shortcuts, notification simulator, taskbar flyout, hide island.
+- **Idle Settings**: toggle the idle clock, date and weather; use automatic IP location or verify a manual city. Weather refreshes every 15 minutes.
 - **Dynamic Tinting**: album art driven accent changes blended into pill backgrounds and controls.
 - **Slider (System Page)**: stepwise master volume; mute button shows a red active state.
 

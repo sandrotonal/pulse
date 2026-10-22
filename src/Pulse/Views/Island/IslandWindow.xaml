@@ -265,19 +265,74 @@
                       VerticalAlignment="Stretch"
                       Padding="10,0,10,0">
 
-                    <!-- Idle: no active track or notifications -->
+                    <!-- Idle: live clock/date + weather strip; brand fallback when all info is off -->
                     <Grid x:Name="IdleContent"
                           Visibility="{Binding CustomIdleVisibility}"
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="10"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IdleSmartVisibility}">
+                            <StackPanel Width="64"
+                                        Spacing="0"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding IdleClockStackVisibility}">
+                                <TextBlock Text="{Binding IdleClockText}"
+                                           FontSize="20" FontWeight="SemiBold"
+                                           LineHeight="22" LineStackingStrategy="BlockLineHeight"
+                                           Foreground="{ThemeResource PrimaryText}"
+                                           Visibility="{Binding IdleClockVisibility}" />
+                                <TextBlock Text="{Binding IdleDateText}"
+                                           FontSize="9" FontWeight="Medium"
+                                           LineHeight="10" LineStackingStrategy="BlockLineHeight"
+                                           Foreground="{ThemeResource PrimaryText}"
+                                           Opacity="0.72"
+                                           Visibility="{Binding IdleDateVisibility}" />
+                            </StackPanel>
+
+                            <Border Width="1" Height="20"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.24"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IdleDividerVisibility}" />
+
+                            <StackPanel Width="64"
+                                        Spacing="0"
+                                        VerticalAlignment="Center"
+                                        Visibility="{Binding IdleWeatherVisibility}"
+                                        Opacity="{Binding IdleWeatherOpacity}"
+                                        ToolTipService.ToolTip="{Binding IdleWeatherTooltip}">
+                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                    <FontIcon Glyph="{Binding IdleWeatherGlyph}"
+                                              FontSize="14"
+                                              Foreground="{ThemeResource PrimaryText}" />
+                                    <TextBlock Text="{Binding IdleWeatherTemperature}"
+                                               FontSize="13.5" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource PrimaryText}"
+                                               VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding IdleWeatherCity}"
+                                           FontSize="9" FontWeight="Medium"
+                                           Foreground="{ThemeResource PrimaryText}"
+                                           Opacity="0.72"
+                                           TextTrimming="CharacterEllipsis"
+                                           MaxWidth="64" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal"
+                                    Spacing="6"
+                                    VerticalAlignment="Center"
+                                    Visibility="{Binding IdleBrandVisibility}">
                             <Border Width="12" Height="12" CornerRadius="3">
                                 <Image Source="ms-appx:///Assets/Square44x44Logo.targetsize-24_altform-unplated.png" Width="12" Height="12" />
                             </Border>
                             <TextBlock Text="PULSE"
                                        FontSize="10" FontWeight="SemiBold"
                                        CharacterSpacing="120"
-                                       Foreground="{ThemeResource SecondaryText}" />
+                                       Foreground="{ThemeResource PrimaryText}"
+                                       Opacity="0.72" />
                         </StackPanel>
                     </Grid>
 
