@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -6,6 +7,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Pulse.Core.Events;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
+using Pulse.Core.Services.Weather;
 
 namespace Pulse.ViewModels;
 
@@ -17,7 +19,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private readonly ISystemEventService _systemEvents;
     private readonly IFileOperationService _fileOperations;
     private readonly ISystemControlService? _systemControl;
+    private readonly ISettingsService? _settingsService;
+    private readonly IWeatherService? _weatherService;
+    private readonly ILocationService? _locationService;
     private readonly DispatcherQueue _dispatcherQueue;
+    private readonly DispatcherQueueTimer? _idleClockTimer;
+    private readonly DispatcherQueueTimer? _idleWeatherTimer;
 
     private IslandEvent? _activeEvent;
     private bool _systemMuted;
@@ -26,6 +33,19 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private bool _batteryIsLow;
     private bool _batteryOnAc;
 
+    private GeoLocation? _idleLocation;
+    private WeatherSnapshot? _idleWeather;
+    private bool _idleWeatherStale;
+    private bool _idleWeatherInFlight;
+    private bool _idleWeatherRefreshPending;
+    private CancellationTokenSource? _idleWeatherCts;
+    private int _idleWeatherGeneration;
+    private DateTimeOffset _nextIdleWeatherAttemptUtc = DateTimeOffset.MinValue;
+    private string _lastIdleLocationKey = string.Empty;
+    private bool _lastShowIdleWeather;
+    private bool _idleMonitoringStarted;
+    private bool _disposed;
+
     public IslandViewModel(
         MediaViewModel media,
         IEventRouter eventRouter,
@@ -33,7 +53,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         ISystemEventService systemEvents,
         IFileOperationService fileOperations,
         DispatcherQueue dispatcherQueue,
-        ISystemControlService? systemControl = null)
+        ISystemControlService? systemControl = null,
+        ISettingsService? settingsService = null,
+        IWeatherService? weatherService = null,
+        ILocationService? locationService = null)
     {
         _media = media ?? throw new ArgumentNullException(nameof(media));
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
@@ -42,6 +65,22 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _fileOperations = fileOperations ?? throw new ArgumentNullException(nameof(fileOperations));
         _dispatcherQueue = dispatcherQueue ?? throw new ArgumentNullException(nameof(dispatcherQueue));
         _systemControl = systemControl;
+        _settingsService = settingsService;
+        _weatherService = weatherService;
+        _locationService = locationService;
+
+        if (_settingsService is not null)
+        {
+            _settingsService.SettingsChanged += OnIdleSettingsChanged;
+
+            _idleClockTimer = dispatcherQueue.CreateTimer();
+            _idleClockTimer.IsRepeating = false;
+            _idleClockTimer.Tick += OnIdleClockTick;
+
+            _idleWeatherTimer = dispatcherQueue.CreateTimer();
+            _idleWeatherTimer.IsRepeating = false;
+            _idleWeatherTimer.Tick += OnIdleWeatherTick;
+        }
 
         _media.PropertyChanged += OnMediaPropertyChanged;
         _eventRouter.ActiveEventChanged += OnActiveEventChanged;
@@ -489,7 +528,91 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Microsoft.UI.Xaml.Visibility FocusTimerVisibility => (!IsSplitModeActive && !IsNotificationActive && IsFocusTimerActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FileOperationVisibility => (!IsSplitModeActive && !IsNotificationActive && !IsFocusTimerActive && IsFileOperationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility TrackContentVisibility => ((HasTrack || _isSplitDemoForced) && (!IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive || IsSplitModeActive) && ShowsCompactContent) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility CustomIdleVisibility => (!HasTrack && !_isSplitDemoForced && !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && CurrentIslandState is (IslandState.Idle or IslandState.Hover)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility CustomIdleVisibility => (!HasTrack && !_isSplitDemoForced && !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && CurrentIslandState is (IslandState.Idle or IslandState.Hover or IslandState.Collapsing)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    private bool ShowIdleClock => _settingsService?.Current.ShowIdleClock ?? true;
+    private bool ShowIdleDate => _settingsService?.Current.ShowIdleDate ?? true;
+    private bool ShowIdleWeather => _settingsService?.Current.ShowIdleWeather ?? false;
+
+    public string IdleClockText => WeatherFormatter.FormatClock(DateTimeOffset.Now);
+    public string IdleDateText => WeatherFormatter.FormatDate(DateTimeOffset.Now);
+
+    public string IdleWeatherGlyph => _idleWeather is null
+        ? "\uE707"
+        : WeatherCodeMapper.Map(_idleWeather.WeatherCode, _idleWeather.IsDay).Glyph;
+
+    public string IdleWeatherTemperature => _idleWeather is null
+        ? "--°"
+        : WeatherFormatter.FormatTemperature(_idleWeather.TemperatureC);
+
+    public string IdleWeatherCity => _idleLocation?.City ?? string.Empty;
+
+    public string IdleWeatherTooltip
+    {
+        get
+        {
+            if (_idleWeather is null)
+            {
+                return string.Empty;
+            }
+
+            var visual = WeatherCodeMapper.Map(_idleWeather.WeatherCode, _idleWeather.IsDay);
+            return WeatherFormatter.FormatTooltip(
+                _idleLocation?.City ?? "Konum",
+                visual.Description,
+                _idleWeather.TemperatureC,
+                _idleWeather.ApparentTemperatureC,
+                _idleWeatherStale,
+                _idleWeather.RetrievedAtUtc);
+        }
+    }
+
+    public double IdleWeatherOpacity => _idleWeatherStale ? 0.65 : 1.0;
+
+    public Microsoft.UI.Xaml.Visibility IdleClockVisibility =>
+        ShowIdleClock ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility IdleDateVisibility =>
+        ShowIdleDate ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility IdleClockStackVisibility =>
+        ShowIdleClock || ShowIdleDate ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility IdleWeatherVisibility =>
+        ShowIdleWeather && _idleWeather is not null
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility IdleDividerVisibility =>
+        ShowIdleWeather && _idleWeather is not null && (ShowIdleClock || ShowIdleDate)
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility IdleSmartVisibility =>
+        ShowIdleClock || ShowIdleDate || (ShowIdleWeather && _idleWeather is not null)
+            ? Microsoft.UI.Xaml.Visibility.Visible
+            : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility IdleBrandVisibility =>
+        IdleSmartVisibility == Microsoft.UI.Xaml.Visibility.Visible
+            ? Microsoft.UI.Xaml.Visibility.Collapsed
+            : Microsoft.UI.Xaml.Visibility.Visible;
+
+    /// <summary>Starts the idle clock and weather loops once the island window is visible.</summary>
+    public void StartIdleMonitoring()
+    {
+        if (_disposed || _idleMonitoringStarted || _settingsService is null)
+        {
+            return;
+        }
+
+        _idleMonitoringStarted = true;
+        _lastIdleLocationKey = BuildIdleLocationKey(_settingsService.Current);
+        _lastShowIdleWeather = _settingsService.Current.ShowIdleWeather;
+        NotifyIdleClock();
+        NotifyIdleWeather();
+        RefreshIdlePresentation();
+    }
 
     // Delegated Media ViewModel properties for unified XAML binding compatibility
     public MediaTrack? CurrentTrack => _media.CurrentTrack;
@@ -690,6 +813,392 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(FileOperationVisibility));
         OnPropertyChanged(nameof(CustomIdleVisibility));
         OnPropertyChanged(nameof(IsMediaActive));
+        RefreshIdlePresentation();
+    }
+
+    private bool IsIdleContentVisible => CustomIdleVisibility == Microsoft.UI.Xaml.Visibility.Visible;
+
+    private void RefreshIdlePresentation()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(CustomIdleVisibility));
+        OnPropertyChanged(nameof(IdleClockText));
+        OnPropertyChanged(nameof(IdleDateText));
+        OnPropertyChanged(nameof(IdleClockVisibility));
+        OnPropertyChanged(nameof(IdleDateVisibility));
+        OnPropertyChanged(nameof(IdleClockStackVisibility));
+        OnPropertyChanged(nameof(IdleWeatherVisibility));
+        OnPropertyChanged(nameof(IdleDividerVisibility));
+        OnPropertyChanged(nameof(IdleSmartVisibility));
+        OnPropertyChanged(nameof(IdleBrandVisibility));
+        NotifyIdleWeather();
+        UpdateIdleTimers();
+    }
+
+    private void NotifyIdleClock()
+    {
+        OnPropertyChanged(nameof(IdleClockText));
+        OnPropertyChanged(nameof(IdleDateText));
+    }
+
+    private void NotifyIdleWeather()
+    {
+        OnPropertyChanged(nameof(IdleWeatherGlyph));
+        OnPropertyChanged(nameof(IdleWeatherTemperature));
+        OnPropertyChanged(nameof(IdleWeatherCity));
+        OnPropertyChanged(nameof(IdleWeatherTooltip));
+        OnPropertyChanged(nameof(IdleWeatherOpacity));
+        OnPropertyChanged(nameof(IdleWeatherVisibility));
+        OnPropertyChanged(nameof(IdleDividerVisibility));
+        OnPropertyChanged(nameof(IdleSmartVisibility));
+        OnPropertyChanged(nameof(IdleBrandVisibility));
+    }
+
+    private void UpdateIdleTimers()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (!IsIdleContentVisible)
+        {
+            _idleClockTimer?.Stop();
+            _idleWeatherTimer?.Stop();
+            return;
+        }
+
+        if (ShowIdleClock || ShowIdleDate)
+        {
+            ScheduleIdleClockTimer();
+        }
+        else
+        {
+            _idleClockTimer?.Stop();
+        }
+
+        if (ShowIdleWeather && _weatherService is not null && _locationService is not null)
+        {
+            var now = DateTimeOffset.UtcNow;
+            if (now >= _nextIdleWeatherAttemptUtc)
+            {
+                _ = RefreshIdleWeatherAsync(force: false);
+            }
+            else if (_idleWeatherTimer is not null && !_idleWeatherTimer.IsRunning)
+            {
+                ScheduleIdleWeatherTimer(_nextIdleWeatherAttemptUtc - now);
+            }
+        }
+        else
+        {
+            _idleWeatherTimer?.Stop();
+        }
+    }
+
+    private void ScheduleIdleClockTimer()
+    {
+        if (_disposed || _idleClockTimer is null || !IsIdleContentVisible)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.Now;
+        var nextMinute = new DateTimeOffset(now.Year, now.Month, now.Day, now.Hour, now.Minute, 0, now.Offset)
+            .AddMinutes(1);
+        var delay = nextMinute - now + TimeSpan.FromMilliseconds(50);
+        if (delay < TimeSpan.FromMilliseconds(100))
+        {
+            delay = TimeSpan.FromMilliseconds(100);
+        }
+
+        _idleClockTimer.Stop();
+        _idleClockTimer.Interval = delay;
+        _idleClockTimer.Start();
+    }
+
+    private void ScheduleIdleWeatherTimer(TimeSpan delay)
+    {
+        if (_disposed || _idleWeatherTimer is null || !IsIdleContentVisible || !ShowIdleWeather)
+        {
+            return;
+        }
+
+        if (delay < TimeSpan.FromSeconds(1))
+        {
+            delay = TimeSpan.FromSeconds(1);
+        }
+        else if (delay > TimeSpan.FromMinutes(15))
+        {
+            delay = TimeSpan.FromMinutes(15);
+        }
+
+        _idleWeatherTimer.Stop();
+        _idleWeatherTimer.Interval = delay;
+        _idleWeatherTimer.Start();
+    }
+
+    private void OnIdleClockTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (_disposed)
+        {
+            return;
+        }
+
+        NotifyIdleClock();
+        if (IsIdleContentVisible)
+        {
+            ScheduleIdleClockTimer();
+        }
+    }
+
+    private void OnIdleWeatherTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _ = RefreshIdleWeatherAsync(force: true);
+    }
+
+    private void OnIdleSettingsChanged(object? sender, AppSettings settings)
+    {
+        ApplyOnUi(() => ApplyIdleSettings(settings));
+    }
+
+    private void ApplyIdleSettings(AppSettings settings)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var locationKey = BuildIdleLocationKey(settings);
+        if (!string.Equals(_lastIdleLocationKey, locationKey, StringComparison.Ordinal))
+        {
+            _lastIdleLocationKey = locationKey;
+            _idleLocation = null;
+            _idleWeather = null;
+            _idleWeatherStale = false;
+            _nextIdleWeatherAttemptUtc = DateTimeOffset.MinValue;
+            _idleWeatherCts?.Cancel();
+            _idleWeatherRefreshPending = true;
+        }
+
+        if (_lastShowIdleWeather != settings.ShowIdleWeather)
+        {
+            _lastShowIdleWeather = settings.ShowIdleWeather;
+            if (settings.ShowIdleWeather)
+            {
+                _nextIdleWeatherAttemptUtc = DateTimeOffset.MinValue;
+            }
+        }
+
+        NotifyIdleClock();
+        NotifyIdleWeather();
+        RefreshIdlePresentation();
+    }
+
+    private static string BuildIdleLocationKey(AppSettings settings) =>
+        $"{settings.IdleLocationSource}|{settings.IdleLocationCity}|{settings.IdleLocationLatitude?.ToString(CultureInfo.InvariantCulture)}|{settings.IdleLocationLongitude?.ToString(CultureInfo.InvariantCulture)}";
+
+    private async Task RefreshIdleWeatherAsync(bool force)
+    {
+        if (_disposed ||
+            _weatherService is null ||
+            _locationService is null ||
+            _settingsService is null ||
+            !IsIdleContentVisible)
+        {
+            return;
+        }
+
+        if (_idleWeatherInFlight)
+        {
+            _idleWeatherRefreshPending = true;
+            return;
+        }
+
+        _idleWeatherInFlight = true;
+        try
+        {
+            await FetchIdleWeatherOnceAsync(force).ConfigureAwait(true);
+        }
+        catch
+        {
+            // Idle weather is best-effort; the clock and date must never be affected.
+        }
+        finally
+        {
+            ApplyOnUi(() =>
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _idleWeatherInFlight = false;
+                if (_idleWeatherRefreshPending)
+                {
+                    _idleWeatherRefreshPending = false;
+                    if (IsIdleContentVisible)
+                    {
+                        _ = RefreshIdleWeatherAsync(force: true);
+                    }
+                }
+            });
+        }
+    }
+
+    private async Task FetchIdleWeatherOnceAsync(bool force)
+    {
+        if (_disposed || _weatherService is null || _locationService is null || _settingsService is null)
+        {
+            return;
+        }
+
+        var settings = _settingsService.Current;
+        if (!settings.ShowIdleWeather)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (!force && now < _nextIdleWeatherAttemptUtc)
+        {
+            ScheduleIdleWeatherTimer(_nextIdleWeatherAttemptUtc - now);
+            return;
+        }
+
+        var generation = ++_idleWeatherGeneration;
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        _idleWeatherCts = cts;
+
+        GeoLocation? location = null;
+        var result = WeatherResult.Empty;
+        var failed = false;
+
+        try
+        {
+            var manual = settings.IdleLocationSource == "Manual";
+            location = await _locationService.ResolveAsync(
+                manual,
+                settings.IdleLocationCity,
+                settings.IdleLocationLatitude,
+                settings.IdleLocationLongitude,
+                cts.Token).ConfigureAwait(true);
+
+            if (cts.IsCancellationRequested || generation != _idleWeatherGeneration)
+            {
+                return;
+            }
+
+            if (location is null)
+            {
+                failed = true;
+            }
+            else
+            {
+                result = await _weatherService.GetAsync(location, cts.Token).ConfigureAwait(true);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // A timeout should be retried later. Settings changes and disposal also
+            // cancel the request, but those paths schedule their own replacement.
+            if (!_disposed &&
+                ReferenceEquals(_idleWeatherCts, cts) &&
+                !_idleWeatherRefreshPending &&
+                generation == _idleWeatherGeneration)
+            {
+                ApplyOnUi(() => ApplyIdleWeatherResult(generation, location, WeatherResult.Empty, failed: true));
+            }
+            return;
+        }
+        catch
+        {
+            failed = true;
+        }
+        finally
+        {
+            if (ReferenceEquals(_idleWeatherCts, cts))
+            {
+                _idleWeatherCts = null;
+            }
+        }
+
+        ApplyOnUi(() => ApplyIdleWeatherResult(generation, location, result, failed));
+    }
+
+    private void ApplyIdleWeatherResult(
+        int generation,
+        GeoLocation? location,
+        WeatherResult result,
+        bool failed)
+    {
+        if (_disposed || generation != _idleWeatherGeneration)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        if (failed || location is null || result.Snapshot is null)
+        {
+            if (location is null)
+            {
+                _idleLocation = null;
+                _idleWeather = null;
+                _idleWeatherStale = false;
+            }
+            else if (_idleWeather is not null &&
+                     now - _idleWeather.RetrievedAtUtc <= TimeSpan.FromHours(6))
+            {
+                _idleWeatherStale = true;
+            }
+            else
+            {
+                _idleLocation = location;
+                _idleWeather = null;
+                _idleWeatherStale = false;
+            }
+
+            _nextIdleWeatherAttemptUtc = now + TimeSpan.FromMinutes(2);
+            NotifyIdleWeather();
+            if (IsIdleContentVisible)
+            {
+                ScheduleIdleWeatherTimer(TimeSpan.FromMinutes(2));
+            }
+
+            return;
+        }
+
+        _idleLocation = location;
+        _idleWeather = result.Snapshot;
+        _idleWeatherStale = result.IsStale;
+        _nextIdleWeatherAttemptUtc = now + TimeSpan.FromMinutes(15);
+        NotifyIdleWeather();
+        if (IsIdleContentVisible)
+        {
+            ScheduleIdleWeatherTimer(TimeSpan.FromMinutes(15));
+        }
+    }
+
+    private void ApplyOnUi(Action action)
+    {
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            action();
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(() => action());
+        }
     }
 
     private DispatcherTimer? _systemPollTimer;
@@ -804,8 +1313,35 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _systemPollTimer?.Stop();
         _systemPollTimer = null;
+
+        _idleClockTimer?.Stop();
+        if (_idleClockTimer is not null)
+        {
+            _idleClockTimer.Tick -= OnIdleClockTick;
+        }
+
+        _idleWeatherTimer?.Stop();
+        if (_idleWeatherTimer is not null)
+        {
+            _idleWeatherTimer.Tick -= OnIdleWeatherTick;
+        }
+
+        _idleWeatherCts?.Cancel();
+        _idleWeatherCts = null;
+
+        if (_settingsService is not null)
+        {
+            _settingsService.SettingsChanged -= OnIdleSettingsChanged;
+        }
+
         _media.PropertyChanged -= OnMediaPropertyChanged;
         _eventRouter.ActiveEventChanged -= OnActiveEventChanged;
         _focusTimer.Tick -= OnFocusTimerTick;

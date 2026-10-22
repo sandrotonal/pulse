@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Services;
+using Pulse.Core.Services.Weather;
 using Pulse.Services.Artwork;
 using Pulse.Services.Media;
 using Pulse.Services.Settings;
@@ -25,6 +26,9 @@ public partial class App : Application
     private readonly FileOperationService _fileOperationService;
     private readonly WindowsSystemControlService _systemControlService;
     private readonly DownloadsWatcherService _downloadsWatcherService;
+    private readonly HttpClient _httpClient;
+    private readonly OpenMeteoWeatherService _weatherService;
+    private readonly LocationService _locationService;
     private readonly MediaViewModel _mediaViewModel;
     private readonly IslandViewModel _islandViewModel;
     private IslandWindow? _islandWindow;
@@ -106,6 +110,10 @@ public partial class App : Application
         _systemControlService = new WindowsSystemControlService();
         _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
 
+        _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
+        _weatherService = new OpenMeteoWeatherService(_httpClient);
+        _locationService = new LocationService(_httpClient);
+
         _mediaViewModel = new MediaViewModel(
             _mediaSessionService,
             playbackController,
@@ -120,7 +128,10 @@ public partial class App : Application
             _systemEventService,
             _fileOperationService,
             dispatcherQueue,
-            _systemControlService);
+            _systemControlService,
+            _settingsService,
+            _weatherService,
+            _locationService);
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -152,6 +163,7 @@ public partial class App : Application
         _islandWindow.TaskbarFlyoutRequested += (_, _) => _taskbarFlyoutWindow?.ToggleFlyout();
         _islandWindow.Activate();
         _islandWindow.ShowIsland();
+        _islandViewModel.StartIdleMonitoring();
 
         // When a user launches Pulse again, surface the running instance instead of crashing.
         var islandWindow = _islandWindow;
@@ -221,7 +233,7 @@ public partial class App : Application
             return;
         }
 
-        var viewModel = new SettingsViewModel(_settingsService, _startupService);
+        var viewModel = new SettingsViewModel(_settingsService, _startupService, _locationService);
         _settingsWindow = new SettingsWindow(viewModel);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
         _settingsWindow.Activate();
@@ -275,6 +287,7 @@ public partial class App : Application
         _taskbarFlyoutWindow?.Close();
         _islandWindow?.Close();
         _islandViewModel.Dispose();
+        _httpClient.Dispose();
         _downloadsWatcherService.Dispose();
         await _mediaViewModel.DisposeAsync();
         await _mediaSessionService.DisposeAsync();

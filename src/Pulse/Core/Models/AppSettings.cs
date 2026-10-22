@@ -23,4 +23,14 @@ public sealed record AppSettings
     public string AnimationIntensity { get; init; } = "Normal";
     public int TopOffset { get; init; } = 14;
     public int IslandScale { get; init; } = 100;
+
+    // Idle smart strip
+    public bool ShowIdleClock { get; init; } = true;
+    public bool ShowIdleDate { get; init; } = true;
+    public bool ShowIdleWeather { get; init; } = true;
+    /// <summary>"Auto" uses an approximate IP lookup; "Manual" uses the stored city/coordinates.</summary>
+    public string IdleLocationSource { get; init; } = "Auto";
+    public string IdleLocationCity { get; init; } = string.Empty;
+    public double? IdleLocationLatitude { get; init; }
+    public double? IdleLocationLongitude { get; init; }
 }
