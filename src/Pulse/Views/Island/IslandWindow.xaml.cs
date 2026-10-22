@@ -1559,13 +1559,13 @@ public sealed partial class IslandWindow : Window
 
             if (animated)
             {
-                AnimateDot(dot, targetWidth, targetOpacity, isActive);
+                AnimateDot(dot, targetWidth, targetOpacity);
             }
             else
             {
                 dot.Width = targetWidth;
                 dot.Opacity = targetOpacity;
-                if (WindowRoot.Resources.TryGetValue(isActive ? "Accent" : "PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+                if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
                 {
                     dot.Background = brush;
                 }
@@ -1573,7 +1573,7 @@ public sealed partial class IslandWindow : Window
         }
     }
 
-    private void AnimateDot(FrameworkElement dot, double targetWidth, double targetOpacity, bool isActive)
+    private void AnimateDot(FrameworkElement dot, double targetWidth, double targetOpacity)
     {
         try
         {
@@ -1582,6 +1582,7 @@ public sealed partial class IslandWindow : Window
             {
                 To = targetWidth,
                 Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+                EnableDependentAnimation = true,
                 EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut }
             };
             Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(widthAnim, dot);
@@ -1600,7 +1601,7 @@ public sealed partial class IslandWindow : Window
 
             sb.Begin();
 
-            if (dot is Button btn && WindowRoot.Resources.TryGetValue(isActive ? "Accent" : "PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+            if (dot is Button btn && WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
             {
                 btn.Background = brush;
             }

@@ -293,7 +293,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         OnPropertyChanged(nameof(IsSystemMuted));
         OnPropertyChanged(nameof(SystemMuteGlyph));
-        OnPropertyChanged(nameof(SystemMuteBrush));
     }
 
     public bool HasBattery => _batteryPercent >= 0;
@@ -356,8 +355,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BatterySummary));
         OnPropertyChanged(nameof(BatteryGlyph));
         OnPropertyChanged(nameof(BatteryVisibility));
-        OnPropertyChanged(nameof(BatteryBrush));
-        OnPropertyChanged(nameof(SystemMuteBrush));
     }
 
     public MediaViewModel Media => _media;
@@ -443,25 +440,16 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private Microsoft.UI.Xaml.Media.SolidColorBrush FocusTipBrush(string key)
     {
-        if (key == _focusPresetKey)
-        {
-            var accent = _media.Theme == "Light"
-                ? 0xFF007AFFu
-                : (_media.DynamicColorTint ? _media.ArtworkAccentColor : 0xFF007AFFu);
-            return MakeBrush(accent);
-        }
+        var isActive = key == _focusPresetKey;
+        var isLight = _media.Theme == "Light";
 
-        var idle = _media.Theme == "Light" ? 0x16000000u : 0x1FFFFFFFu;
-        return MakeBrush(idle);
+        // Keep the focus panel monochrome so it reads as part of the same glass surface.
+        var color = isLight
+            ? (isActive ? 0x33000000u : 0x0F000000u)
+            : (isActive ? 0x40FFFFFFu : 0x14FFFFFFu);
+
+        return MakeBrush(color);
     }
-
-    public Microsoft.UI.Xaml.Media.SolidColorBrush SystemMuteBrush => _systemMuted
-        ? MakeBrush(0xFFFF453Au)
-        : (_media.Theme == "Light" ? MakeBrush(0x14000000u) : MakeBrush(0x22FFFFFFu));
-
-    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryBrush => MakeBrush(_batteryIsCharging
-        ? 0xFF30D158u
-        : _batteryIsLow ? 0xFFFF453Au : 0xFF007AFFu);
 
     private static Microsoft.UI.Xaml.Media.SolidColorBrush MakeBrush(uint value)
     {
@@ -475,8 +463,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(FocusPreset50Brush));
         OnPropertyChanged(nameof(BreakPreset5Brush));
         OnPropertyChanged(nameof(BreakPreset15Brush));
-        OnPropertyChanged(nameof(SystemMuteBrush));
-        OnPropertyChanged(nameof(BatteryBrush));
         OnPropertyChanged(nameof(FocusProgress));
     }
 
@@ -1235,7 +1221,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(MasterVolumeLabel));
                 OnPropertyChanged(nameof(IsSystemMuted));
                 OnPropertyChanged(nameof(SystemMuteGlyph));
-                OnPropertyChanged(nameof(SystemMuteBrush));
                 _systemEvents.ReportAudioStatus(volume, muted);
             }
         }
@@ -1269,7 +1254,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _systemMuted = muted;
             OnPropertyChanged(nameof(IsSystemMuted));
             OnPropertyChanged(nameof(SystemMuteGlyph));
-            OnPropertyChanged(nameof(SystemMuteBrush));
         }
     }
 

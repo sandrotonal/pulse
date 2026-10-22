@@ -386,7 +386,7 @@
                         <FontIcon Grid.Column="0"
                                   Glyph="&#xE916;"
                                   FontSize="15"
-                                  Foreground="{ThemeResource Accent}"
+                                  Foreground="{ThemeResource PrimaryText}"
                                   Margin="2,0,10,0"
                                   VerticalAlignment="Center" />
 
@@ -546,13 +546,13 @@
                                 </Grid>
                                 <!-- Focus Timer Badge -->
                                 <Grid x:Name="FocusHeaderBadge" Visibility="{Binding FocusPageVisibility}">
-                                    <Ellipse Width="22" Height="22" Fill="#6366F1" />
-                                    <FontIcon Glyph="&#xE916;" FontSize="11" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Ellipse Width="22" Height="22" Fill="{ThemeResource PillControlBackground}" />
+                                    <FontIcon Glyph="&#xE916;" FontSize="11" Foreground="{ThemeResource PrimaryText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Grid>
                                 <!-- System Control Badge -->
                                 <Grid x:Name="SystemHeaderBadge" Visibility="{Binding SystemPageVisibility}">
-                                    <Ellipse Width="22" Height="22" Fill="#0EA5E9" />
-                                    <FontIcon Glyph="&#xE713;" FontSize="11" Foreground="#FFFFFF" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Ellipse Width="22" Height="22" Fill="{ThemeResource PillControlBackground}" />
+                                    <FontIcon Glyph="&#xE713;" FontSize="11" Foreground="{ThemeResource PrimaryText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Grid>
                             </Grid>
 
@@ -573,7 +573,7 @@
                             <Button x:Name="PageDot0"
                                     Style="{StaticResource IslandButtonStyle}"
                                     Width="18" Height="5" CornerRadius="2.5"
-                                    Background="{ThemeResource Accent}"
+                                    Background="{ThemeResource PrimaryText}"
                                     Padding="0"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
@@ -811,7 +811,7 @@
                                            VerticalAlignment="Stretch"
                                            Width="0"
                                            RadiusX="1.5" RadiusY="1.5"
-                                           Fill="{ThemeResource Accent}" />
+                                           Fill="{ThemeResource PrimaryText}" />
                             </Grid>
 
                             <!-- Presets & Actions -->
@@ -862,11 +862,14 @@
                                     </Button>
                                     <Button Style="{StaticResource PlayPauseButtonStyle}"
                                             Width="38" Height="38" CornerRadius="19"
+                                            Background="{ThemeResource PrimaryText}"
+                                            Foreground="{ThemeResource IslandBackground}"
                                             Command="{Binding ToggleFocusTimerCommand}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
                                             ToolTipService.ToolTip="Başlat / Duraklat">
-                                        <FontIcon Glyph="{Binding FocusPlayPauseGlyph}" FontSize="14" />
+                                        <FontIcon Glyph="{Binding FocusPlayPauseGlyph}" FontSize="14"
+                                                  Foreground="{ThemeResource IslandBackground}" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -901,7 +904,7 @@
                                 <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
                                     <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
                                                 Visibility="{Binding BatteryVisibility}">
-                                        <FontIcon Glyph="{Binding BatteryGlyph}" FontSize="14" Foreground="{Binding BatteryBrush}" />
+                                        <FontIcon Glyph="{Binding BatteryGlyph}" FontSize="14" Foreground="{ThemeResource PrimaryText}" />
                                         <TextBlock Text="{Binding BatterySummary}"
                                                    FontSize="12" FontWeight="SemiBold"
                                                    Foreground="{ThemeResource PrimaryText}"
@@ -948,7 +951,7 @@
                         Padding="4,0,4,0">
                 <FontIcon Glyph="{Binding DetachedGlyph}"
                           FontSize="11"
-                          Foreground="{ThemeResource Accent}"
+                          Foreground="{ThemeResource PrimaryText}"
                           VerticalAlignment="Center" />
                 <TextBlock Text="{Binding DetachedBadgeText}"
                            FontSize="10.5"
