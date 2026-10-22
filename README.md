@@ -9,7 +9,7 @@
 [![Windows App SDK](https://img.shields.io/badge/WindowsAppSDK-2.5.1-0078D4?style=for-the-badge)](https://github.com/microsoft/windowsappsdk)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-*Pulse brings a sleek, interactive, micro-animated Dynamic Island experience to your Windows desktop, with native system media control, live album art, a Pomodoro focus timer, system monitoring controls, fluid dark/light theme adaptability, and a smart idle strip for the time, date and local weather.*
+*Pulse brings a sleek, interactive, micro-animated Dynamic Island experience to your Windows desktop, with native system media control, live album art, a monochrome Pomodoro focus timer, a matching system control panel, fluid dark/light theme adaptability, and a smart idle strip for the time, date and local weather.*
 
 ---
 
@@ -23,15 +23,15 @@
 
 <img src="docs/images/island-expanded-focus.png" width="585" alt="Pulse focus timer" />
 
-<em>Focus timer panel: Pomodoro presets (25/50 min work, 5/15 min break), tabular countdown digits and a spring-animated progress hairline.</em>
+<em>Focus timer panel: monochrome Pomodoro presets (25/50 min work, 5/15 min break), tabular countdown digits and a spring-animated progress hairline.</em>
 
 <img src="docs/images/island-expanded-system.png" width="585" alt="Pulse system panel" />
 
-<em>System panel: monochrome volume control with mute state, live battery status and one-click screenshot capture.</em>
+<em>System panel: monochrome volume control with mute state, semantic battery colors (green while charging, red when low) with a subtle charging pulse, and one-click screenshot capture.</em>
 
-<img src="docs/images/settings-dark.png" width="420" alt="Pulse settings window" />
+<img src="docs/images/settings-dark.png" width="420" alt="Pulse settings window with idle strip controls" />
 
-<em>Settings: dark, light and system themes with live transitions, motion profiles plus a 70-140% speed slider, artwork tint strength, glass transparency and layout controls.</em>
+<em>Settings: dark, light and system themes with live transitions, motion profiles plus a 70-140% speed slider, artwork tint strength, glass transparency, layout controls, and smart idle clock/date/weather toggles with manual city verification.</em>
 
 ---
 
@@ -46,8 +46,8 @@
 - **Album Art & Adaptive Theming**: Dynamic artwork extraction, caching, accent-color sampling and adjustable tint strength (0-100%) across dark, light and system themes.
 - **Interactive Timeline & Seeking**: Real-time progress with drag-to-seek support and ±15s skip controls, laid out like Apple's expanded Live Activity.
 - **Liquid-Glass Frost Effect**: Toggleable glass mode with a 0-100% transparency slider that samples and blurs the live desktop behind the island, then layers the current album-art tint on top for a true frosted-glass look.
-- **Focus Timer (Pomodoro)**: Preset work/break chips (25/50, 5/15 minutes), live countdown, session auto-switching that keeps the island pinned while a session runs.
-- **System Controls Panel**: Master volume with integer stepping and visual mute state, live battery telemetry (charging/level states), and instant screenshot capture that saves locally and copies to the clipboard.
+- **Focus Timer (Pomodoro)**: Monochrome preset work/break chips (25/50, 5/15 minutes), live countdown, session auto-switching that keeps the island pinned while a session runs.
+- **System Controls Panel**: Master volume with integer stepping and a neutral mute state, live battery telemetry with green charging and red low-battery accents plus a subtle charging pulse, and instant screenshot capture that saves locally and copies to the clipboard.
 - **Avatar Pulse (Track Change)**: Smooth scale-in/out micro animations on track changes, plus layout snap animations.
 - **Tap to Open (Deep Link)**: Tap the album artwork in the island to jump straight to the app that owns the playback (Spotify, browser, any GSMTC source). Notification and download capsules open their related file or folder.
 - **Real Event Awareness**: Live AC/charging detection (plug the charger and the island reacts even at 100%), external volume-change HUD (hardware keys), and a Downloads watcher that surfaces completed downloads.
@@ -84,10 +84,10 @@
 The island exposes three pages while expanded. Switch pages by scrolling the mouse wheel over the expanded panel.
 
 1. **Media** - playback, timeline and transport controls.
-2. **Focus Timer** - Pomodoro focus timer with preset chips.
-3. **System & Control** - master volume, battery status, screenshot capture.
+2. **Focus Timer** - monochrome Pomodoro focus timer with preset chips.
+3. **System & Control** - monochrome master volume, battery status with semantic charging/low colors, screenshot capture.
 
-When nothing is playing, the compact pill switches to the smart idle strip: clock and date on the left, local weather on the right. The wordmark remains as a fallback when all idle information is disabled or unavailable.
+The Focus and System pages share a restrained monochrome control palette; battery green/red is the only semantic color exception. When nothing is playing, the compact pill switches to the smart idle strip: clock and date on the left, local weather on the right. The wordmark remains as a fallback when all idle information is disabled or unavailable.
 
 Clicking the collapsed pill expands the island; clicking outside (or the collapse arrow) returns it to the compact state. The island can be hidden from the tray or the right-click menu and restored later.
 
@@ -145,8 +145,8 @@ Stop-Process -Name Pulse -Force -ErrorAction SilentlyContinue
 - **Hover**: quick state (media wave animation, track details).
 - **Right Click / System Tray**: settings panel, focus timer shortcuts, notification simulator, taskbar flyout, hide island.
 - **Idle Settings**: toggle the idle clock, date and weather; use automatic IP location or verify a manual city. Weather refreshes every 15 minutes.
-- **Dynamic Tinting**: album art driven accent changes blended into pill backgrounds and controls.
-- **Slider (System Page)**: stepwise master volume; mute button shows a red active state.
+- **Dynamic Tinting**: album art driven accent changes blended into the glass background and media accents; Focus and System controls stay monochrome.
+- **Slider (System Page)**: stepwise master volume; the mute glyph reflects the active state without a color accent.
 
 ---
 

@@ -60,6 +60,7 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _focusPanelVisual;
     private readonly Visual _systemPanelVisual;
     private readonly Visual _detachedVisual;
+    private readonly Visual _batteryChargeHaloVisual;
     private readonly Pulse.Core.Animation.DampedSpringOscillator _springOscillator = new(dampingRatio: 0.82, responseSeconds: 0.34);
     private readonly SubclassProc _subclassProc;
 
@@ -80,6 +81,7 @@ public sealed partial class IslandWindow : Window
     private (int L1, int T1, int R1, int B1, int C1, int L2, int T2, int R2, int B2, int C2)? _lastWindowRegion;
 
     private bool _waveAnimating;
+    private bool _batteryChargeAnimating;
     private readonly DispatcherQueueTimer _collapseDelayTimer;
     private bool _isPointerOverSurface;
     private bool _isInteractingWithControl;
@@ -135,6 +137,7 @@ public sealed partial class IslandWindow : Window
         _focusPanelVisual = ElementCompositionPreview.GetElementVisual(FocusExpandedPanel);
         _systemPanelVisual = ElementCompositionPreview.GetElementVisual(SystemExpandedPanel);
         _detachedVisual = ElementCompositionPreview.GetElementVisual(DetachedPill);
+        _batteryChargeHaloVisual = ElementCompositionPreview.GetElementVisual(BatteryChargeHalo);
 
         ElementCompositionPreview.SetIsTranslationEnabled(Surface, true);
         ElementCompositionPreview.SetIsTranslationEnabled(CompactView, true);
@@ -168,6 +171,7 @@ public sealed partial class IslandWindow : Window
         ApplyTheme(_viewModel.Theme);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        UpdateBatteryChargingAnimation();
 
         if (FocusProgressTrack is not null)
         {
@@ -508,7 +512,11 @@ public sealed partial class IslandWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MediaViewModel.CurrentIslandState))
+        if (e.PropertyName == nameof(IslandViewModel.BatteryIsCharging))
+        {
+            UpdateBatteryChargingAnimation();
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.CurrentIslandState))
         {
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
         }
@@ -1205,6 +1213,59 @@ public sealed partial class IslandWindow : Window
         catch { }
     }
 
+    private void UpdateBatteryChargingAnimation()
+    {
+        if (!_viewModel.BatteryIsCharging)
+        {
+            if (!_batteryChargeAnimating) return;
+            _batteryChargeAnimating = false;
+
+            try
+            {
+                _batteryChargeHaloVisual.StopAnimation("Opacity");
+                _batteryChargeHaloVisual.StopAnimation("Scale");
+            }
+            catch { }
+
+            return;
+        }
+
+        if (_batteryChargeAnimating) return;
+        _batteryChargeAnimating = true;
+
+        try
+        {
+            var visual = _batteryChargeHaloVisual;
+            var compositor = visual.Compositor;
+            var easing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.42f, 0f), new Vector2(0.58f, 1f));
+
+            visual.CenterPoint = new Vector3(
+                (float)(BatteryChargeHalo.Width / 2),
+                (float)(BatteryChargeHalo.Height / 2), 0f);
+
+            var opacity = compositor.CreateScalarKeyFrameAnimation();
+            opacity.Duration = TimeSpan.FromMilliseconds(1500);
+            opacity.IterationBehavior = AnimationIterationBehavior.Forever;
+            opacity.Direction = AnimationDirection.Alternate;
+            opacity.InsertKeyFrame(0f, 0.12f);
+            opacity.InsertKeyFrame(1f, 0.55f, easing);
+            visual.StartAnimation("Opacity", opacity);
+
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.Duration = TimeSpan.FromMilliseconds(1500);
+            scale.IterationBehavior = AnimationIterationBehavior.Forever;
+            scale.Direction = AnimationDirection.Alternate;
+            scale.InsertKeyFrame(0f, new Vector3(0.85f, 0.85f, 1f));
+            scale.InsertKeyFrame(1f, new Vector3(1.15f, 1.15f, 1f), easing);
+            visual.StartAnimation("Scale", scale);
+        }
+        catch
+        {
+            _batteryChargeAnimating = false;
+        }
+    }
+
     // Input handlers and 04 Auto-collapse sequence
     private void OnCollapseDelayTimerTick(DispatcherQueueTimer sender, object args)
     {
@@ -1559,13 +1620,13 @@ public sealed partial class IslandWindow : Window
 
             if (animated)
             {
-                AnimateDot(dot, targetWidth, targetOpacity, isActive);
+                AnimateDot(dot, targetWidth, targetOpacity);
             }
             else
             {
                 dot.Width = targetWidth;
                 dot.Opacity = targetOpacity;
-                if (WindowRoot.Resources.TryGetValue(isActive ? "Accent" : "PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+                if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
                 {
                     dot.Background = brush;
                 }
@@ -1573,7 +1634,7 @@ public sealed partial class IslandWindow : Window
         }
     }
 
-    private void AnimateDot(FrameworkElement dot, double targetWidth, double targetOpacity, bool isActive)
+    private void AnimateDot(FrameworkElement dot, double targetWidth, double targetOpacity)
     {
         try
         {
@@ -1582,6 +1643,7 @@ public sealed partial class IslandWindow : Window
             {
                 To = targetWidth,
                 Duration = new Duration(TimeSpan.FromMilliseconds(200)),
+                EnableDependentAnimation = true,
                 EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut }
             };
             Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(widthAnim, dot);
@@ -1600,7 +1662,7 @@ public sealed partial class IslandWindow : Window
 
             sb.Begin();
 
-            if (dot is Button btn && WindowRoot.Resources.TryGetValue(isActive ? "Accent" : "PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+            if (dot is Button btn && WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
             {
                 btn.Background = brush;
             }
