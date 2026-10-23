@@ -10,6 +10,12 @@ public sealed record AppSettings
     public bool PowerNotifications { get; init; } = true;
     public bool DownloadNotifications { get; init; } = true;
     public bool EnableHoverExpand { get; init; } = true;
+    /// <summary>How long the pointer must rest on the island before hover expansion (0-1000 ms).</summary>
+    public int HoverExpandDelayMs { get; init; } = 200;
+    /// <summary>Hide the island automatically while a fullscreen app, game or video is active.</summary>
+    public bool AutoHideOnFullscreen { get; init; } = true;
+    /// <summary>Use the mouse wheel over the expanded media page to control system volume.</summary>
+    public bool EnableScrollWheelVolume { get; init; } = true;
     public bool DynamicColorTint { get; init; } = true;
     public bool ShowEqualizer { get; init; } = true;
     public bool UseTransparency { get; init; }

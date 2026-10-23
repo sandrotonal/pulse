@@ -176,7 +176,7 @@ public partial class App : Application
 
                 if (islandWindow.IsIslandHidden)
                 {
-                    islandWindow.UnhideIslandAnimated();
+                    islandWindow.ShowIsland();
                 }
 
                 // Visible feedback so a re-launch clearly surfaces the running island.
@@ -202,7 +202,7 @@ public partial class App : Application
             {
                 if (_islandWindow?.IsIslandHidden == true)
                 {
-                    _islandWindow.UnhideIslandAnimated();
+                    _islandWindow.ShowIsland();
                 }
                 _taskbarFlyoutWindow?.ToggleFlyout();
             };
