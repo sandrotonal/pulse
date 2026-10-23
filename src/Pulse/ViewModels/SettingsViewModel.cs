@@ -19,6 +19,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _powerNotifications = true;
     private bool _downloadNotifications = true;
     private bool _enableHoverExpand = true;
+    private double _hoverExpandDelayMs = 200;
+    private bool _autoHideOnFullscreen = true;
+    private bool _enableScrollWheelVolume = true;
     private bool _dynamicColorTint = true;
     private bool _showEqualizer = true;
     private bool _useTransparency;
@@ -76,6 +79,21 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool PowerNotifications { get => _powerNotifications; set { if (SetProperty(ref _powerNotifications, value)) Save(); } }
     public bool DownloadNotifications { get => _downloadNotifications; set { if (SetProperty(ref _downloadNotifications, value)) Save(); } }
     public bool EnableHoverExpand { get => _enableHoverExpand; set { if (SetProperty(ref _enableHoverExpand, value)) Save(); } }
+    public double HoverExpandDelayMs
+    {
+        get => _hoverExpandDelayMs;
+        set
+        {
+            if (SetProperty(ref _hoverExpandDelayMs, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HoverExpandDelayLabel)));
+                Save();
+            }
+        }
+    }
+    public string HoverExpandDelayLabel => $"{(int)Math.Round(HoverExpandDelayMs)} ms";
+    public bool AutoHideOnFullscreen { get => _autoHideOnFullscreen; set { if (SetProperty(ref _autoHideOnFullscreen, value)) Save(); } }
+    public bool EnableScrollWheelVolume { get => _enableScrollWheelVolume; set { if (SetProperty(ref _enableScrollWheelVolume, value)) Save(); } }
     public bool DynamicColorTint { get => _dynamicColorTint; set { if (SetProperty(ref _dynamicColorTint, value)) Save(); } }
     public bool ShowEqualizer { get => _showEqualizer; set { if (SetProperty(ref _showEqualizer, value)) Save(); } }
     public bool UseTransparency { get => _useTransparency; set { if (SetProperty(ref _useTransparency, value)) Save(); } }
@@ -218,8 +236,20 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         _initialized = true;
         _loading = true;
-        await _settingsService.LoadAsync();
-        var settings = _settingsService.Current;
+        try
+        {
+            await _settingsService.LoadAsync();
+            ApplySettings(_settingsService.Current);
+            StartWithWindows = await _startupService.IsEnabledAsync();
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void ApplySettings(AppSettings settings)
+    {
         AutoCollapse = settings.AutoCollapse;
         ShowSeekControls = settings.ShowSeekControls;
         NotificationsPaused = settings.NotificationsPaused;
@@ -227,6 +257,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         PowerNotifications = settings.PowerNotifications;
         DownloadNotifications = settings.DownloadNotifications;
         EnableHoverExpand = settings.EnableHoverExpand;
+        HoverExpandDelayMs = settings.HoverExpandDelayMs;
+        AutoHideOnFullscreen = settings.AutoHideOnFullscreen;
+        EnableScrollWheelVolume = settings.EnableScrollWheelVolume;
         DynamicColorTint = settings.DynamicColorTint;
         ShowEqualizer = settings.ShowEqualizer;
         UseTransparency = settings.UseTransparency;
@@ -250,8 +283,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                 ? "Şehir adı girin."
                 : $"Konum: {settings.IdleLocationCity}")
             : "Konum otomatik olarak algılanacak.";
-        StartWithWindows = await _startupService.IsEnabledAsync();
-        _loading = false;
+        StartWithWindows = settings.StartWithWindows;
     }
 
     private async Task ApplyLocationAsync()
@@ -322,6 +354,63 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
     }
 
+    public async Task SaveNowAsync()
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        await _settingsService.SaveAsync(BuildSettings());
+        StatusMessage = "Ayarlar kaydedildi.";
+    }
+
+    public async Task RestoreDefaultsAsync()
+    {
+        if (_loading)
+        {
+            return;
+        }
+
+        var defaults = new AppSettings();
+        _loading = true;
+        try
+        {
+            ApplySettings(defaults);
+        }
+        finally
+        {
+            _loading = false;
+        }
+
+        // StartWithWindows is backed by the Windows startup task, not just JSON.
+        // Apply it once here instead of letting every property setter save separately.
+        if (await _startupService.IsEnabledAsync())
+        {
+            var accepted = await _startupService.SetEnabledAsync(false);
+            if (!accepted)
+            {
+                var actual = await _startupService.IsEnabledAsync();
+                _loading = true;
+                try
+                {
+                    StartWithWindows = actual;
+                }
+                finally
+                {
+                    _loading = false;
+                }
+
+                await _settingsService.SaveAsync(BuildSettings());
+                StatusMessage = "Ayarlar sıfırlandı; başlangıç ayarı değiştirilemedi.";
+                return;
+            }
+        }
+
+        await _settingsService.SaveAsync(BuildSettings());
+        StatusMessage = "Varsayılan ayarlar geri yüklendi.";
+    }
+
     private void Save()
     {
         if (_loading)
@@ -329,7 +418,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             return;
         }
 
-        _ = _settingsService.SaveAsync(new AppSettings
+        _ = _settingsService.SaveAsync(BuildSettings());
+    }
+
+    private AppSettings BuildSettings()
+    {
+        return new AppSettings
         {
             StartWithWindows = StartWithWindows,
             AutoCollapse = AutoCollapse,
@@ -339,6 +433,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             PowerNotifications = PowerNotifications,
             DownloadNotifications = DownloadNotifications,
             EnableHoverExpand = EnableHoverExpand,
+            HoverExpandDelayMs = (int)Math.Round(HoverExpandDelayMs),
+            AutoHideOnFullscreen = AutoHideOnFullscreen,
+            EnableScrollWheelVolume = EnableScrollWheelVolume,
             DynamicColorTint = DynamicColorTint,
             ShowEqualizer = ShowEqualizer,
             UseTransparency = UseTransparency,
@@ -356,7 +453,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             IdleLocationCity = IdleLocationCity,
             IdleLocationLatitude = IdleLocationLatitude,
             IdleLocationLongitude = IdleLocationLongitude
-        });
+        };
     }
 
     private bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

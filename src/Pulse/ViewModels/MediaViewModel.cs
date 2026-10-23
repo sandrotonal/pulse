@@ -176,6 +176,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public Microsoft.UI.Xaml.Visibility SeekPanelVisibility => ShowSeekControls ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public bool AutoCollapse => _settingsService.Current.AutoCollapse;
     public bool EnableHoverExpand => _settingsService.Current.EnableHoverExpand;
+    public int HoverExpandDelayMs => _settingsService.Current.HoverExpandDelayMs;
+    public bool AutoHideOnFullscreen => _settingsService.Current.AutoHideOnFullscreen;
+    public bool EnableScrollWheelVolume => _settingsService.Current.EnableScrollWheelVolume;
     public bool DynamicColorTint => _settingsService.Current.DynamicColorTint;
     public bool ShowEqualizer => _settingsService.Current.ShowEqualizer;
     public bool UseTransparency => _settingsService.Current.UseTransparency;
@@ -563,6 +566,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(SeekPanelVisibility));
         OnPropertyChanged(nameof(AutoCollapse));
         OnPropertyChanged(nameof(EnableHoverExpand));
+        OnPropertyChanged(nameof(HoverExpandDelayMs));
+        OnPropertyChanged(nameof(AutoHideOnFullscreen));
+        OnPropertyChanged(nameof(EnableScrollWheelVolume));
         OnPropertyChanged(nameof(DynamicColorTint));
         OnPropertyChanged(nameof(ShowEqualizer));
         OnPropertyChanged(nameof(UseTransparency));

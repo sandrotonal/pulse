@@ -1,8 +1,11 @@
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Pulse.ViewModels;
 using WinUIEx;
+using Windows.Graphics;
 
 namespace Pulse.Views.Settings;
 
@@ -12,9 +15,7 @@ public sealed partial class SettingsWindow : Window
     {
         InitializeComponent();
         SettingsRoot.DataContext = viewModel;
-        // DIP-aware sizing: AppWindow.Resize expects physical pixels, so at 125%
-        // the window shrank to 416x560 DIP and clipped descriptions.
-        this.SetWindowSize(520, 700);
+        FitToWorkArea();
         AppWindow.TitleBar.ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
         SetTitleBar(TitleBarDragRegion);
@@ -41,11 +42,91 @@ public sealed partial class SettingsWindow : Window
         };
     }
 
+    private void FitToWorkArea()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var dpiScale = Math.Max(1u, GetDpiForWindow(hwnd)) / 96.0;
+        var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
+        var margin = (int)Math.Round(16 * dpiScale);
+
+        // Keep the footer on-screen even at 125%/150% scaling or when Windows
+        // restores the window lower than the primary work area.
+        var width = Math.Min(
+            (int)Math.Round(520 * dpiScale),
+            Math.Max(1, workArea.Width - margin * 2));
+        var height = Math.Min(
+            (int)Math.Round(700 * dpiScale),
+            Math.Max(1, workArea.Height - margin * 2));
+
+        var x = workArea.X + (workArea.Width - width) / 2;
+        var y = workArea.Y + Math.Max(margin, (workArea.Height - height) / 2);
+        AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
+    }
+
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
+
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
         if (args.PropertyName == nameof(SettingsViewModel.ThemeIndex) && sender is SettingsViewModel viewModel)
         {
             ApplyTheme(viewModel.ThemeIndex);
+        }
+    }
+
+    private async void OnSaveClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || SettingsRoot.DataContext is not SettingsViewModel viewModel)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        try
+        {
+            await viewModel.SaveNowAsync();
+        }
+        finally
+        {
+            button.IsEnabled = true;
+        }
+    }
+
+    private async void OnRestoreDefaultsClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button || SettingsRoot.DataContext is not SettingsViewModel viewModel)
+        {
+            return;
+        }
+
+        if (SettingsRoot.XamlRoot is null)
+        {
+            return;
+        }
+
+        var dialog = new ContentDialog
+        {
+            XamlRoot = SettingsRoot.XamlRoot,
+            Title = "Varsayılana dönülsün mü?",
+            Content = "Tüm ayarlar ilk kurulum değerlerine sıfırlanacak. Bu işlem geri alınamaz.",
+            PrimaryButtonText = "Sıfırla",
+            CloseButtonText = "Vazgeç",
+            DefaultButton = ContentDialogButton.Primary
+        };
+
+        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+        {
+            return;
+        }
+
+        button.IsEnabled = false;
+        try
+        {
+            await viewModel.RestoreDefaultsAsync();
+        }
+        finally
+        {
+            button.IsEnabled = true;
         }
     }
 
@@ -71,6 +152,7 @@ public sealed partial class SettingsWindow : Window
         SettingsRoot.Resources["SettingsSecondary"] = Brush(isLight ? 0xFF68686E : 0xFFAEAEB2);
         var accent = isLight ? 0xFF248A3Du : 0xFF30D158u;
         SettingsRoot.Resources["SettingsAccent"] = Brush(accent);
+        SettingsRoot.Resources["SettingsPrimaryButtonForeground"] = Brush(isLight ? 0xFFFFFFFFu : 0xFF1C1C1Eu);
         SettingsRoot.Resources["SystemAccentColor"] = Color(accent);
         SettingsRoot.Resources["SystemAccentColorLight1"] = Color(Mix(accent, 0xFFFFFFFFu, 0.25));
         SettingsRoot.Resources["SystemAccentColorLight2"] = Color(Mix(accent, 0xFFFFFFFFu, 0.45));

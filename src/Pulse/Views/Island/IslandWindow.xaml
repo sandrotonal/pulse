@@ -150,12 +150,14 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Background="{ThemeResource IslandBackground}"
-                BorderBrush="{ThemeResource IslandBorder}"
-                BorderThickness="1"
+                BorderBrush="Transparent"
+                BorderThickness="0"
                 PointerEntered="OnPointerEntered"
                 PointerExited="OnPointerExited"
                 PointerPressed="OnSurfacePointerPressed"
                 PointerReleased="OnSurfacePointerReleased"
+                PointerCanceled="OnSurfacePointerCanceled"
+                PointerCaptureLost="OnSurfacePointerCaptureLost"
                 PointerWheelChanged="OnSurfacePointerWheelChanged">
 
 
@@ -944,6 +946,32 @@
                         </Grid>
                     </Grid>
                 </Grid>
+
+                <!-- Transient system-volume HUD shown while scrolling over the media page. -->
+                <Border x:Name="VolumeHud"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        Margin="0,5,0,0"
+                        Padding="9,4"
+                        CornerRadius="12"
+                        Background="#E60B1018"
+                        IsHitTestVisible="False"
+                        Opacity="0"
+                        Visibility="Collapsed">
+                    <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                        <FontIcon x:Name="VolumeHudIcon"
+                                  Glyph="&#xE995;"
+                                  FontSize="11"
+                                  Foreground="White"
+                                  VerticalAlignment="Center" />
+                        <TextBlock x:Name="VolumeHudText"
+                                   Text="%50"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   Foreground="White"
+                                   VerticalAlignment="Center" />
+                    </StackPanel>
+                </Border>
             </Grid>
         </Border>
 
@@ -954,8 +982,8 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Background="{ThemeResource IslandBackground}"
-                BorderBrush="{ThemeResource IslandBorder}"
-                BorderThickness="1"
+                BorderBrush="Transparent"
+                BorderThickness="0"
                 Opacity="0"
                 Visibility="Collapsed"
                 PointerEntered="OnDetachedPillPointerEntered"
