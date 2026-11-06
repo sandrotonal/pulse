@@ -116,6 +116,7 @@ public sealed class SettingsServiceTests
         Assert.Equal(100, settings.MotionSpeed);
         Assert.Equal(200, settings.HoverExpandDelayMs);
         Assert.True(settings.AutoHideOnFullscreen);
+        Assert.True(settings.FocusCompletionSound);
     }
 
     [Fact]
@@ -179,6 +180,7 @@ public sealed class SettingsServiceTests
                 ShowIdleClock = false,
                 ShowIdleDate = false,
                 ShowIdleWeather = false,
+                FocusCompletionSound = false,
                 IdleLocationSource = "Manual",
                 IdleLocationCity = "  İstanbul  ",
                 IdleLocationLatitude = 41.01384,
@@ -188,6 +190,7 @@ public sealed class SettingsServiceTests
             var second = new SettingsService(directory);
             await second.LoadAsync();
 
+            Assert.False(second.Current.FocusCompletionSound);
             Assert.False(second.Current.ShowIdleClock);
             Assert.False(second.Current.ShowIdleDate);
             Assert.False(second.Current.ShowIdleWeather);

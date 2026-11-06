@@ -229,15 +229,45 @@ public partial class App : Application
     {
         if (_settingsWindow is not null)
         {
-            _settingsWindow.Activate();
+            BringToFront(_settingsWindow);
             return;
         }
 
         var viewModel = new SettingsViewModel(_settingsService, _startupService, _locationService);
         _settingsWindow = new SettingsWindow(viewModel);
         _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        _settingsWindow.Activate();
+        BringToFront(_settingsWindow);
     }
+
+    /// <summary>
+    /// The island is a no-activate window, so the app never owns the foreground and a plain
+    /// Activate() leaves the settings window behind whatever the user has open.
+    /// </summary>
+    private static void BringToFront(Window window)
+    {
+        window.Activate();
+
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(window);
+        if (hwnd == IntPtr.Zero) return;
+
+        const uint noMoveNoSizeNoActivate = 0x0001 | 0x0002 | 0x0010;
+        ShowWindow(hwnd, SwRestore);
+        // Stay above the always-on-top island, which would otherwise cover the settings header.
+        SetWindowPos(hwnd, HwndTopMost, 0, 0, 0, 0, noMoveNoSizeNoActivate);
+        SetForegroundWindow(hwnd);
+    }
+
+    private const int SwRestore = 9;
+    private static readonly IntPtr HwndTopMost = new(-1);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
     private async void OnStartupRequested(object? sender, bool enabled)
     {

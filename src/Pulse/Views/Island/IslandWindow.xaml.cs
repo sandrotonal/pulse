@@ -374,6 +374,46 @@ public sealed partial class IslandWindow : Window
     /// Polls the shell notification state. QUNS_BUSY, D3D fullscreen and
     /// presentation mode are the states Windows uses for fullscreen owners.
     /// </summary>
+    /// <summary>
+    /// Detects borderless/windowed fullscreen (most modern games): the foreground window
+    /// covers the whole monitor, including the space the taskbar would occupy.
+    /// </summary>
+    private bool IsBorderlessFullscreenForeground()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || foreground == _hwnd) return false;
+        if (!IsWindowVisible(foreground) || IsIconic(foreground)) return false;
+
+        // A maximized window also covers the monitor when the taskbar auto-hides,
+        // so it must be excluded explicitly - otherwise every maximized app reads as a game.
+        if (IsZoomed(foreground)) return false;
+
+        // The desktop and its wallpaper hosts cover the monitor but are never a game.
+        var className = new char[64];
+        var length = GetClassName(foreground, className, className.Length);
+        if (length > 0)
+        {
+            var name = new string(className, 0, length);
+            if (name is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
+        }
+
+        if (!GetWindowRect(foreground, out var windowRect)) return false;
+
+        var monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero) return false;
+
+        var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
+        if (!GetMonitorInfo(monitor, ref info)) return false;
+
+        // A maximized window stops at the work area, so it never matches the target rect.
+        const int tolerance = 2;
+        var bounds = info.Monitor;
+        return windowRect.Left <= bounds.Left + tolerance
+            && windowRect.Top <= bounds.Top + tolerance
+            && windowRect.Right >= bounds.Right - tolerance
+            && windowRect.Bottom >= bounds.Bottom - tolerance;
+    }
+
     private void PollFullscreenState()
     {
         var isFullscreen = false;
@@ -383,6 +423,10 @@ public sealed partial class IslandWindow : Window
             {
                 isFullscreen = FullscreenNotificationState.IsFullscreen(state);
             }
+
+            // Exclusive fullscreen is not the only case: borderless/windowed fullscreen
+            // games report QUNS_ACCEPTS_NOTIFICATIONS, so check the foreground window too.
+            isFullscreen = isFullscreen || IsBorderlessFullscreenForeground();
         }
         catch
         {
@@ -2624,6 +2668,21 @@ public sealed partial class IslandWindow : Window
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(Win32Point pt, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsZoomed(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, char[] lpClassName, int nMaxCount);
 
     [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
