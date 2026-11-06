@@ -25,7 +25,6 @@ public sealed class SettingsServiceTests
                 MotionSpeed = 130,
                 HoverExpandDelayMs = 350,
                 AutoHideOnFullscreen = false,
-                EnableScrollWheelVolume = false,
                 TopOffset = 42
             };
 
@@ -60,7 +59,6 @@ public sealed class SettingsServiceTests
 
             Assert.Equal(200, service.Current.HoverExpandDelayMs);
             Assert.True(service.Current.AutoHideOnFullscreen);
-            Assert.True(service.Current.EnableScrollWheelVolume);
         }
         finally
         {
@@ -118,7 +116,6 @@ public sealed class SettingsServiceTests
         Assert.Equal(100, settings.MotionSpeed);
         Assert.Equal(200, settings.HoverExpandDelayMs);
         Assert.True(settings.AutoHideOnFullscreen);
-        Assert.True(settings.EnableScrollWheelVolume);
     }
 
     [Fact]

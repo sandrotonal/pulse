@@ -21,7 +21,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _enableHoverExpand = true;
     private double _hoverExpandDelayMs = 200;
     private bool _autoHideOnFullscreen = true;
-    private bool _enableScrollWheelVolume = true;
     private bool _dynamicColorTint = true;
     private bool _showEqualizer = true;
     private bool _useTransparency;
@@ -93,7 +92,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
     public string HoverExpandDelayLabel => $"{(int)Math.Round(HoverExpandDelayMs)} ms";
     public bool AutoHideOnFullscreen { get => _autoHideOnFullscreen; set { if (SetProperty(ref _autoHideOnFullscreen, value)) Save(); } }
-    public bool EnableScrollWheelVolume { get => _enableScrollWheelVolume; set { if (SetProperty(ref _enableScrollWheelVolume, value)) Save(); } }
     public bool DynamicColorTint { get => _dynamicColorTint; set { if (SetProperty(ref _dynamicColorTint, value)) Save(); } }
     public bool ShowEqualizer { get => _showEqualizer; set { if (SetProperty(ref _showEqualizer, value)) Save(); } }
     public bool UseTransparency { get => _useTransparency; set { if (SetProperty(ref _useTransparency, value)) Save(); } }
@@ -259,7 +257,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         EnableHoverExpand = settings.EnableHoverExpand;
         HoverExpandDelayMs = settings.HoverExpandDelayMs;
         AutoHideOnFullscreen = settings.AutoHideOnFullscreen;
-        EnableScrollWheelVolume = settings.EnableScrollWheelVolume;
         DynamicColorTint = settings.DynamicColorTint;
         ShowEqualizer = settings.ShowEqualizer;
         UseTransparency = settings.UseTransparency;
@@ -435,7 +432,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             EnableHoverExpand = EnableHoverExpand,
             HoverExpandDelayMs = (int)Math.Round(HoverExpandDelayMs),
             AutoHideOnFullscreen = AutoHideOnFullscreen,
-            EnableScrollWheelVolume = EnableScrollWheelVolume,
             DynamicColorTint = DynamicColorTint,
             ShowEqualizer = ShowEqualizer,
             UseTransparency = UseTransparency,

@@ -14,8 +14,6 @@ public sealed record AppSettings
     public int HoverExpandDelayMs { get; init; } = 200;
     /// <summary>Hide the island automatically while a fullscreen app, game or video is active.</summary>
     public bool AutoHideOnFullscreen { get; init; } = true;
-    /// <summary>Use the mouse wheel over the expanded media page to control system volume.</summary>
-    public bool EnableScrollWheelVolume { get; init; } = true;
     public bool DynamicColorTint { get; init; } = true;
     public bool ShowEqualizer { get; init; } = true;
     public bool UseTransparency { get; init; }

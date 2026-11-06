@@ -92,9 +92,6 @@ public sealed partial class IslandWindow : Window
     private bool _fullscreenActive;
     private bool _autoHiddenForFullscreen;
     private bool _userOverrodeFullscreenHide;
-    private DispatcherQueueTimer? _volumeHudTimer;
-    private bool _volumeHudFading;
-    private Visual? _volumeHudVisual;
     private bool _isPointerOverSurface;
     private bool _isInteractingWithControl;
     private long _hostResizeGuardTicks;
@@ -150,10 +147,6 @@ public sealed partial class IslandWindow : Window
         _fullscreenPollTimer.Tick += (_, _) => PollFullscreenState();
         _fullscreenPollTimer.Start();
 
-        _volumeHudTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _volumeHudTimer.IsRepeating = false;
-        _volumeHudTimer.Tick += OnVolumeHudTimerTick;
-
         _pageTransitionCleanupTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _pageTransitionCleanupTimer.Interval = TimeSpan.FromMilliseconds(220);
         _pageTransitionCleanupTimer.Tick += OnPageTransitionCleanupTimerTick;
@@ -169,10 +162,6 @@ public sealed partial class IslandWindow : Window
         _systemPanelVisual = ElementCompositionPreview.GetElementVisual(SystemExpandedPanel);
         _detachedVisual = ElementCompositionPreview.GetElementVisual(DetachedPill);
         _batteryChargeHaloVisual = ElementCompositionPreview.GetElementVisual(BatteryChargeHalo);
-        if (VolumeHud is not null)
-        {
-            _volumeHudVisual = ElementCompositionPreview.GetElementVisual(VolumeHud);
-        }
 
         ElementCompositionPreview.SetIsTranslationEnabled(Surface, true);
         ElementCompositionPreview.SetIsTranslationEnabled(CompactView, true);
@@ -433,7 +422,6 @@ public sealed partial class IslandWindow : Window
         _fullscreenPollTimer?.Stop();
         _hoverExpandTimer?.Stop();
         _longPressTimer?.Stop();
-        _volumeHudTimer?.Stop();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
@@ -1686,17 +1674,6 @@ public sealed partial class IslandWindow : Window
 
         _collapseDelayTimer.Stop();
 
-        // The expanded media page owns the wheel: each notch changes system volume.
-        // Other pages keep the existing wheel navigation.
-        if (_viewModel.SelectedPageIndex == 0 && _viewModel.EnableScrollWheelVolume)
-        {
-            var steps = Math.Max(1, (int)Math.Round(Math.Abs(delta) / 120.0 * 2.0, MidpointRounding.AwayFromZero));
-            var volume = _viewModel.AdjustMasterVolume(delta > 0 ? steps : -steps);
-            ShowVolumeHud(volume, _viewModel.IsSystemMuted);
-            e.Handled = true;
-            return;
-        }
-
         var now = DateTime.UtcNow.Ticks;
         if (now - _lastWheelNavTicks < WheelDebounceTicks)
         {
@@ -1723,91 +1700,6 @@ public sealed partial class IslandWindow : Window
         {
             _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
             _collapseDelayTimer.Start();
-        }
-    }
-
-    private void ShowVolumeHud(int volume, bool muted)
-    {
-        if (VolumeHud is null || VolumeHudText is null || VolumeHudIcon is null)
-        {
-            return;
-        }
-
-        VolumeHudText.Text = muted ? "Sessiz" : $"%{volume}";
-        VolumeHudIcon.Glyph = muted ? "\uE74F" : volume == 0 ? "\uE992" : "\uE995";
-        VolumeHud.Visibility = Visibility.Visible;
-        _volumeHudFading = false;
-        _volumeHudTimer?.Stop();
-
-        if (_volumeHudVisual is null)
-        {
-            VolumeHud.Opacity = 1;
-        }
-        else
-        {
-            try
-            {
-                _volumeHudVisual.StopAnimation("Opacity");
-                _volumeHudVisual.StopAnimation("Scale");
-                _volumeHudVisual.Opacity = 1f;
-                _volumeHudVisual.CenterPoint = new Vector3(
-                    (float)(VolumeHud.ActualWidth / 2.0),
-                    (float)(VolumeHud.ActualHeight / 2.0), 0);
-
-                var compositor = _volumeHudVisual.Compositor;
-                var easing = compositor.CreateCubicBezierEasingFunction(
-                    new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
-                var pop = compositor.CreateVector3KeyFrameAnimation();
-                pop.Duration = TimeSpan.FromMilliseconds(160);
-                pop.InsertKeyFrame(0f, new Vector3(0.9f, 0.9f, 1f));
-                pop.InsertKeyFrame(1f, Vector3.One, easing);
-                _volumeHudVisual.StartAnimation("Scale", pop);
-            }
-            catch { }
-        }
-
-        if (_volumeHudTimer is not null)
-        {
-            _volumeHudTimer.Interval = TimeSpan.FromMilliseconds(900);
-            _volumeHudTimer.Start();
-        }
-    }
-
-    private void OnVolumeHudTimerTick(DispatcherQueueTimer sender, object args)
-    {
-        sender.Stop();
-
-        if (!_volumeHudFading)
-        {
-            _volumeHudFading = true;
-            if (_volumeHudVisual is not null)
-            {
-                try
-                {
-                    var fade = _volumeHudVisual.Compositor.CreateScalarKeyFrameAnimation();
-                    fade.Duration = TimeSpan.FromMilliseconds(180);
-                    fade.InsertKeyFrame(1f, 0f);
-                    _volumeHudVisual.StartAnimation("Opacity", fade);
-                }
-                catch { }
-            }
-
-            sender.Interval = TimeSpan.FromMilliseconds(200);
-            sender.Start();
-            return;
-        }
-
-        _volumeHudFading = false;
-        if (VolumeHud is not null)
-        {
-            VolumeHud.Visibility = Visibility.Collapsed;
-            VolumeHud.Opacity = 0;
-        }
-
-        if (_volumeHudVisual is not null)
-        {
-            _volumeHudVisual.StopAnimation("Opacity");
-            _volumeHudVisual.Opacity = 0f;
         }
     }
 
@@ -1994,7 +1886,6 @@ public sealed partial class IslandWindow : Window
 
     private void OnToggleExpandedClick(object sender, RoutedEventArgs e) => _viewModel.ToggleExpanded();
     private void OnCollapseClick(object sender, RoutedEventArgs e) => _viewModel.Collapse();
-    private void OnToggleMuteClick(object sender, RoutedEventArgs e) => _viewModel.ToggleMuteCommand.Execute(null);
     private void OnHideIslandClick(object sender, RoutedEventArgs e) => HideIslandAnimated();
 
     private void OnOpenTaskbarFlyoutClick(object sender, RoutedEventArgs e)

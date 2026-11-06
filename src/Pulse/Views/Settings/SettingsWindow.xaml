@@ -316,19 +316,6 @@
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
-                        <!-- Scroll Wheel Volume -->
-                        <Grid MinHeight="54">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
-                                <TextBlock Text="Medya kartında tekerlekle ses" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Genişletilmiş medya sayfasında fare tekerleği sistem sesini ayarlar; diğer sayfalarda sayfa geçişi devam eder." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
-                            </StackPanel>
-                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          OnContent="" OffContent="" IsOn="{Binding EnableScrollWheelVolume, Mode=TwoWay}"
-                                          AutomationProperties.Name="Medya kartında tekerlekle ses" />
-                        </Grid>
-                        <Border Style="{StaticResource DividerStyle}" />
-
                         <!-- Notifications -->
                         <Grid MinHeight="54">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>

@@ -274,47 +274,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     }
     public string MasterVolumeLabel => $"%{_masterVolume}";
 
-    /// <summary>
-    /// Changes system volume by a relative amount and unmutes when the user scrolls up.
-    /// Returns the resulting percentage so the island can show a lightweight HUD.
-    /// </summary>
-    public int AdjustMasterVolume(int delta)
-    {
-        var next = Math.Clamp(_masterVolume + delta, 0, 100);
-        if (next == _masterVolume)
-        {
-            return next;
-        }
-
-        try
-        {
-            MasterVolume = next;
-        }
-        catch
-        {
-            // Audio endpoint may be unavailable; keep the local value and retry on the next poll.
-            return _masterVolume;
-        }
-
-        if (_systemMuted)
-        {
-            _systemMuted = false;
-            try
-            {
-                _systemControl?.SetMute(false);
-            }
-            catch
-            {
-                // keep the local state; the next endpoint poll is authoritative
-            }
-
-            OnPropertyChanged(nameof(IsSystemMuted));
-            OnPropertyChanged(nameof(SystemMuteGlyph));
-        }
-
-        return next;
-    }
-
     public bool IsSystemMuted => _systemMuted;
     public string SystemMuteGlyph => _systemMuted ? "\uE74F" : "\uE995";
 
@@ -676,7 +635,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool EnableHoverExpand => _media.EnableHoverExpand;
     public int HoverExpandDelayMs => _media.HoverExpandDelayMs;
     public bool AutoHideOnFullscreen => _media.AutoHideOnFullscreen;
-    public bool EnableScrollWheelVolume => _media.EnableScrollWheelVolume;
     public bool DynamicColorTint => _media.DynamicColorTint;
     public bool ShowEqualizer => _media.ShowEqualizer;
     public bool UseTransparency => _media.UseTransparency;
@@ -713,14 +671,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public AsyncCommand SeekForwardCommand => _media.SeekForwardCommand;
     public RelayCommand ToggleShuffleCommand => _media.ToggleShuffleCommand;
     public RelayCommand ToggleFavoriteCommand => _media.ToggleFavoriteCommand;
-    public RelayCommand ToggleMuteCommand => _media.ToggleMuteCommand;
     public bool IsShuffleEnabled => _media.IsShuffleEnabled;
     public bool IsFavorite => _media.IsFavorite;
     public string FavoriteGlyph => _media.FavoriteGlyph;
     public Microsoft.UI.Xaml.Media.SolidColorBrush ShuffleBrush => _media.ShuffleBrush;
     public Microsoft.UI.Xaml.Media.SolidColorBrush FavoriteBrush => _media.FavoriteBrush;
-    public bool IsMuted => _media.IsMuted;
-    public string MuteGlyph => _media.MuteGlyph;
 
     // Delegated actions
     public void OnPointerEntered() => _media.OnPointerEntered();
