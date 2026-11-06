@@ -202,6 +202,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         SetFocusTimer50Command = new RelayCommand(() => StartFocusPreset("50", TimeSpan.FromMinutes(50), TimeSpan.FromMinutes(10)));
         SetBreakTimer5Command = new RelayCommand(() => StartFocusPreset("5", TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)));
         SetBreakTimer15Command = new RelayCommand(() => StartFocusPreset("15", TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(5)));
+        ToggleCustomFocusEditorCommand = new RelayCommand(() => IsCustomFocusEditing = !IsCustomFocusEditing);
+        CustomFocusPlusCommand = new RelayCommand(() => CustomFocusMinutes += 5);
+        CustomFocusMinusCommand = new RelayCommand(() => CustomFocusMinutes -= 5);
+        StartCustomFocusCommand = new RelayCommand(() =>
+        {
+            IsCustomFocusEditing = false;
+            StartFocusPreset("custom", TimeSpan.FromMinutes(CustomFocusMinutes), TimeSpan.FromMinutes(5));
+        });
 
         _activeEvent = _eventRouter.CurrentActiveEvent;
         RefreshBattery();
@@ -384,6 +392,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand SetFocusTimer50Command { get; }
     public RelayCommand SetBreakTimer5Command { get; }
     public RelayCommand SetBreakTimer15Command { get; }
+    public RelayCommand StartCustomFocusCommand { get; }
+    public RelayCommand ToggleCustomFocusEditorCommand { get; }
+    public RelayCommand CustomFocusPlusCommand { get; }
+    public RelayCommand CustomFocusMinusCommand { get; }
     public RelayCommand TakeScreenshotCommand { get; }
     public RelayCommand TestBatteryNotificationCommand { get; }
     public RelayCommand TestBluetoothNotificationCommand { get; }
@@ -421,16 +433,54 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     {
         get
         {
-            var evt = _activeEvent as FocusTimerEvent;
-            var remaining = evt?.RemainingTime ?? _focusTimer.RemainingTime;
+            // The router's active event is a snapshot; the service is the only source that
+            // advances every second, so the display must read it directly.
+            var remaining = _focusTimer.RemainingTime;
             return $"{(int)remaining.TotalMinutes:D2}:{remaining.Seconds:D2}";
         }
     }
-    public string FocusTimerModeText => (_activeEvent as FocusTimerEvent)?.IsBreak == true || _focusTimer.IsBreak ? "Mola" : "Odaklanma";
+    public string FocusTimerModeText => _focusTimer.IsBreak ? "Mola" : "Odaklanma";
     public bool FocusTimerIsRunning => _focusTimer.IsRunning;
     public string FocusPlayPauseGlyph => _focusTimer.IsRunning ? "\uE769" : "\uE768";
 
     private string _focusPresetKey = "25";
+    private double _customFocusMinutes = 45;
+    private bool _isCustomFocusEditing;
+
+    /// <summary>Minutes used by the tap-the-clock custom start (1-180).</summary>
+    public double CustomFocusMinutes
+    {
+        get => _customFocusMinutes;
+        set
+        {
+            var clamped = Math.Clamp(value, 1, 180);
+            if (Math.Abs(_customFocusMinutes - clamped) < 0.001) return;
+            _customFocusMinutes = clamped;
+            OnPropertyChanged(nameof(CustomFocusMinutes));
+            OnPropertyChanged(nameof(CustomFocusMinutesLabel));
+        }
+    }
+
+    public string CustomFocusMinutesLabel => $"{_customFocusMinutes:0} dk";
+
+    public bool IsCustomFocusEditing
+    {
+        get => _isCustomFocusEditing;
+        set
+        {
+            if (_isCustomFocusEditing == value) return;
+            _isCustomFocusEditing = value;
+            OnPropertyChanged(nameof(IsCustomFocusEditing));
+            OnPropertyChanged(nameof(CustomEditorVisibility));
+            OnPropertyChanged(nameof(PresetsVisibility));
+        }
+    }
+
+    public Microsoft.UI.Xaml.Visibility CustomEditorVisibility =>
+        IsCustomFocusEditing ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Visibility PresetsVisibility =>
+        IsCustomFocusEditing ? Microsoft.UI.Xaml.Visibility.Collapsed : Microsoft.UI.Xaml.Visibility.Visible;
     public double FocusProgress => _focusTimer.TotalDuration.TotalSeconds <= 0
         ? 0
         : Math.Clamp(1.0 - (_focusTimer.RemainingTime.TotalSeconds / _focusTimer.TotalDuration.TotalSeconds), 0, 1);
