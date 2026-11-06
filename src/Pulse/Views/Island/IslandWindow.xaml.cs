@@ -63,12 +63,24 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _detachedVisual;
     private readonly Visual _batteryChargeHaloVisual;
     private readonly Pulse.Core.Animation.DampedSpringOscillator _springOscillator = new(dampingRatio: 0.82, responseSeconds: 0.34);
+    private readonly Pulse.Core.Animation.DampedSpringOscillator _pageSpring = new(dampingRatio: 0.9, responseSeconds: 0.3);
     private readonly SubclassProc _subclassProc;
 
     private long _lastWheelNavTicks;
     private const long WheelDebounceTicks = 200 * TimeSpan.TicksPerMillisecond;
+    private const float PageSlideDistance = 24f;
     private int _targetPageIndex;
-    private DispatcherQueueTimer? _pageTransitionCleanupTimer;
+    private bool _isPageAnimating;
+    private long _pageAnimStartTicks;
+    private int _pageAnimFromIndex;
+    private int _pageAnimToIndex;
+    private readonly double[] _pageFromX = new double[3];
+    private readonly double[] _pageToX = new double[3];
+    private readonly double[] _pageVelX = new double[3];
+    private readonly double[] _pageFromOpacity = new double[3];
+    private readonly double[] _pageToOpacity = new double[3];
+    private readonly double[] _pageFromScale = new double[3];
+    private readonly double[] _pageToScale = new double[3];
     private DispatcherQueueTimer? _hideAnimationTimer;
     private DispatcherQueueTimer? _topmostGuardTimer;
     private string? _lastPulseTrackKey;
@@ -146,10 +158,6 @@ public sealed partial class IslandWindow : Window
         _fullscreenPollTimer.Interval = TimeSpan.FromSeconds(1);
         _fullscreenPollTimer.Tick += (_, _) => PollFullscreenState();
         _fullscreenPollTimer.Start();
-
-        _pageTransitionCleanupTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-        _pageTransitionCleanupTimer.Interval = TimeSpan.FromMilliseconds(220);
-        _pageTransitionCleanupTimer.Tick += OnPageTransitionCleanupTimerTick;
 
         _surfaceVisual = ElementCompositionPreview.GetElementVisual(Surface);
         _compactVisual = ElementCompositionPreview.GetElementVisual(CompactView);
@@ -422,6 +430,7 @@ public sealed partial class IslandWindow : Window
         _fullscreenPollTimer?.Stop();
         _hoverExpandTimer?.Stop();
         _longPressTimer?.Stop();
+        CancelPageTransition();
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
@@ -1000,6 +1009,9 @@ public sealed partial class IslandWindow : Window
 
     private void UpdateStateLayout(IslandState state, bool animated)
     {
+        // A page slide must not keep writing panel offsets after the panels are reset below.
+        CancelPageTransition();
+
         if (ReducedMotion)
         {
             animated = false;
@@ -1714,106 +1726,143 @@ public sealed partial class IslandWindow : Window
 
     private void AnimatePageTransition(int fromIndex, int toIndex, bool isForward)
     {
-        try
-        {
-            _targetPageIndex = toIndex;
-            _pageTransitionCleanupTimer?.Stop();
+        _targetPageIndex = toIndex;
+        _viewModel.SelectedPageIndex = toIndex;
+        UpdatePageDots(toIndex, animated: !ReducedMotion);
 
-            // Settle all panels before starting a new transition
-            for (int i = 0; i < 3; i++)
+        if (ReducedMotion)
+        {
+            FinishPageTransition();
+            return;
+        }
+
+        int direction = isForward ? 1 : -1;
+        double elapsedSec = _isPageAnimating ? PageElapsedSeconds : 0;
+
+        // Capture the in-flight state first: an interrupted slide resumes from where
+        // it is (with its velocity) instead of snapping to the page origin.
+        for (int i = 0; i < 3; i++)
+        {
+            bool isTarget = i == toIndex;
+            bool animated = _isPageAnimating && (i == _pageAnimFromIndex || i == _pageAnimToIndex);
+            if (animated)
             {
-                var g = GetPanelGrid(i);
-                var v = GetPanelVisual(i);
-                v.StopAnimation("Translation");
-                v.StopAnimation("Opacity");
-                g.Translation = Vector3.Zero;
-                if (i == fromIndex)
-                {
-                    g.Visibility = Visibility.Visible;
-                    v.Opacity = 1f;
-                }
-                else
-                {
-                    g.Visibility = Visibility.Collapsed;
-                    v.Opacity = 0f;
-                }
+                var x = _pageSpring.Evaluate(elapsedSec, _pageFromX[i], _pageToX[i], _pageVelX[i]);
+                _pageFromX[i] = x.Position;
+                _pageVelX[i] = x.Velocity;
+                _pageFromOpacity[i] = _pageSpring.Evaluate(elapsedSec, _pageFromOpacity[i], _pageToOpacity[i]).Position;
+                _pageFromScale[i] = _pageSpring.Evaluate(elapsedSec, _pageFromScale[i], _pageToScale[i]).Position;
+            }
+            else
+            {
+                _pageFromX[i] = isTarget ? direction * PageSlideDistance : 0;
+                _pageVelX[i] = 0;
+                _pageFromOpacity[i] = i == fromIndex ? 1 : 0;
+                _pageFromScale[i] = isTarget ? 0.985 : 1;
             }
 
-            var compositor = _surfaceVisual.Compositor;
-            var fadeEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.6f, 1f));
-            var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
-
-            var fromGrid = GetPanelGrid(fromIndex);
-            var toGrid = GetPanelGrid(toIndex);
-            var fromVisual = GetPanelVisual(fromIndex);
-            var toVisual = GetPanelVisual(toIndex);
-
-            toGrid.Visibility = Visibility.Visible;
-
-            var outFade = compositor.CreateScalarKeyFrameAnimation();
-            outFade.Duration = TimeSpan.FromMilliseconds(160);
-            outFade.InsertKeyFrame(1f, 0f, fadeEasing);
-            fromVisual.StartAnimation("Opacity", outFade);
-
-            var outTranslate = compositor.CreateVector3KeyFrameAnimation();
-            outTranslate.Duration = TimeSpan.FromMilliseconds(180);
-            float outTargetX = isForward ? -26f : 26f;
-            outTranslate.InsertKeyFrame(1f, new Vector3(outTargetX, 0, 0), springEasing);
-            fromVisual.StartAnimation("Translation", outTranslate);
-
-            var inFade = compositor.CreateScalarKeyFrameAnimation();
-            inFade.Duration = TimeSpan.FromMilliseconds(220);
-            inFade.InsertKeyFrame(0f, 0f);
-            inFade.InsertKeyFrame(1f, 1f, springEasing);
-            toVisual.StartAnimation("Opacity", inFade);
-
-            var inTranslate = compositor.CreateVector3KeyFrameAnimation();
-            inTranslate.Duration = TimeSpan.FromMilliseconds(220);
-            float inStartX = isForward ? 26f : -26f;
-            inTranslate.InsertKeyFrame(0f, new Vector3(inStartX, 0, 0));
-            inTranslate.InsertKeyFrame(1f, Vector3.Zero, springEasing);
-            toVisual.StartAnimation("Translation", inTranslate);
-
-            _viewModel.SelectedPageIndex = toIndex;
-            UpdatePageDots(toIndex, animated: true);
-
-            _pageTransitionCleanupTimer?.Start();
+            _pageToX[i] = isTarget ? 0 : (i == fromIndex ? -direction * PageSlideDistance : direction * PageSlideDistance);
+            _pageToOpacity[i] = isTarget ? 1 : 0;
+            _pageToScale[i] = isTarget ? 1 : 0.985;
         }
-        catch
-        {
-            _viewModel.SelectedPageIndex = toIndex;
-            for (int i = 0; i < 3; i++)
-            {
-                GetPanelGrid(i).Visibility = (i == toIndex) ? Visibility.Visible : Visibility.Collapsed;
-            }
-            UpdatePageDots(toIndex, animated: false);
-        }
-    }
 
-    private void OnPageTransitionCleanupTimerTick(DispatcherQueueTimer sender, object e)
-    {
-        sender.Stop();
-        int target = _targetPageIndex;
         for (int i = 0; i < 3; i++)
         {
             var grid = GetPanelGrid(i);
             var visual = GetPanelVisual(i);
-            if (i == target)
+            bool visible = i == fromIndex || i == toIndex;
+            grid.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+            visual.StopAnimation("Translation");
+            visual.StopAnimation("Opacity");
+            grid.Translation = new Vector3((float)_pageFromX[i], 0, 0);
+            visual.Opacity = (float)Math.Clamp(_pageFromOpacity[i], 0, 1);
+            float scale = (float)_pageFromScale[i];
+            visual.Scale = new Vector3(scale, scale, 1);
+        }
+
+        _pageAnimFromIndex = fromIndex;
+        _pageAnimToIndex = toIndex;
+        _pageAnimStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        if (!_isPageAnimating)
+        {
+            _isPageAnimating = true;
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnPageTransitionRendering;
+        }
+    }
+
+    private void CancelPageTransition()
+    {
+        if (!_isPageAnimating) return;
+        _isPageAnimating = false;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnPageTransitionRendering;
+    }
+
+    private double PageElapsedSeconds =>
+        (System.Diagnostics.Stopwatch.GetTimestamp() - _pageAnimStartTicks)
+        / (double)System.Diagnostics.Stopwatch.Frequency * MotionSpeedScale;
+
+    private void OnPageTransitionRendering(object? sender, object e)
+    {
+        if (!_isPageAnimating)
+        {
+            return;
+        }
+
+        if (!_viewModel.IsExpanded)
+        {
+            // A collapse owns the surface now; leave the panels to its reset.
+            CancelPageTransition();
+            return;
+        }
+
+        double elapsedSec = PageElapsedSeconds;
+        bool settled = true;
+
+        for (int i = 0; i < 3; i++)
+        {
+            if (i != _pageAnimFromIndex && i != _pageAnimToIndex)
             {
-                grid.Visibility = Visibility.Visible;
-                grid.Translation = Vector3.Zero;
-                visual.Opacity = 1f;
-                visual.StopAnimation("Translation");
-                visual.StopAnimation("Opacity");
+                continue;
             }
-            else
-            {
-                grid.Visibility = Visibility.Collapsed;
-                grid.Translation = Vector3.Zero;
-                visual.Opacity = 0f;
-                visual.StopAnimation("Translation");
-                visual.StopAnimation("Opacity");
-            }
+
+            var grid = GetPanelGrid(i);
+            var visual = GetPanelVisual(i);
+
+            var x = _pageSpring.Evaluate(elapsedSec, _pageFromX[i], _pageToX[i], _pageVelX[i]);
+            var opacity = _pageSpring.Evaluate(elapsedSec, _pageFromOpacity[i], _pageToOpacity[i]);
+            var scale = _pageSpring.Evaluate(elapsedSec, _pageFromScale[i], _pageToScale[i]);
+
+            grid.Translation = new Vector3((float)x.Position, 0, 0);
+            visual.Opacity = (float)Math.Clamp(opacity.Position, 0, 1);
+            float s = (float)scale.Position;
+            visual.Scale = new Vector3(s, s, 1);
+
+            settled &= x.HasSettled && opacity.HasSettled && scale.HasSettled;
+        }
+
+        if (settled)
+        {
+            FinishPageTransition();
+        }
+    }
+
+    private void FinishPageTransition()
+    {
+        _isPageAnimating = false;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnPageTransitionRendering;
+
+        for (int i = 0; i < 3; i++)
+        {
+            var grid = GetPanelGrid(i);
+            var visual = GetPanelVisual(i);
+            bool isTarget = i == _targetPageIndex;
+            grid.Translation = Vector3.Zero;
+            visual.StopAnimation("Translation");
+            visual.StopAnimation("Opacity");
+            visual.Scale = Vector3.One;
+            grid.Visibility = isTarget ? Visibility.Visible : Visibility.Collapsed;
+            visual.Opacity = isTarget ? 1f : 0f;
         }
     }
 
