@@ -412,7 +412,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     }
 
     private AppSettings? _pendingSave;
-    private Timer? _saveDebounce;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveDebounce;
 
     private void Save()
     {
@@ -423,14 +423,25 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
         // Slider drags and typing fire dozens of changes per second; persist once they settle.
         _pendingSave = BuildSettings();
-        _saveDebounce ??= new Timer(_ => FlushPendingSave(), null, Timeout.Infinite, Timeout.Infinite);
-        _saveDebounce.Change(300, Timeout.Infinite);
+
+        if (_saveDebounce is null)
+        {
+            _saveDebounce = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _saveDebounce.IsRepeating = false;
+            _saveDebounce.Interval = TimeSpan.FromMilliseconds(300);
+            _saveDebounce.Tick += (_, _) => FlushPendingSave();
+        }
+
+        _saveDebounce.Stop();
+        _saveDebounce.Start();
     }
 
     /// <summary>Writes any debounced change immediately (window close, app exit).</summary>
     public void FlushPendingSave()
     {
-        var pending = Interlocked.Exchange(ref _pendingSave, null);
+        // Must run on the UI thread: SaveAsync raises SettingsChanged, which touches bindings.
+        var pending = _pendingSave;
+        _pendingSave = null;
         if (pending is not null)
         {
             _ = _settingsService.SaveAsync(pending);
