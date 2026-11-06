@@ -32,6 +32,7 @@ public sealed partial class SettingsWindow : Window
         SettingsRoot.ActualThemeChanged += OnActualThemeChanged;
         Closed += (_, _) =>
         {
+            viewModel.FlushPendingSave();
             viewModel.PropertyChanged -= OnSettingsPropertyChanged;
             SettingsRoot.ActualThemeChanged -= OnActualThemeChanged;
         };

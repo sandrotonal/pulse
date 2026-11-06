@@ -18,6 +18,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _audioNotifications = true;
     private bool _powerNotifications = true;
     private bool _downloadNotifications = true;
+    private bool _focusCompletionSound = true;
     private bool _enableHoverExpand = true;
     private double _hoverExpandDelayMs = 200;
     private bool _autoHideOnFullscreen = true;
@@ -77,6 +78,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     public bool AudioNotifications { get => _audioNotifications; set { if (SetProperty(ref _audioNotifications, value)) Save(); } }
     public bool PowerNotifications { get => _powerNotifications; set { if (SetProperty(ref _powerNotifications, value)) Save(); } }
     public bool DownloadNotifications { get => _downloadNotifications; set { if (SetProperty(ref _downloadNotifications, value)) Save(); } }
+    public bool FocusCompletionSound { get => _focusCompletionSound; set { if (SetProperty(ref _focusCompletionSound, value)) Save(); } }
     public bool EnableHoverExpand { get => _enableHoverExpand; set { if (SetProperty(ref _enableHoverExpand, value)) Save(); } }
     public double HoverExpandDelayMs
     {
@@ -254,6 +256,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AudioNotifications = settings.AudioNotifications;
         PowerNotifications = settings.PowerNotifications;
         DownloadNotifications = settings.DownloadNotifications;
+        FocusCompletionSound = settings.FocusCompletionSound;
         EnableHoverExpand = settings.EnableHoverExpand;
         HoverExpandDelayMs = settings.HoverExpandDelayMs;
         AutoHideOnFullscreen = settings.AutoHideOnFullscreen;
@@ -408,6 +411,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         StatusMessage = "Varsayılan ayarlar geri yüklendi.";
     }
 
+    private AppSettings? _pendingSave;
+    private Microsoft.UI.Dispatching.DispatcherQueueTimer? _saveDebounce;
+
     private void Save()
     {
         if (_loading)
@@ -415,7 +421,31 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             return;
         }
 
-        _ = _settingsService.SaveAsync(BuildSettings());
+        // Slider drags and typing fire dozens of changes per second; persist once they settle.
+        _pendingSave = BuildSettings();
+
+        if (_saveDebounce is null)
+        {
+            _saveDebounce = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _saveDebounce.IsRepeating = false;
+            _saveDebounce.Interval = TimeSpan.FromMilliseconds(300);
+            _saveDebounce.Tick += (_, _) => FlushPendingSave();
+        }
+
+        _saveDebounce.Stop();
+        _saveDebounce.Start();
+    }
+
+    /// <summary>Writes any debounced change immediately (window close, app exit).</summary>
+    public void FlushPendingSave()
+    {
+        // Must run on the UI thread: SaveAsync raises SettingsChanged, which touches bindings.
+        var pending = _pendingSave;
+        _pendingSave = null;
+        if (pending is not null)
+        {
+            _ = _settingsService.SaveAsync(pending);
+        }
     }
 
     private AppSettings BuildSettings()
@@ -429,6 +459,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             AudioNotifications = AudioNotifications,
             PowerNotifications = PowerNotifications,
             DownloadNotifications = DownloadNotifications,
+            FocusCompletionSound = FocusCompletionSound,
             EnableHoverExpand = EnableHoverExpand,
             HoverExpandDelayMs = (int)Math.Round(HoverExpandDelayMs),
             AutoHideOnFullscreen = AutoHideOnFullscreen,

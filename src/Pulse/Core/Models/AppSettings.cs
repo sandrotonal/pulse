@@ -9,6 +9,8 @@ public sealed record AppSettings
     public bool AudioNotifications { get; init; } = true;
     public bool PowerNotifications { get; init; } = true;
     public bool DownloadNotifications { get; init; } = true;
+    /// <summary>Play a short system sound when a focus or break session ends.</summary>
+    public bool FocusCompletionSound { get; init; } = true;
     public bool EnableHoverExpand { get; init; } = true;
     /// <summary>How long the pointer must rest on the island before hover expansion (0-1000 ms).</summary>
     public int HoverExpandDelayMs { get; init; } = 200;

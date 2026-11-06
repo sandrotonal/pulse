@@ -13,7 +13,7 @@
 
 ---
 
-<img src="docs/images/island-compact.png" width="585" alt="Pulse compact pill" />
+<img src="docs/images/island-compact.png" width="360" alt="Pulse compact pill" />
 
 <em>Compact state: live track pill with album art, title, artist and playback control.</em>
 
@@ -23,15 +23,23 @@
 
 <img src="docs/images/island-expanded-focus.png" width="585" alt="Pulse focus timer" />
 
-<em>Focus timer panel: monochrome Pomodoro presets (25/50 min work, 5/15 min break), tabular countdown digits and a spring-animated progress hairline.</em>
+<em>Focus timer panel: monochrome Pomodoro presets (25/50 min work, 5/15 min break), tabular countdown digits and a spring-animated progress hairline. Tap the countdown to set a custom duration from 1 to 180 minutes.</em>
 
 <img src="docs/images/island-expanded-system.png" width="585" alt="Pulse system panel" />
 
 <em>System panel: monochrome volume control with mute state, semantic battery colors (green while charging, red when low) with a subtle charging pulse, and one-click screenshot capture.</em>
 
-<img src="docs/images/settings-dark.png" width="420" alt="Pulse settings window with idle strip controls" />
+<img src="docs/images/island-split.png" width="400" alt="Pulse split island with media and focus timer" />
+
+<em>Split island: when media and a focus session run together, the island separates into a media capsule and a live focus capsule. Tapping the timer opens the focus panel.</em>
+
+<img src="docs/images/settings-dark.png" width="440" alt="Pulse settings window with island behavior controls" />
 
 <em>Settings: dark, light and system themes with live transitions, motion profiles plus a 70-140% speed slider, artwork tint strength, glass transparency, layout controls, and smart idle clock/date/weather toggles with manual city verification.</em>
+
+<img src="docs/images/settings-notifications.png" width="440" alt="Pulse settings notification controls" />
+
+<em>Notification controls: per-category toggles for the audio HUD, power and download alerts, plus the focus-completion chime. Changes apply live and are debounced to a single disk write.</em>
 
 ---
 
@@ -46,7 +54,7 @@
 - **Album Art & Adaptive Theming**: Dynamic artwork extraction, caching, accent-color sampling and adjustable tint strength (0-100%) across dark, light and system themes.
 - **Interactive Timeline & Seeking**: Real-time progress with drag-to-seek support and ±15s skip controls, laid out like Apple's expanded Live Activity.
 - **Liquid-Glass Frost Effect**: Toggleable glass mode with a 0-100% transparency slider that samples and blurs the live desktop behind the island, then layers the current album-art tint on top for a true frosted-glass look.
-- **Focus Timer (Pomodoro)**: Monochrome preset work/break chips (25/50, 5/15 minutes), live countdown, session auto-switching that keeps the island pinned while a session runs.
+- **Focus Timer (Pomodoro)**: Monochrome preset work/break chips (25/50, 5/15 minutes), a tap-to-set custom duration from 1 to 180 minutes, live countdown, session auto-switching that keeps the island pinned while a session runs, and a completion state that labels the finished session and plays the Windows notification chime.
 - **System Controls Panel**: Master volume with integer stepping and a neutral mute state, live battery telemetry with green charging and red low-battery accents plus a subtle charging pulse, and instant screenshot capture that saves locally and copies to the clipboard.
 - **Avatar Pulse (Track Change)**: Smooth scale-in/out micro animations on track changes, plus layout snap animations.
 - **Tap to Open (Deep Link)**: Tap the album artwork in the island to jump straight to the app that owns the playback (Spotify, browser, any GSMTC source). Notification and download capsules open their related file or folder.
@@ -57,12 +65,14 @@
 - **Synced Lyrics**: lrclib-backed word-timed lyrics shown in the expanded media panel with graceful query fallbacks (album/duration drift tolerant).
 - **Global Hotkeys**: Win+Alt+I shows/hides the island; Win+Shift+F starts or pauses the focus timer from anywhere.
 - **Spring Motion Profiles**: expand/collapse runs on a damped harmonic spring; the motion-intensity setting (Minimal/Balanced/Fluid) plus a 70-140% speed slider changes damping and duration for real.
-- **Notification Controls**: Per-category toggles in Settings for the audio HUD, power/charging alerts and download notifications.
+- **Notification Controls**: Per-category toggles in Settings for the audio HUD, power/charging alerts, download notifications and the focus-completion chime. Changes apply live and are debounced into one disk write.
+- **Fullscreen & Game Aware**: Exclusive fullscreen is detected through the shell, and borderless/windowed fullscreen games are detected from the foreground window covering the monitor. Maximized windows are excluded, so the island never disappears while you work.
+- **Split Island**: Media and a running focus session share the compact strip as two capsules, then merge back into one card.
 - **Reduced Motion**: Respects the Windows animation-effects setting - motion is disabled instantly when the OS asks for it.
 - **Unstealable Topmost**: z-order changes are forced back to topmost in WM_WINDOWPOSCHANGING, so the island can never be buried by other apps.
 - **System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup toggle and quick exit.
 - **Multi-Monitor & DPI Aware**: Adapts to DPI scale factors and monitor layouts per cursor position without clipping or blurred rendering.
-- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine and weather/location coverage (107 automated tests).
+- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine and weather/location coverage (116 automated tests).
 
 ---
 

@@ -85,6 +85,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _media.PropertyChanged += OnMediaPropertyChanged;
         _eventRouter.ActiveEventChanged += OnActiveEventChanged;
         _focusTimer.Tick += OnFocusTimerTick;
+        _focusTimer.SessionCompleted += OnFocusSessionCompleted;
 
         StartFocusTimerCommand = new RelayCommand(() =>
         {
@@ -439,7 +440,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return $"{(int)remaining.TotalMinutes:D2}:{remaining.Seconds:D2}";
         }
     }
-    public string FocusTimerModeText => _focusTimer.IsBreak ? "Mola" : "Odaklanma";
+    public string FocusTimerModeText => _focusTimer.State == FocusTimerState.Completed
+        ? (_focusTimer.IsBreak ? "Mola bitti" : "Odak tamamlandı")
+        : (_focusTimer.IsBreak ? "Mola" : "Odaklanma");
     public bool FocusTimerIsRunning => _focusTimer.IsRunning;
     public string FocusPlayPauseGlyph => _focusTimer.IsRunning ? "\uE769" : "\uE768";
 
@@ -815,6 +818,43 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(DetachedBadgeText));
         OnPropertyChanged(nameof(DetachedToolTip));
     }
+
+    private void OnFocusSessionCompleted(object? sender, FocusTimerEvent e)
+    {
+        // Raised from the timer thread; PropertyChanged must run on the UI thread.
+        if (_dispatcherQueue.HasThreadAccess)
+        {
+            CompleteFocusSession();
+        }
+        else
+        {
+            _dispatcherQueue.TryEnqueue(CompleteFocusSession);
+        }
+    }
+
+    private void CompleteFocusSession()
+    {
+        NotifyFocusTick();
+        NotifySplitStateChanged();
+
+        if (_settingsService is null || _settingsService.Current.FocusCompletionSound)
+        {
+            try
+            {
+                // Windows' own asterisk sound: respects the OS sound scheme and mute state.
+                MessageBeep(MB_ICONASTERISK);
+            }
+            catch
+            {
+                // Audio device may be unavailable; the visual completion still shows.
+            }
+        }
+    }
+
+    private const uint MB_ICONASTERISK = 0x00000040;
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool MessageBeep(uint uType);
 
     private void OnFocusTimerTick(object? sender, FocusTimerEvent e)
     {
@@ -1390,6 +1430,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _media.PropertyChanged -= OnMediaPropertyChanged;
         _eventRouter.ActiveEventChanged -= OnActiveEventChanged;
         _focusTimer.Tick -= OnFocusTimerTick;
+        _focusTimer.SessionCompleted -= OnFocusSessionCompleted;
         _focusTimer.Dispose();
         _systemEvents.Dispose();
         _fileOperations.Dispose();

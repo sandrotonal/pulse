@@ -371,6 +371,19 @@
                                           OnContent="" OffContent="" IsOn="{Binding DownloadNotifications, Mode=TwoWay}"
                                           AutomationProperties.Name="İndirme bildirimleri" />
                         </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Focus completion sound -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Sayaç bitince ses çal" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Odak veya mola süresi dolduğunda kısa bir sistem bildirim sesi çalar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding FocusCompletionSound, Mode=TwoWay}"
+                                          AutomationProperties.Name="Sayaç bitince ses çal" />
+                        </Grid>
                     </StackPanel>
                 </Border>
                 <!-- 4. GÖRÜNÜM VE ANİMASYON -->
