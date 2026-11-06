@@ -9,6 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Pulse.Core.Models;
+using Pulse.Core.Services;
 using Pulse.ViewModels;
 using Windows.Graphics;
 
@@ -83,6 +84,14 @@ public sealed partial class IslandWindow : Window
     private bool _waveAnimating;
     private bool _batteryChargeAnimating;
     private readonly DispatcherQueueTimer _collapseDelayTimer;
+    private DispatcherQueueTimer? _hoverExpandTimer;
+    private DispatcherQueueTimer? _longPressTimer;
+    private bool _longPressTriggered;
+    private bool _hideAnchorVisible = true;
+    private DispatcherQueueTimer? _fullscreenPollTimer;
+    private bool _fullscreenActive;
+    private bool _autoHiddenForFullscreen;
+    private bool _userOverrodeFullscreenHide;
     private bool _isPointerOverSurface;
     private bool _isInteractingWithControl;
     private long _hostResizeGuardTicks;
@@ -122,6 +131,21 @@ public sealed partial class IslandWindow : Window
         _collapseDelayTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
         _collapseDelayTimer.Tick += OnCollapseDelayTimerTick;
+
+        _hoverExpandTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _hoverExpandTimer.IsRepeating = false;
+        _hoverExpandTimer.Interval = TimeSpan.FromMilliseconds(Math.Clamp(_viewModel.HoverExpandDelayMs, 0, 1000));
+        _hoverExpandTimer.Tick += OnHoverExpandTimerTick;
+
+        _longPressTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _longPressTimer.IsRepeating = false;
+        _longPressTimer.Interval = TimeSpan.FromMilliseconds(500);
+        _longPressTimer.Tick += OnLongPressTimerTick;
+
+        _fullscreenPollTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _fullscreenPollTimer.Interval = TimeSpan.FromSeconds(1);
+        _fullscreenPollTimer.Tick += (_, _) => PollFullscreenState();
+        _fullscreenPollTimer.Start();
 
         _pageTransitionCleanupTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _pageTransitionCleanupTimer.Interval = TimeSpan.FromMilliseconds(220);
@@ -171,6 +195,7 @@ public sealed partial class IslandWindow : Window
         ApplyTheme(_viewModel.Theme);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        Closed += OnWindowClosed;
         UpdateBatteryChargingAnimation();
 
         if (FocusProgressTrack is not null)
@@ -209,16 +234,24 @@ public sealed partial class IslandWindow : Window
 
     public void ShowIsland()
     {
+        // Showing the island during a fullscreen app is an explicit user override;
+        // keep it visible until that fullscreen session ends.
+        if (_fullscreenActive)
+        {
+            _userOverrodeFullscreenHide = true;
+        }
+
         if (_isIslandHidden) UnhideIslandAnimated();
         ShowWindow(_hwnd, 4); // SW_SHOWNOACTIVATE
         ApplyWindowStyles();
         PositionHostWindow();
     }
 
-    public void HideIslandAnimated()
+    public void HideIslandAnimated(bool showAnchor = true)
     {
         if (_isIslandHidden) return;
         _isIslandHidden = true;
+        _hideAnchorVisible = showAnchor;
 
         try
         {
@@ -257,7 +290,11 @@ public sealed partial class IslandWindow : Window
                 if (_isIslandHidden)
                 {
                     Surface.Visibility = Visibility.Collapsed;
-                    HiddenAnchor.Visibility = Visibility.Visible;
+                    HiddenAnchor.Visibility = _hideAnchorVisible ? Visibility.Visible : Visibility.Collapsed;
+                    if (!_hideAnchorVisible)
+                    {
+                        ShowWindow(_hwnd, 0); // SW_HIDE: leave no artifact over fullscreen content
+                    }
                 }
             };
             _hideAnimationTimer = timer;
@@ -311,8 +348,81 @@ public sealed partial class IslandWindow : Window
 
     public void ToggleHideIsland()
     {
-        if (_isIslandHidden) UnhideIslandAnimated();
-        else HideIslandAnimated();
+        if (_isIslandHidden)
+        {
+            ShowIsland();
+        }
+        else
+        {
+            if (_fullscreenActive)
+            {
+                _userOverrodeFullscreenHide = true;
+            }
+            HideIslandAnimated();
+        }
+    }
+
+    /// <summary>
+    /// Polls the shell notification state. QUNS_BUSY, D3D fullscreen and
+    /// presentation mode are the states Windows uses for fullscreen owners.
+    /// </summary>
+    private void PollFullscreenState()
+    {
+        var isFullscreen = false;
+        try
+        {
+            if (SHQueryUserNotificationState(out var state) == 0)
+            {
+                isFullscreen = FullscreenNotificationState.IsFullscreen(state);
+            }
+        }
+        catch
+        {
+            // Shell API is best-effort; a failure must never break the island.
+        }
+
+        var wasFullscreen = _fullscreenActive;
+        _fullscreenActive = isFullscreen;
+
+        if (wasFullscreen && !isFullscreen)
+        {
+            _userOverrodeFullscreenHide = false;
+        }
+
+        if (!_viewModel.AutoHideOnFullscreen)
+        {
+            if (_autoHiddenForFullscreen)
+            {
+                _autoHiddenForFullscreen = false;
+                if (_isIslandHidden)
+                {
+                    ShowIsland();
+                }
+            }
+            return;
+        }
+
+        if (isFullscreen && !_isIslandHidden && !_userOverrodeFullscreenHide)
+        {
+            _autoHiddenForFullscreen = true;
+            HideIslandAnimated(showAnchor: false);
+        }
+        else if (!isFullscreen && _autoHiddenForFullscreen)
+        {
+            _autoHiddenForFullscreen = false;
+            if (_isIslandHidden)
+            {
+                ShowIsland();
+            }
+        }
+    }
+
+    private void OnWindowClosed(object sender, WindowEventArgs args)
+    {
+        _fullscreenPollTimer?.Stop();
+        _hoverExpandTimer?.Stop();
+        _longPressTimer?.Stop();
+        _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
     }
 
     private const double BaseWindowTopGap = 14.0;
@@ -565,6 +675,18 @@ public sealed partial class IslandWindow : Window
             PositionHostWindow();
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
         }
+        else if (e.PropertyName == nameof(MediaViewModel.HoverExpandDelayMs))
+        {
+            if (_hoverExpandTimer is not null)
+            {
+                _hoverExpandTimer.Interval = TimeSpan.FromMilliseconds(
+                    Math.Clamp(_viewModel.HoverExpandDelayMs, 0, 1000));
+            }
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.AutoHideOnFullscreen))
+        {
+            PollFullscreenState();
+        }
         else if (e.PropertyName == nameof(MediaViewModel.ShowEqualizer))
         {
             if (CompactWaveBars is not null)
@@ -806,18 +928,32 @@ public sealed partial class IslandWindow : Window
         var stateLX = _springOscillator.Evaluate(springElapsedSec, _animStartLeadingX, _animTargetLeadingX);
         var stateTX = _springOscillator.Evaluate(springElapsedSec, _animStartTrailingX, _animTargetTrailingX);
 
-        Surface.Width = stateW.Position;
-        Surface.Height = stateH.Position;
-        ApplySurfaceShape(stateR.Position, stateW.Position, stateH.Position);
+        // A damped spring crosses its target and settles back. That soft overshoot is
+        // desirable while expanding, but while shrinking it reads as a tiny tremor at
+        // the end of the collapse. Clamp only shrinking dimensions so the expansion
+        // keeps its elastic character.
+        double width = stateW.Position;
+        double height = stateH.Position;
+        double cornerRadius = stateR.Position;
+        if (_animTargetWidth < _animStartWidth) width = Math.Max(width, _animTargetWidth);
+        if (_animTargetHeight < _animStartHeight) height = Math.Max(height, _animTargetHeight);
+        if (_animTargetCornerRadius < _animStartCornerRadius) cornerRadius = Math.Max(cornerRadius, _animTargetCornerRadius);
 
-        _currentPillWidth = stateW.Position;
-        _currentPillHeight = stateH.Position;
+        Surface.Width = width;
+        Surface.Height = height;
+        ApplySurfaceShape(cornerRadius, width, height);
+
+        _currentPillWidth = width;
+        _currentPillHeight = height;
 
         // Commit the final hit-test region while the spring is still moving, so the
         // single DWM region swap lands under motion instead of as a visible snap.
+        // When shrinking, wait until the clamped surface actually reaches the target:
+        // cropping a still-larger pill during the last spring frame reads as a tremor.
+        var regionTolerance = _animTargetWidth < _animStartWidth ? 0.1 : 2.0;
         if (!_regionCommitted &&
-            Math.Abs(stateW.Position - _animTargetWidth) <= 2.0 &&
-            Math.Abs(stateH.Position - _animTargetHeight) <= 2.0)
+            Math.Abs(width - _animTargetWidth) <= regionTolerance &&
+            Math.Abs(height - _animTargetHeight) <= regionTolerance)
         {
             _regionCommitted = true;
             UpdateWindowRegion(_animTargetWidth, _animTargetHeight, _animTargetCornerRadius);
@@ -1291,7 +1427,36 @@ public sealed partial class IslandWindow : Window
 
         _isPointerOverSurface = true;
         _collapseDelayTimer.Stop();
-        _viewModel.OnPointerEntered();
+
+        if (_viewModel.IsExpanded || !_viewModel.EnableHoverExpand)
+        {
+            // Preserve the timer-reset side effect without scheduling a hover morph.
+            _viewModel.OnPointerEntered();
+            return;
+        }
+
+        var delay = Math.Clamp(_viewModel.HoverExpandDelayMs, 0, 1000);
+        if (delay <= 0)
+        {
+            _viewModel.OnPointerEntered();
+            return;
+        }
+
+        _hoverExpandTimer?.Stop();
+        if (_hoverExpandTimer is not null)
+        {
+            _hoverExpandTimer.Interval = TimeSpan.FromMilliseconds(delay);
+            _hoverExpandTimer.Start();
+        }
+    }
+
+    private void OnHoverExpandTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (_isPointerOverSurface && !_viewModel.IsExpanded)
+        {
+            _viewModel.OnPointerEntered();
+        }
     }
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
@@ -1306,6 +1471,9 @@ public sealed partial class IslandWindow : Window
             return;
         }
 
+        _hoverExpandTimer?.Stop();
+        _longPressTimer?.Stop();
+        _longPressTriggered = false;
         _isPointerOverSurface = false;
         _viewModel.OnPointerExited();
 
@@ -1318,25 +1486,67 @@ public sealed partial class IslandWindow : Window
 
     private void OnSurfacePointerPressed(object sender, PointerRoutedEventArgs e)
     {
+        _hoverExpandTimer?.Stop();
+
         if (!_viewModel.IsExpanded)
         {
+            _longPressTriggered = false;
+            _longPressTimer?.Stop();
+            _longPressTimer?.Start();
             AnimateSurfaceScale(1.035f, 0.945f, 90);
         }
     }
 
+    private void OnLongPressTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (!_isPointerOverSurface || _viewModel.IsExpanded)
+        {
+            return;
+        }
+
+        _longPressTriggered = true;
+        AnimateSurfaceScale(1.025f, 1.025f, 120);
+        ExpandFromCompact();
+    }
+
     private void OnSurfacePointerReleased(object sender, PointerRoutedEventArgs e)
     {
+        _longPressTimer?.Stop();
         AnimateSurfaceScale(1.0f, 1.0f, 140);
-        if (!_viewModel.IsExpanded)
+
+        if (!_viewModel.IsExpanded && !_longPressTriggered)
         {
             e.Handled = true;
-            // Land on the page that matches what the island is currently showing.
-            if (_viewModel.IsFocusTimerActive && !_viewModel.HasTrack)
-            {
-                _viewModel.SelectPage(1);
-            }
-            _viewModel.ToggleExpanded();
+            ExpandFromCompact();
         }
+
+        _longPressTriggered = false;
+    }
+
+    private void OnSurfacePointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        _longPressTimer?.Stop();
+        _hoverExpandTimer?.Stop();
+        _longPressTriggered = false;
+        AnimateSurfaceScale(1.0f, 1.0f, 140);
+    }
+
+    private void OnSurfacePointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        _longPressTimer?.Stop();
+        _longPressTriggered = false;
+    }
+
+    private void ExpandFromCompact()
+    {
+        // Land on the page that matches what the island is currently showing.
+        if (_viewModel.IsFocusTimerActive && !_viewModel.HasTrack)
+        {
+            _viewModel.SelectPage(1);
+        }
+
+        _viewModel.ToggleExpanded();
     }
 
     private void OnDetachedPillPointerEntered(object sender, PointerRoutedEventArgs e)
@@ -1462,6 +1672,8 @@ public sealed partial class IslandWindow : Window
             return;
         }
 
+        _collapseDelayTimer.Stop();
+
         var now = DateTime.UtcNow.Ticks;
         if (now - _lastWheelNavTicks < WheelDebounceTicks)
         {
@@ -1471,8 +1683,6 @@ public sealed partial class IslandWindow : Window
 
         _lastWheelNavTicks = now;
         e.Handled = true;
-
-        _collapseDelayTimer.Stop();
 
         int currentIndex = _viewModel.SelectedPageIndex;
         if (delta < 0)
@@ -1676,7 +1886,6 @@ public sealed partial class IslandWindow : Window
 
     private void OnToggleExpandedClick(object sender, RoutedEventArgs e) => _viewModel.ToggleExpanded();
     private void OnCollapseClick(object sender, RoutedEventArgs e) => _viewModel.Collapse();
-    private void OnToggleMuteClick(object sender, RoutedEventArgs e) => _viewModel.ToggleMuteCommand.Execute(null);
     private void OnHideIslandClick(object sender, RoutedEventArgs e) => HideIslandAnimated();
 
     private void OnOpenTaskbarFlyoutClick(object sender, RoutedEventArgs e)
@@ -2091,11 +2300,13 @@ public sealed partial class IslandWindow : Window
         UpdateBrush("SeekAccent", seekAccent);
 
         Surface.Background = Brush(bgColor);
-        Surface.BorderBrush = Brush(borderColor);
+        Surface.BorderBrush = Brush(0x00000000);
+        Surface.BorderThickness = new Thickness(0);
         if (DetachedPill is not null)
         {
             DetachedPill.Background = Brush(bgColor);
-            DetachedPill.BorderBrush = Brush(borderColor);
+            DetachedPill.BorderBrush = Brush(0x00000000);
+            DetachedPill.BorderThickness = new Thickness(0);
         }
         WaveBar1.Background = Brush(accentColor);
         WaveBar2.Background = Brush(accentColor);
@@ -2194,7 +2405,7 @@ public sealed partial class IslandWindow : Window
             {
                 if (_isIslandHidden)
                 {
-                    UnhideIslandAnimated();
+                    ShowIsland();
                 }
                 _viewModel.ToggleFocusTimerCommand.Execute(null);
                 return IntPtr.Zero;
@@ -2337,6 +2548,9 @@ public sealed partial class IslandWindow : Window
 
     [DllImport("user32.dll")]
     private static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, bool bRedraw);
+
+    [DllImport("shell32.dll")]
+    private static extern int SHQueryUserNotificationState(out int state);
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);

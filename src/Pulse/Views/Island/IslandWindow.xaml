@@ -150,12 +150,14 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Background="{ThemeResource IslandBackground}"
-                BorderBrush="{ThemeResource IslandBorder}"
-                BorderThickness="1"
+                BorderBrush="Transparent"
+                BorderThickness="0"
                 PointerEntered="OnPointerEntered"
                 PointerExited="OnPointerExited"
                 PointerPressed="OnSurfacePointerPressed"
                 PointerReleased="OnSurfacePointerReleased"
+                PointerCanceled="OnSurfacePointerCanceled"
+                PointerCaptureLost="OnSurfacePointerCaptureLost"
                 PointerWheelChanged="OnSurfacePointerWheelChanged">
 
 
@@ -601,7 +603,7 @@
                                     ToolTipService.ToolTip="Sistem &amp; Denetim" />
                         </StackPanel>
 
-                        <!-- Right: Header Action Buttons (Collapse, Mute, Settings) -->
+                        <!-- Right: Header Action Buttons (Collapse, Settings) -->
                         <StackPanel Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                             <Button Style="{StaticResource CircularHeaderButtonStyle}"
                                     Click="OnCollapseClick"
@@ -609,13 +611,6 @@
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased">
                                 <FontIcon Glyph="&#xE70E;" FontSize="11" />
-                            </Button>
-                            <Button Style="{StaticResource CircularHeaderButtonStyle}"
-                                    Click="OnToggleMuteClick"
-                                    ToolTipService.ToolTip="Sesi Kapat / Aç"
-                                    PointerPressed="OnButtonPointerPressed"
-                                    PointerReleased="OnButtonPointerReleased">
-                                <FontIcon Glyph="{Binding MuteGlyph}" FontSize="12" />
                             </Button>
                             <Button Style="{StaticResource CircularHeaderButtonStyle}"
                                     Click="OnSettingsClick"
@@ -954,8 +949,8 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Background="{ThemeResource IslandBackground}"
-                BorderBrush="{ThemeResource IslandBorder}"
-                BorderThickness="1"
+                BorderBrush="Transparent"
+                BorderThickness="0"
                 Opacity="0"
                 Visibility="Collapsed"
                 PointerEntered="OnDetachedPillPointerEntered"

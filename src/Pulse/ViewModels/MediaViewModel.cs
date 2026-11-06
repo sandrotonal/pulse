@@ -82,7 +82,6 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         });
         ToggleShuffleCommand = new RelayCommand(() => IsShuffleEnabled = !IsShuffleEnabled);
         ToggleFavoriteCommand = new RelayCommand(() => IsFavorite = !IsFavorite);
-        ToggleMuteCommand = new RelayCommand(() => IsMuted = !IsMuted);
         _mediaSessionService.CurrentTrackChanged += OnCurrentTrackChanged;
     }
 
@@ -176,6 +175,8 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public Microsoft.UI.Xaml.Visibility SeekPanelVisibility => ShowSeekControls ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public bool AutoCollapse => _settingsService.Current.AutoCollapse;
     public bool EnableHoverExpand => _settingsService.Current.EnableHoverExpand;
+    public int HoverExpandDelayMs => _settingsService.Current.HoverExpandDelayMs;
+    public bool AutoHideOnFullscreen => _settingsService.Current.AutoHideOnFullscreen;
     public bool DynamicColorTint => _settingsService.Current.DynamicColorTint;
     public bool ShowEqualizer => _settingsService.Current.ShowEqualizer;
     public bool UseTransparency => _settingsService.Current.UseTransparency;
@@ -239,7 +240,6 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public AsyncCommand SeekForwardCommand { get; }
     public RelayCommand ToggleShuffleCommand { get; }
     public RelayCommand ToggleFavoriteCommand { get; }
-    public RelayCommand ToggleMuteCommand { get; }
 
     private bool _isShuffleEnabled;
     public bool IsShuffleEnabled
@@ -275,21 +275,6 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public Microsoft.UI.Xaml.Media.SolidColorBrush FavoriteBrush => new(
         IsFavorite ? Microsoft.UI.ColorHelper.FromArgb(255, 255, 59, 48) : Microsoft.UI.ColorHelper.FromArgb(255, 164, 171, 182));
-
-    private bool _isMuted;
-    public bool IsMuted
-    {
-        get => _isMuted;
-        set
-        {
-            if (SetProperty(ref _isMuted, value))
-            {
-                OnPropertyChanged(nameof(MuteGlyph));
-            }
-        }
-    }
-
-    public string MuteGlyph => IsMuted ? "\uE74F" : "\uE767";
 
     public async Task InitializeAsync()
     {
@@ -563,6 +548,8 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(SeekPanelVisibility));
         OnPropertyChanged(nameof(AutoCollapse));
         OnPropertyChanged(nameof(EnableHoverExpand));
+        OnPropertyChanged(nameof(HoverExpandDelayMs));
+        OnPropertyChanged(nameof(AutoHideOnFullscreen));
         OnPropertyChanged(nameof(DynamicColorTint));
         OnPropertyChanged(nameof(ShowEqualizer));
         OnPropertyChanged(nameof(UseTransparency));

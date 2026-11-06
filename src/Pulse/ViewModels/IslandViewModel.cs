@@ -633,6 +633,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Microsoft.UI.Xaml.Visibility SeekPanelVisibility => _media.SeekPanelVisibility;
     public bool AutoCollapse => _media.AutoCollapse;
     public bool EnableHoverExpand => _media.EnableHoverExpand;
+    public int HoverExpandDelayMs => _media.HoverExpandDelayMs;
+    public bool AutoHideOnFullscreen => _media.AutoHideOnFullscreen;
     public bool DynamicColorTint => _media.DynamicColorTint;
     public bool ShowEqualizer => _media.ShowEqualizer;
     public bool UseTransparency => _media.UseTransparency;
@@ -669,14 +671,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public AsyncCommand SeekForwardCommand => _media.SeekForwardCommand;
     public RelayCommand ToggleShuffleCommand => _media.ToggleShuffleCommand;
     public RelayCommand ToggleFavoriteCommand => _media.ToggleFavoriteCommand;
-    public RelayCommand ToggleMuteCommand => _media.ToggleMuteCommand;
     public bool IsShuffleEnabled => _media.IsShuffleEnabled;
     public bool IsFavorite => _media.IsFavorite;
     public string FavoriteGlyph => _media.FavoriteGlyph;
     public Microsoft.UI.Xaml.Media.SolidColorBrush ShuffleBrush => _media.ShuffleBrush;
     public Microsoft.UI.Xaml.Media.SolidColorBrush FavoriteBrush => _media.FavoriteBrush;
-    public bool IsMuted => _media.IsMuted;
-    public string MuteGlyph => _media.MuteGlyph;
 
     // Delegated actions
     public void OnPointerEntered() => _media.OnPointerEntered();

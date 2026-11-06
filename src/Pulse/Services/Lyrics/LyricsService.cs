@@ -57,7 +57,9 @@ public sealed class LyricsService
             {
                 try
                 {
-                    var response = await _httpClient.GetFromJsonAsync<LrcLibResponse>(query);
+                    var response = await _httpClient.GetFromJsonAsync(
+                        query,
+                        LyricsJsonContext.Default.LrcLibResponse);
                     var result = response is null
                         ? null
                         : new LyricsResult(ParseSyncedLyrics(response.SyncedLyrics), string.IsNullOrWhiteSpace(response.PlainLyrics) ? null : response.PlainLyrics.Trim());
@@ -127,13 +129,19 @@ public sealed class LyricsService
     }
 
     private static string Clean(string? value) => value?.Trim() ?? string.Empty;
+}
 
-    private sealed class LrcLibResponse
-    {
-        [JsonPropertyName("plainLyrics")]
-        public string? PlainLyrics { get; init; }
+internal sealed class LrcLibResponse
+{
+    [JsonPropertyName("plainLyrics")]
+    public string? PlainLyrics { get; init; }
 
-        [JsonPropertyName("syncedLyrics")]
-        public string? SyncedLyrics { get; init; }
-    }
+    [JsonPropertyName("syncedLyrics")]
+    public string? SyncedLyrics { get; init; }
+}
+
+[JsonSourceGenerationOptions(PropertyNameCaseInsensitive = true)]
+[JsonSerializable(typeof(LrcLibResponse))]
+internal sealed partial class LyricsJsonContext : JsonSerializerContext
+{
 }
