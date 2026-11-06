@@ -505,18 +505,21 @@ public sealed partial class IslandWindow : Window
 
         if (_isDimensionAnimating && (isSplit || isDetachedActive))
         {
-            // During animation into/out of split mode, keep a single spanning region [76..348]
-            // so neither capsule is sliced by the gap before settling into position.
-            var spanLeft = (int)Math.Round(76.0 * dpi);
-            var spanRight = (int)Math.Round(348.0 * dpi);
-            var spanHeight = (int)Math.Round(40.0 * dpi);
+            // Morphing into or out of split mode merges the two capsules into one surface.
+            // Cover the larger of the resting split span (272 dip) and the requested pill,
+            // otherwise the growing card is sliced by the old split region.
+            var regionWidth = Math.Max(pillWidth, 272.0);
+            var regionHeight = Math.Max(pillHeight, 40.0);
+            var spanLeft = (int)Math.Round((HostWidthDip - regionWidth) / 2.0 * dpi);
+            var spanRight = (int)Math.Round((HostWidthDip + regionWidth) / 2.0 * dpi);
+            var spanBottom = (int)Math.Round(regionHeight * dpi);
             var cornerD = (int)Math.Round(40.0 * dpi);
 
-            var spanKey = (spanLeft, 0, spanRight + 1, spanHeight + 1, cornerD, 0, 0, 0, 0, 0);
+            var spanKey = (spanLeft, 0, spanRight + 1, spanBottom + 1, cornerD, 0, 0, 0, 0, 0);
             if (_lastWindowRegion == spanKey) return;
             _lastWindowRegion = spanKey;
 
-            var spanRgn = CreateRoundRectRgn(spanLeft, 0, spanRight + 1, spanHeight + 1, cornerD, cornerD);
+            var spanRgn = CreateRoundRectRgn(spanLeft, 0, spanRight + 1, spanBottom + 1, cornerD, cornerD);
             if (spanRgn != IntPtr.Zero)
             {
                 _ = SetWindowRgn(_hwnd, spanRgn, false);
@@ -913,6 +916,13 @@ public sealed partial class IslandWindow : Window
         _animTargetTrailingX = toTrailingX;
         _animTargetDetachedOpacity = toDetachedOpacity;
 
+        // Expanding out of split: let the trailing capsule fade where it stands instead of
+        // drifting underneath the card that is growing under it.
+        if (toDetachedOpacity < _animStartDetachedOpacity)
+        {
+            _animTargetTrailingX = _animStartTrailingX;
+        }
+
         _animDurationMs = Math.Max(1.0, durationMs * AnimationProfile.DurationScale);
         _animStartTimeTicks = System.Diagnostics.Stopwatch.GetTimestamp();
         _onAnimationCompleted = onCompleted;
@@ -974,7 +984,12 @@ public sealed partial class IslandWindow : Window
         {
             double durSec = Math.Max(0.001, _animDurationMs * 0.001);
             double progress = Math.Clamp(elapsedSec / durSec, 0.0, 1.0);
-            DetachedPill.Opacity = _animStartDetachedOpacity + (_animTargetDetachedOpacity - _animStartDetachedOpacity) * progress;
+            // Fade the trailing capsule out early when merging into one card; a slow fade
+            // leaves a ghost capsule floating over the expanding surface.
+            double fade = _animTargetDetachedOpacity < _animStartDetachedOpacity
+                ? Math.Min(1.0, progress * 3.0)
+                : progress;
+            DetachedPill.Opacity = _animStartDetachedOpacity + (_animTargetDetachedOpacity - _animStartDetachedOpacity) * fade;
         }
 
         if ((stateW.HasSettled && stateH.HasSettled && stateR.HasSettled && stateLX.HasSettled && stateTX.HasSettled) || elapsedSec >= (_animDurationMs * 0.001 * 1.5))
