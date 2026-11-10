@@ -19,6 +19,38 @@ public static class IslandSurfaceLayout
     public const double MaxCompactScale = 1.25;
 
     public readonly record struct PixelRgnRect(int Left, int Top, int Right, int Bottom, int CornerDiameter);
+    public readonly record struct PixelWindowRect(int X, int Y, int Width, int Height);
+
+    public sealed class WheelStepAccumulator
+    {
+        private int _accumulatedDelta;
+
+        public int Accumulate(int delta, int threshold = 30)
+        {
+            if (delta == 0)
+            {
+                return 0;
+            }
+
+            int safeThreshold = Math.Max(1, threshold);
+            if ((_accumulatedDelta < 0 && delta > 0) || (_accumulatedDelta > 0 && delta < 0))
+            {
+                _accumulatedDelta = 0;
+            }
+
+            _accumulatedDelta += delta;
+            if (Math.Abs(_accumulatedDelta) < safeThreshold)
+            {
+                return 0;
+            }
+
+            int step = Math.Sign(_accumulatedDelta);
+            _accumulatedDelta = 0;
+            return step;
+        }
+
+        public void Reset() => _accumulatedDelta = 0;
+    }
 
     public sealed record CompactMetrics(
         double Scale,
@@ -259,6 +291,106 @@ public static class IslandSurfaceLayout
         int screenX = unchecked((short)(raw & 0xFFFF));
         int screenY = unchecked((short)((raw >> 16) & 0xFFFF));
         return (screenX, screenY);
+    }
+
+    public static double ExtractDpiScaleFromWParam(IntPtr wParam)
+    {
+        long raw = wParam.ToInt64();
+        int dpiX = (int)(raw & 0xFFFF);
+        if (dpiX <= 0)
+        {
+            return 1.0;
+        }
+
+        double scale = dpiX / 96.0;
+        return double.IsFinite(scale) ? Math.Clamp(scale, 0.5, 4.0) : 1.0;
+    }
+
+    public static PixelWindowRect ComputeHostWindowBounds(
+        int workAreaLeft,
+        int workAreaTop,
+        int workAreaRight,
+        int workAreaBottom,
+        double dpiScale,
+        double effectiveTopOffsetDip,
+        double horizontalOffsetDip = 0.0)
+    {
+        double safeDpi = double.IsFinite(dpiScale) && dpiScale > 0.0 ? dpiScale : 1.0;
+        int winWidth = Math.Max(1, (int)Math.Round(DefaultHostWidthDip * safeDpi));
+        int winHeight = Math.Max(1, (int)Math.Round(DefaultHostWindowHeightDip * safeDpi));
+
+        int workWidth = workAreaRight - workAreaLeft;
+        double safeHorizDip = double.IsFinite(horizontalOffsetDip) ? horizontalOffsetDip : 0.0;
+        int horizPx = (int)Math.Round(safeHorizDip * safeDpi);
+
+        // Preserve exact centering even on portrait / narrow high-DPI monitors where winWidth > workWidth.
+        int x = workAreaLeft + ((workWidth - winWidth) / 2) + horizPx;
+        double safeTopDip = double.IsFinite(effectiveTopOffsetDip) ? Math.Max(0.0, effectiveTopOffsetDip) : 0.0;
+        int y = workAreaTop + (int)Math.Round(safeTopDip * safeDpi);
+
+        return new PixelWindowRect(x, y, winWidth, winHeight);
+    }
+
+    /// <summary>
+    /// Computes an encompassing horizontal and vertical transition bounding envelope spanning both
+    /// the main pill and detached split pill across start and target keyframes so SetWindowRgn never
+    /// slices sliding capsules or spring overshoot mid-flight.
+    /// </summary>
+    public static DipRect ComputeTransitionEnvelopeBounds(
+        double hostWidth,
+        double hostHeight,
+        double startWidth,
+        double startHeight,
+        double startLeadingX,
+        double targetWidth,
+        double targetHeight,
+        double targetLeadingX,
+        bool startDetachedActive,
+        double startTrailingX,
+        bool targetDetachedActive,
+        double targetTrailingX,
+        double detachedWidth,
+        double detachedHeight,
+        bool includeOvershootPadding = false)
+    {
+        double safeHostW = Math.Max(1.0, hostWidth);
+        double safeHostH = Math.Max(1.0, hostHeight);
+
+        var s0 = ComputeCenteredPillBounds(safeHostW, Math.Max(1.0, startWidth), Math.Max(1.0, startHeight), startLeadingX);
+        var s1 = ComputeCenteredPillBounds(safeHostW, Math.Max(1.0, targetWidth), Math.Max(1.0, targetHeight), targetLeadingX);
+
+        double left = Math.Min(s0.Left, s1.Left);
+        double right = Math.Max(s0.Right, s1.Right);
+        double bottom = Math.Max(s0.Bottom, s1.Bottom);
+
+        if (startDetachedActive)
+        {
+            var d0 = ComputeCenteredPillBounds(safeHostW, Math.Max(1.0, detachedWidth), Math.Max(1.0, detachedHeight), startTrailingX);
+            left = Math.Min(left, d0.Left);
+            right = Math.Max(right, d0.Right);
+            bottom = Math.Max(bottom, d0.Bottom);
+        }
+
+        if (targetDetachedActive)
+        {
+            var d1 = ComputeCenteredPillBounds(safeHostW, Math.Max(1.0, detachedWidth), Math.Max(1.0, detachedHeight), targetTrailingX);
+            left = Math.Min(left, d1.Left);
+            right = Math.Max(right, d1.Right);
+            bottom = Math.Max(bottom, d1.Bottom);
+        }
+
+        if (includeOvershootPadding)
+        {
+            double sidePad = ExpansionOvershootPaddingDip * 0.5;
+            left -= sidePad;
+            right += sidePad;
+            bottom += ExpansionOvershootPaddingDip * 0.6;
+        }
+
+        left = Math.Clamp(left, 0.0, safeHostW - 1.0);
+        right = Math.Clamp(right, left + 1.0, safeHostW);
+        bottom = Math.Clamp(bottom, 1.0, safeHostH);
+        return new DipRect(left, 0.0, right, bottom);
     }
 
     /// <summary>

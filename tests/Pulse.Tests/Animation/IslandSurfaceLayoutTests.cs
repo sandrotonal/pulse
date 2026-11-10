@@ -161,6 +161,160 @@ public sealed class IslandSurfaceLayoutTests
     }
 
     [Theory]
+    [InlineData(1.75, 0.80)]
+    [InlineData(1.75, 1.25)]
+    [InlineData(2.00, 0.80)]
+    [InlineData(2.00, 1.25)]
+    public void ComputePaddedPixelRegionHandlesHighDpiAndExtremeCompactScalesInSplitMode(double dpiScale, double islandScale)
+    {
+        var metrics = IslandSurfaceLayout.ComputeCompactMetrics(islandScale);
+        int hostPixelW = (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * dpiScale);
+        int hostPixelH = (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * dpiScale);
+
+        double leadWidth = 196.0 * metrics.Scale;
+        var (leadOffX, trailOffX) = IslandSurfaceLayout.ComputeSplitOffsets(leadWidth, metrics.DetachedPillWidth, metrics.SplitGap);
+        var leadBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, leadWidth, metrics.PillHeight, leadOffX);
+        var detachBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, metrics.DetachedPillWidth, metrics.DetachedPillHeight, trailOffX);
+
+        var leadRgn = IslandSurfaceLayout.ComputePaddedPixelRegion(
+            leadBounds,
+            IslandSurfaceLayout.SurfaceTopInsetDip,
+            metrics.PillCornerRadius,
+            IslandSurfaceLayout.RegionAntialiasMarginDip,
+            dpiScale,
+            hostPixelW,
+            hostPixelH);
+
+        var detachRgn = IslandSurfaceLayout.ComputePaddedPixelRegion(
+            detachBounds,
+            IslandSurfaceLayout.SurfaceTopInsetDip,
+            metrics.DetachedPillCornerRadius,
+            IslandSurfaceLayout.RegionAntialiasMarginDip,
+            dpiScale,
+            hostPixelW,
+            hostPixelH);
+
+        Assert.True(leadRgn.Top >= 0 && leadRgn.Left >= 0);
+        Assert.True(detachRgn.Right <= hostPixelW && detachRgn.Bottom <= hostPixelH);
+        // At 0.80 scale (SplitGap = 8 DIP) and 2x RegionMargin (6 DIP), the capsules still do not intersect or reorder.
+        Assert.True(detachRgn.Left > leadRgn.Right);
+    }
+
+    [Fact]
+    public void ComputePaddedPixelRegionFallsBackCleanlyOnInvalidDpiAndClampsTinyCorners()
+    {
+        var bounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, 10.0, 4.0);
+        var rgn = IslandSurfaceLayout.ComputePaddedPixelRegion(
+            bounds,
+            verticalInsetDip: 3.0,
+            cornerRadiusDip: 50.0,
+            regionMarginDip: 0.0,
+            dpiScale: 0.0,
+            maxPixelWidth: 560,
+            maxPixelHeight: 306);
+
+        Assert.Equal(4, rgn.Bottom - rgn.Top);
+        Assert.Equal(4, rgn.CornerDiameter);
+    }
+
+    [Fact]
+    public void IsPointInsideIslandUsesHiddenAnchorExactBoundsWhenHiddenAndChecksHeights()
+    {
+        double centerX = IslandSurfaceLayout.DefaultHostWidthDip / 2.0;
+
+        // Inside 48x16 anchor when hidden
+        Assert.True(IslandSurfaceLayout.IsPointInsideIsland(centerX, 8.0, IslandSurfaceLayout.DefaultHostWidthDip, true, 216, 40, 0, false, 66, 40, 66));
+        // Even 1px outside anchor (no +4 DIP hit padding when hidden)
+        Assert.False(IslandSurfaceLayout.IsPointInsideIsland(centerX, 17.5, IslandSurfaceLayout.DefaultHostWidthDip, true, 216, 40, 0, false, 66, 40, 66));
+        // ComputeExpansionRegionHeight reserves room within host bounds
+        Assert.InRange(IslandSurfaceLayout.ComputeExpansionRegionHeight(40, 240), 260, IslandSurfaceLayout.DefaultHostHeightDip);
+    }
+
+    [Theory]
+    [InlineData(false)] // Entering split (Compact -> Split)
+    [InlineData(true)]  // Exiting split (Split -> Notification)
+    public void ComputeTransitionEnvelopeBoundsSpansFullStartAndTargetDualCapsulesWithoutClipping(bool exitingSplit)
+    {
+        var metrics = IslandSurfaceLayout.ComputeCompactMetrics(1.25);
+        var (splitLeadX, splitTrailX) = IslandSurfaceLayout.ComputeSplitOffsets(196.0 * metrics.Scale, metrics.DetachedPillWidth, metrics.SplitGap);
+
+        double startW = exitingSplit ? 196.0 * metrics.Scale : 216.0 * metrics.Scale;
+        double startLeadX = exitingSplit ? splitLeadX : 0.0;
+        bool startDetached = exitingSplit;
+        double startTrailX = exitingSplit ? splitTrailX : metrics.DetachedPillWidth;
+
+        double targetW = exitingSplit ? 288.0 * metrics.Scale : 196.0 * metrics.Scale;
+        double targetLeadX = exitingSplit ? 0.0 : splitLeadX;
+        bool targetDetached = !exitingSplit;
+        double targetTrailX = exitingSplit ? metrics.DetachedPillWidth : splitTrailX;
+
+        var envelope = IslandSurfaceLayout.ComputeTransitionEnvelopeBounds(
+            IslandSurfaceLayout.DefaultHostWidthDip,
+            IslandSurfaceLayout.DefaultHostHeightDip,
+            startW, metrics.PillHeight, startLeadX,
+            targetW, metrics.PillHeight, targetLeadX,
+            startDetached, startTrailX,
+            targetDetached, targetTrailX,
+            metrics.DetachedPillWidth, metrics.DetachedPillHeight,
+            includeOvershootPadding: false);
+
+        var splitLeadBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, 196.0 * metrics.Scale, metrics.PillHeight, splitLeadX);
+        var splitDetachBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, metrics.DetachedPillWidth, metrics.DetachedPillHeight, splitTrailX);
+        var wideBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, exitingSplit ? targetW : startW, metrics.PillHeight, 0.0);
+
+        Assert.True(envelope.Left <= Math.Min(splitLeadBounds.Left, wideBounds.Left));
+        Assert.True(envelope.Right >= Math.Max(splitDetachBounds.Right, wideBounds.Right));
+        Assert.Equal(0.0, envelope.Top);
+        Assert.True(envelope.Bottom >= metrics.PillHeight);
+    }
+
+    [Fact]
+    public void ComputeHostWindowBoundsCentersEvenOnPortraitHighDpiAndNegativeMonitors()
+    {
+        // Portrait 1080px monitor at 200% DPI -> winWidth = 1120 > 1080; centering must stay negative, not clamped to 0.
+        var portrait = IslandSurfaceLayout.ComputeHostWindowBounds(
+            workAreaLeft: 0, workAreaTop: 0, workAreaRight: 1080, workAreaBottom: 1920,
+            dpiScale: 2.0, effectiveTopOffsetDip: 14.0);
+        Assert.Equal(-20, portrait.X);
+        Assert.Equal(28, portrait.Y);
+        Assert.Equal(1120, portrait.Width);
+
+        // Secondary monitor to the left of primary (-1920..0) at 125% DPI
+        var leftMonitor = IslandSurfaceLayout.ComputeHostWindowBounds(
+            workAreaLeft: -1920, workAreaTop: 0, workAreaRight: 0, workAreaBottom: 1080,
+            dpiScale: 1.25, effectiveTopOffsetDip: 0.0);
+        int expectedW = (int)Math.Round(560 * 1.25);
+        Assert.Equal(-1920 + ((1920 - expectedW) / 2), leftMonitor.X);
+        Assert.Equal(0, leftMonitor.Y);
+    }
+
+    [Theory]
+    [InlineData(144, 1.5)]
+    [InlineData(168, 1.75)]
+    [InlineData(192, 2.0)]
+    [InlineData(0, 1.0)]
+    public void ExtractDpiScaleFromWParamParsesValidDpiAndFallsBackOnInvalid(int dpiWord, double expected)
+    {
+        IntPtr wParam = new IntPtr(((long)dpiWord << 16) | (uint)dpiWord);
+        Assert.Equal(expected, IslandSurfaceLayout.ExtractDpiScaleFromWParam(wParam), precision: 3);
+    }
+
+    [Fact]
+    public void WheelStepAccumulatorCollectsPrecisionTouchpadPacketsAcrossEvents()
+    {
+        var acc = new IslandSurfaceLayout.WheelStepAccumulator();
+
+        // Three precision packets of -10 reach threshold (-30) on the 3rd packet -> emit 1 forward step
+        Assert.Equal(0, acc.Accumulate(-10));
+        Assert.Equal(0, acc.Accumulate(-10));
+        Assert.Equal(-1, acc.Accumulate(-12));
+
+        // Flipping direction clears leftover momentum smoothly before accumulating
+        Assert.Equal(0, acc.Accumulate(15));
+        Assert.Equal(1, acc.Accumulate(18));
+    }
+
+    [Theory]
     [InlineData(0.80)]
     [InlineData(1.00)]
     [InlineData(1.25)]

@@ -98,11 +98,42 @@ public sealed class DampedSpringOscillatorTests
     [Theory]
     [InlineData(0.0, 0.0005)]
     [InlineData(-0.1, 0.0005)]
+    [InlineData(double.NaN, 0.0005)]
+    [InlineData(double.PositiveInfinity, 0.0005)]
     [InlineData(0.002777, 0.002777)]
     [InlineData(0.006944, 0.006944)]
     [InlineData(2.5, 0.033)]
     public void ClampFrameDeltaSecondsBoundsExtremeSteps(double rawDt, double expectedDt)
     {
         Assert.Equal(expectedDt, DampedSpringOscillator.ClampFrameDeltaSeconds(rawDt), precision: 6);
+    }
+
+    [Fact]
+    public void GuardsInvalidInputsAndStartEqualsTargetWithVelocity()
+    {
+        var spring = new DampedSpringOscillator(dampingRatio: -5.0, responseSeconds: 0.0);
+        Assert.Equal(0.01, spring.DampingRatio, precision: 3);
+        Assert.Equal(0.01, spring.FrequencyResponse, precision: 3);
+
+        var normalSpring = new DampedSpringOscillator(dampingRatio: 0.82, responseSeconds: 0.35);
+        var negativeTime = normalSpring.Evaluate(-0.2, 50.0, 100.0, initialVelocity: 120.0);
+        Assert.Equal(50.0, negativeTime.Position);
+        Assert.Equal(120.0, negativeTime.Velocity);
+        Assert.False(negativeTime.HasSettled);
+
+        var nanEval = normalSpring.Evaluate(double.NaN, 50.0, 100.0, initialVelocity: double.NaN);
+        Assert.True(double.IsFinite(nanEval.Position));
+        Assert.True(double.IsFinite(nanEval.Velocity));
+
+        // Same start/target but non-zero initial velocity must NOT snap settled immediately
+        var impulse = normalSpring.Evaluate(0.05, start: 100.0, target: 100.0, initialVelocity: 500.0);
+        Assert.False(impulse.HasSettled);
+        Assert.True(impulse.Position > 100.0);
+
+        // Velocity conversion across time-scaled channels preserves physical speed
+        double screenVel = DampedSpringOscillator.ConvertToScreenVelocity(springVelocity: -2.0, activeTimeScale: 2.2);
+        Assert.Equal(-4.4, screenVel, precision: 3);
+        double newSpringVel = DampedSpringOscillator.NormalizeScaledVelocity(screenVelocity: screenVel, targetTimeScale: 1.0);
+        Assert.Equal(-4.4, newSpringVel, precision: 3);
     }
 }

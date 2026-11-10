@@ -583,7 +583,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         // island the user opened: expanded presentations stay open until dismissed.
         if (CurrentIslandState is IslandState.TrackChanged or IslandState.Notification)
         {
-            _stateMachine.ReturnToCompact(HasTrack);
+            _stateMachine.ReturnToCompact(HasTrack, restoreHoverIfHovered: EnableHoverExpand);
         }
     }
 

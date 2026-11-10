@@ -5,6 +5,7 @@ namespace Pulse.Core.Services;
 public sealed class IslandStateMachine
 {
     private bool _hasMedia;
+    private bool _isHovered;
 
     public IslandState CurrentState { get; private set; } = IslandState.Idle;
     public event EventHandler<IslandState>? StateChanged;
@@ -24,6 +25,8 @@ public sealed class IslandStateMachine
 
     public void SetHovered(bool isHovered)
     {
+        _isHovered = isHovered;
+
         if (isHovered && CurrentState == IslandState.Collapsing)
         {
             SetState(IslandState.Expanded);
@@ -81,7 +84,17 @@ public sealed class IslandStateMachine
 
     public void ShowNotification() => SetState(IslandState.Notification);
 
-    public void ReturnToCompact(bool hasMedia) => SetState(hasMedia ? IslandState.Compact : IslandState.Idle);
+    public void ReturnToCompact(bool hasMedia, bool restoreHoverIfHovered = true)
+    {
+        _hasMedia = hasMedia;
+        if (restoreHoverIfHovered && _isHovered)
+        {
+            SetState(IslandState.Hover);
+            return;
+        }
+
+        SetState(hasMedia ? IslandState.Compact : IslandState.Idle);
+    }
 
     private void SetState(IslandState state)
     {
