@@ -100,4 +100,58 @@ public sealed class EventRouterTests
         await Task.Delay(320);
         Assert.Equal("media_1", router.CurrentActiveEvent?.Id);
     }
+
+    [Fact]
+    public void PublishNullThrowsArgumentNullException()
+    {
+        using var router = new EventRouter();
+        Assert.Throws<ArgumentNullException>(() => router.Publish(null!));
+    }
+
+    [Fact]
+    public void DisposeStopsFurtherPublishAndDismiss()
+    {
+        var router = new EventRouter();
+        var raisedAfterDispose = false;
+        router.ActiveEventChanged += (_, _) => raisedAfterDispose = true;
+        router.Dispose();
+
+        router.Publish(new MediaEvent("media_1", null, true, DateTimeOffset.UtcNow));
+        router.Dismiss("media_1");
+
+        Assert.Null(router.CurrentActiveEvent);
+        Assert.False(raisedAfterDispose);
+    }
+
+    [Fact]
+    public async Task ActiveEventChangedDeliversLatestStateUnderConcurrentUpdates()
+    {
+        using var router = new EventRouter();
+        var deliveredIds = new List<string?>();
+        router.ActiveEventChanged += (_, evt) =>
+        {
+            lock (deliveredIds)
+            {
+                deliveredIds.Add(evt?.Id);
+            }
+        };
+
+        await Task.WhenAll(Enumerable.Range(0, 20).Select(i => Task.Run(() =>
+        {
+            var id = $"notif_{i}";
+            router.Publish(new SystemNotificationEvent(id, EventCategory.SystemToast, id, "msg", "\uE7E7", EventPriority.Informational));
+            if (i % 2 == 0)
+            {
+                router.Dismiss(id);
+            }
+        })));
+
+        string? lastDelivered;
+        lock (deliveredIds)
+        {
+            lastDelivered = deliveredIds.LastOrDefault();
+        }
+
+        Assert.Equal(router.CurrentActiveEvent?.Id, lastDelivered);
+    }
 }

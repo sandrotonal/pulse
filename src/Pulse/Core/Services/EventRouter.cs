@@ -23,6 +23,8 @@ public sealed class EventRouter : IEventRouter
 
     private readonly object _syncRoot = new();
     private readonly Dictionary<string, TrackedEntry> _events = new();
+    private readonly Queue<IslandEvent?> _pendingNotifications = new();
+    private bool _isDispatchingNotifications;
     private IslandEvent? _persistentEvent;
     private bool _isInteractionLocked;
     private bool _isDisposed;
@@ -35,8 +37,7 @@ public sealed class EventRouter : IEventRouter
     {
         ArgumentNullException.ThrowIfNull(@event);
 
-        IslandEvent? previousActive;
-        IslandEvent? newActive;
+        var shouldDrain = false;
 
         lock (_syncRoot)
         {
@@ -61,27 +62,32 @@ public sealed class EventRouter : IEventRouter
                 _events[@event.Id] = new TrackedEntry(@event, now);
             }
 
-            previousActive = CurrentActiveEvent;
-            newActive = DetermineActiveEvent_NoLock(now);
+            var previousActive = CurrentActiveEvent;
+            var newActive = DetermineActiveEvent_NoLock(now);
 
             if (!ReferenceEquals(previousActive, newActive))
             {
                 CurrentActiveEvent = newActive;
+                _pendingNotifications.Enqueue(newActive);
+                if (!_isDispatchingNotifications)
+                {
+                    _isDispatchingNotifications = true;
+                    shouldDrain = true;
+                }
             }
 
             EnsureActiveTimerStarted_NoLock(newActive, now);
         }
 
-        if (!ReferenceEquals(previousActive, newActive))
+        if (shouldDrain)
         {
-            ActiveEventChanged?.Invoke(this, newActive);
+            DrainNotifications();
         }
     }
 
     public void Dismiss(string eventId)
     {
-        IslandEvent? previousActive;
-        IslandEvent? newActive;
+        var shouldDrain = false;
 
         lock (_syncRoot)
         {
@@ -99,20 +105,26 @@ public sealed class EventRouter : IEventRouter
             }
 
             var now = DateTimeOffset.UtcNow;
-            previousActive = CurrentActiveEvent;
-            newActive = DetermineActiveEvent_NoLock(now);
+            var previousActive = CurrentActiveEvent;
+            var newActive = DetermineActiveEvent_NoLock(now);
 
             if (!ReferenceEquals(previousActive, newActive))
             {
                 CurrentActiveEvent = newActive;
+                _pendingNotifications.Enqueue(newActive);
+                if (!_isDispatchingNotifications)
+                {
+                    _isDispatchingNotifications = true;
+                    shouldDrain = true;
+                }
             }
 
             EnsureActiveTimerStarted_NoLock(newActive, now);
         }
 
-        if (!ReferenceEquals(previousActive, newActive))
+        if (shouldDrain)
         {
-            ActiveEventChanged?.Invoke(this, newActive);
+            DrainNotifications();
         }
     }
 
@@ -126,27 +138,55 @@ public sealed class EventRouter : IEventRouter
 
     public void UnlockUserInteraction()
     {
-        IslandEvent? previousActive;
-        IslandEvent? newActive;
+        var shouldDrain = false;
 
         lock (_syncRoot)
         {
+            if (_isDisposed) return;
+
             _isInteractionLocked = false;
             var now = DateTimeOffset.UtcNow;
-            previousActive = CurrentActiveEvent;
-            newActive = DetermineActiveEvent_NoLock(now);
+            var previousActive = CurrentActiveEvent;
+            var newActive = DetermineActiveEvent_NoLock(now);
 
             if (!ReferenceEquals(previousActive, newActive))
             {
                 CurrentActiveEvent = newActive;
+                _pendingNotifications.Enqueue(newActive);
+                if (!_isDispatchingNotifications)
+                {
+                    _isDispatchingNotifications = true;
+                    shouldDrain = true;
+                }
             }
 
             EnsureActiveTimerStarted_NoLock(newActive, now);
         }
 
-        if (!ReferenceEquals(previousActive, newActive))
+        if (shouldDrain)
         {
-            ActiveEventChanged?.Invoke(this, newActive);
+            DrainNotifications();
+        }
+    }
+
+    private void DrainNotifications()
+    {
+        while (true)
+        {
+            IslandEvent? next;
+            lock (_syncRoot)
+            {
+                if (_isDisposed || _pendingNotifications.Count == 0)
+                {
+                    _pendingNotifications.Clear();
+                    _isDispatchingNotifications = false;
+                    return;
+                }
+
+                next = _pendingNotifications.Dequeue();
+            }
+
+            ActiveEventChanged?.Invoke(this, next);
         }
     }
 

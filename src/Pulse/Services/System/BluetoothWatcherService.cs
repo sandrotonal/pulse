@@ -19,33 +19,102 @@ public sealed class BluetoothWatcherService : IDisposable
 
     private readonly ISystemEventService _systemEvents;
     private readonly ISettingsService _settings;
+    private readonly object _watcherSync = new();
     private readonly ConcurrentDictionary<string, (string Name, bool Connected)> _devices = new();
     private readonly ConcurrentDictionary<string, DateTimeOffset> _lastEventTimes = new();
     private DeviceWatcher? _watcher;
     private volatile bool _enumerationCompleted;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public BluetoothWatcherService(ISystemEventService systemEvents, ISettingsService settings)
     {
         _systemEvents = systemEvents ?? throw new ArgumentNullException(nameof(systemEvents));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _settings.SettingsChanged += OnSettingsChanged;
 
-        try
+        if (_settings.Current.BluetoothNotifications)
         {
-            _watcher = DeviceInformation.CreateWatcher(
-                BluetoothSelector,
-                [IsConnectedProperty],
-                DeviceInformationKind.AssociationEndpoint);
-            _watcher.Added += OnDeviceAdded;
-            _watcher.Updated += OnDeviceUpdated;
-            _watcher.Removed += OnDeviceRemoved;
-            _watcher.EnumerationCompleted += OnEnumerationCompleted;
-            _watcher.Start();
+            StartWatcher();
         }
-        catch (Exception ex)
+    }
+
+    private void OnSettingsChanged(object? sender, Core.Models.AppSettings settings)
+    {
+        if (_disposed)
         {
-            CrashLogger.Write("BluetoothWatcherService.Ctor", ex);
+            return;
+        }
+
+        if (settings.BluetoothNotifications)
+        {
+            StartWatcher();
+        }
+        else
+        {
+            StopWatcher();
+        }
+    }
+
+    private void StartWatcher()
+    {
+        lock (_watcherSync)
+        {
+            if (_disposed || _watcher is not null)
+            {
+                return;
+            }
+
+            try
+            {
+                _enumerationCompleted = false;
+                _devices.Clear();
+                var watcher = DeviceInformation.CreateWatcher(
+                    BluetoothSelector,
+                    [IsConnectedProperty],
+                    DeviceInformationKind.AssociationEndpoint);
+                watcher.Added += OnDeviceAdded;
+                watcher.Updated += OnDeviceUpdated;
+                watcher.Removed += OnDeviceRemoved;
+                watcher.EnumerationCompleted += OnEnumerationCompleted;
+                watcher.Start();
+                _watcher = watcher;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("BluetoothWatcherService.StartWatcher", ex);
+                _watcher = null;
+            }
+        }
+    }
+
+    private void StopWatcher()
+    {
+        lock (_watcherSync)
+        {
+            if (_watcher is null)
+            {
+                return;
+            }
+
+            try
+            {
+                if (_watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted)
+                {
+                    _watcher.Stop();
+                }
+
+                _watcher.Added -= OnDeviceAdded;
+                _watcher.Updated -= OnDeviceUpdated;
+                _watcher.Removed -= OnDeviceRemoved;
+                _watcher.EnumerationCompleted -= OnEnumerationCompleted;
+            }
+            catch
+            {
+            }
+
             _watcher = null;
+            _enumerationCompleted = false;
+            _devices.Clear();
         }
     }
 
@@ -54,7 +123,7 @@ public sealed class BluetoothWatcherService : IDisposable
         if (_disposed) return;
 
         var isConnected = TryReadConnectedFlag(args.Properties);
-        var name = NormalizeDeviceName(args.Name);
+        var name = BluetoothDeviceFilter.NormalizeName(args.Name);
         _devices[args.Id] = (name, isConnected);
 
         if (_enumerationCompleted && isConnected && !string.IsNullOrEmpty(name))
@@ -83,6 +152,8 @@ public sealed class BluetoothWatcherService : IDisposable
 
     private void OnDeviceRemoved(DeviceWatcher sender, DeviceInformationUpdate args)
     {
+        if (_disposed) return;
+
         if (_devices.TryRemove(args.Id, out var prev) && _enumerationCompleted && prev.Connected && !string.IsNullOrEmpty(prev.Name))
         {
             PublishDebounced(args.Id, prev.Name, connected: false);
@@ -102,6 +173,17 @@ public sealed class BluetoothWatcherService : IDisposable
         }
 
         var now = DateTimeOffset.UtcNow;
+        if (_lastEventTimes.Count > 32)
+        {
+            foreach (var entry in _lastEventTimes)
+            {
+                if ((now - entry.Value) >= TimeSpan.FromSeconds(30))
+                {
+                    _lastEventTimes.TryRemove(entry.Key, out _);
+                }
+            }
+        }
+
         var key = $"{name}|{(connected ? '1' : '0')}";
         if (_lastEventTimes.TryGetValue(key, out var prevTime) && (now - prevTime) < TimeSpan.FromSeconds(1.8))
         {
@@ -122,23 +204,6 @@ public sealed class BluetoothWatcherService : IDisposable
         return false;
     }
 
-    private static string NormalizeDeviceName(string? rawName)
-    {
-        if (string.IsNullOrWhiteSpace(rawName))
-        {
-            return string.Empty;
-        }
-
-        var trimmed = rawName.Trim();
-        // Skip generic protocol noise names
-        if (trimmed.StartsWith("Bluetooth ", StringComparison.OrdinalIgnoreCase) && trimmed.Contains("Device", StringComparison.OrdinalIgnoreCase))
-        {
-            return string.Empty;
-        }
-
-        return trimmed;
-    }
-
     public void Dispose()
     {
         if (_disposed)
@@ -147,28 +212,8 @@ public sealed class BluetoothWatcherService : IDisposable
         }
 
         _disposed = true;
-        if (_watcher is not null)
-        {
-            try
-            {
-                if (_watcher.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted)
-                {
-                    _watcher.Stop();
-                }
-
-                _watcher.Added -= OnDeviceAdded;
-                _watcher.Updated -= OnDeviceUpdated;
-                _watcher.Removed -= OnDeviceRemoved;
-                _watcher.EnumerationCompleted -= OnEnumerationCompleted;
-            }
-            catch
-            {
-            }
-
-            _watcher = null;
-        }
-
-        _devices.Clear();
+        _settings.SettingsChanged -= OnSettingsChanged;
+        StopWatcher();
         _lastEventTimes.Clear();
     }
 }

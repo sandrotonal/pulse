@@ -13,7 +13,9 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
     private GlobalSystemMediaTransportControlsSession? _session;
     private readonly IArtworkService _artworkService;
     private readonly SemaphoreSlim _sessionGate = new(1, 1);
-    private bool _disposed;
+    private string? _cachedArtworkKey;
+    private byte[]? _cachedArtworkBytes;
+    private volatile bool _disposed;
 
     public WindowsMediaSessionService(IArtworkService artworkService) => _artworkService = artworkService;
 
@@ -26,6 +28,12 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         _manager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
+        if (_disposed)
+        {
+            _manager = null;
+            return;
+        }
+
         _manager.CurrentSessionChanged += OnCurrentSessionChanged;
         _manager.SessionsChanged += OnSessionsChanged;
         await BindCurrentSessionAsync();
@@ -65,12 +73,23 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
 
     public async Task<bool> TogglePlayPauseAsync()
     {
-        if (_session is null)
+        var session = _session;
+        if (_disposed || session is null)
         {
             return false;
         }
 
-        var playback = _session.GetPlaybackInfo();
+        GlobalSystemMediaTransportControlsSessionPlaybackInfo? playback;
+        try
+        {
+            playback = session.GetPlaybackInfo();
+        }
+        catch (Exception)
+        {
+            await BindCurrentSessionAsync();
+            return false;
+        }
+
         return playback?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
             ? await PauseAsync()
             : await PlayAsync();
@@ -78,7 +97,8 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
 
     public async Task<bool> SeekAsync(TimeSpan position)
     {
-        if (_session is null || CurrentTrack is not { Duration: { Ticks: > 0 } duration })
+        var session = _session;
+        if (_disposed || session is null || CurrentTrack is not { Duration: { Ticks: > 0 } duration })
         {
             return false;
         }
@@ -86,7 +106,7 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
         var boundedPosition = PlaybackPosition.Clamp(position, duration);
         try
         {
-            return await _session.TryChangePlaybackPositionAsync(boundedPosition.Ticks);
+            return await session.TryChangePlaybackPositionAsync(boundedPosition.Ticks);
         }
         catch (Exception)
         {
@@ -111,13 +131,22 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
         _disposed = true;
         if (_manager is not null)
         {
-            _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
-            _manager.SessionsChanged -= OnSessionsChanged;
+            try
+            {
+                _manager.CurrentSessionChanged -= OnCurrentSessionChanged;
+                _manager.SessionsChanged -= OnSessionsChanged;
+            }
+            catch
+            {
+            }
         }
 
         DetachSessionEvents();
         _manager = null;
+        _cachedArtworkKey = null;
+        _cachedArtworkBytes = null;
         SetCurrentTrack(null);
+        _sessionGate.Dispose();
         return ValueTask.CompletedTask;
     }
 
@@ -125,14 +154,15 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
 
     private async Task<bool> RunSessionCommandAsync(Func<GlobalSystemMediaTransportControlsSession, Windows.Foundation.IAsyncOperation<bool>> command)
     {
-        if (_session is null)
+        var session = _session;
+        if (_disposed || session is null)
         {
             return false;
         }
 
         try
         {
-            return await command(_session);
+            return await command(session);
         }
         catch (Exception)
         {
@@ -155,14 +185,20 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
 
     private void OnTimelinePropertiesChanged(GlobalSystemMediaTransportControlsSession sender, TimelinePropertiesChangedEventArgs args)
     {
-        if (!ReferenceEquals(sender, _session) || CurrentTrack is not { } track)
+        if (_disposed || !ReferenceEquals(sender, _session) || CurrentTrack is not { } track)
         {
             return;
         }
 
         try
         {
-            SetCurrentTrack(track with { Position = sender.GetTimelineProperties().Position });
+            var position = sender.GetTimelineProperties().Position;
+            if (_disposed || !ReferenceEquals(sender, _session))
+            {
+                return;
+            }
+
+            SetCurrentTrack(track with { Position = position });
         }
         catch (Exception)
         {
@@ -177,9 +213,11 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
             return;
         }
 
-        await _sessionGate.WaitAsync().ConfigureAwait(false);
+        var gateEntered = false;
         try
         {
+            await _sessionGate.WaitAsync().ConfigureAwait(false);
+            gateEntered = true;
             if (_disposed || _manager is null)
             {
                 return;
@@ -198,13 +236,20 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
             _session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
             await RefreshCurrentTrackCoreAsync().ConfigureAwait(false);
         }
+        catch (ObjectDisposedException)
+        {
+        }
         catch (Exception)
         {
+            DetachSessionEvents();
             SetCurrentTrack(null);
         }
         finally
         {
-            _sessionGate.Release();
+            if (gateEntered)
+            {
+                try { _sessionGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
     }
 
@@ -212,9 +257,15 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
     {
         if (_session is not null)
         {
-            _session.MediaPropertiesChanged -= OnMediaPropertiesChanged;
-            _session.PlaybackInfoChanged -= OnPlaybackInfoChanged;
-            _session.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
+            try
+            {
+                _session.MediaPropertiesChanged -= OnMediaPropertiesChanged;
+                _session.PlaybackInfoChanged -= OnPlaybackInfoChanged;
+                _session.TimelinePropertiesChanged -= OnTimelinePropertiesChanged;
+            }
+            catch
+            {
+            }
         }
 
         _session = null;
@@ -227,14 +278,22 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
             return;
         }
 
-        await _sessionGate.WaitAsync().ConfigureAwait(false);
+        var gateEntered = false;
         try
         {
+            await _sessionGate.WaitAsync().ConfigureAwait(false);
+            gateEntered = true;
             await RefreshCurrentTrackCoreAsync().ConfigureAwait(false);
+        }
+        catch (ObjectDisposedException)
+        {
         }
         finally
         {
-            _sessionGate.Release();
+            if (gateEntered)
+            {
+                try { _sessionGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
     }
 
@@ -264,6 +323,27 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
                 _ => PlaybackStatus.Unknown
             };
 
+            var artworkKey = string.Join("|", session.SourceAppUserModelId, media.Title, media.Artist, media.AlbumTitle);
+            byte[]? artworkBytes;
+            if (string.Equals(_cachedArtworkKey, artworkKey, StringComparison.Ordinal) && _cachedArtworkBytes is not null)
+            {
+                artworkBytes = _cachedArtworkBytes;
+            }
+            else
+            {
+                artworkBytes = await _artworkService.GetArtworkAsync(media.Thumbnail, artworkKey);
+                if (artworkBytes is not null)
+                {
+                    _cachedArtworkKey = artworkKey;
+                    _cachedArtworkBytes = artworkBytes;
+                }
+                else
+                {
+                    _cachedArtworkKey = null;
+                    _cachedArtworkBytes = null;
+                }
+            }
+
             SetCurrentTrack(new MediaTrack
             {
                 Title = string.IsNullOrWhiteSpace(media.Title) ? "Unknown title" : media.Title,
@@ -280,9 +360,7 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
                 // Some media providers report this capability incorrectly. A known timeline is
                 // enough to let the user try; TryChangePlaybackPositionAsync is the final authority.
                 CanSeek = timeline.EndTime > TimeSpan.Zero,
-                Artwork = await _artworkService.GetArtworkAsync(
-                    media.Thumbnail,
-                    string.Join("|", session.SourceAppUserModelId, media.Title, media.Artist, media.AlbumTitle))
+                Artwork = artworkBytes
             });
         }
         catch (Exception)

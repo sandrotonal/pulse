@@ -93,9 +93,10 @@ internal static class DesktopFrostService
             return null;
         }
 
+        Bitmap? bitmap = null;
         try
         {
-            var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
+            bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb);
             using var graphics = Graphics.FromImage(bitmap);
             graphics.CopyFromScreen(
                 screenX,
@@ -108,6 +109,7 @@ internal static class DesktopFrostService
         }
         catch
         {
+            bitmap?.Dispose();
             return null;
         }
     }

@@ -34,6 +34,7 @@ public sealed class FocusTimerService : IFocusTimerService
 
     public void Start(TimeSpan workDuration, TimeSpan breakDuration)
     {
+        FocusTimerEvent? evt = null;
         lock (_syncRoot)
         {
             if (_isDisposed) return;
@@ -43,43 +44,54 @@ public sealed class FocusTimerService : IFocusTimerService
             IsBreak = false;
             TotalDuration = _workDuration;
             RemainingTime = _workDuration;
+            _pausedRemaining = _workDuration;
             _sessionEndTime = DateTimeOffset.UtcNow + _workDuration;
             State = FocusTimerState.Running;
-            PublishCurrentState();
+            evt = CreateSnapshot_NoLock();
 
             _tickerTimer?.Dispose();
             _tickerTimer = new Timer(OnTimerTick, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
+
+        _eventRouter.Publish(evt);
     }
 
     public void Pause()
     {
+        FocusTimerEvent? evt = null;
         lock (_syncRoot)
         {
             if (_isDisposed || State != FocusTimerState.Running) return;
 
-            _pausedRemaining = RemainingTime;
+            var remaining = _sessionEndTime - DateTimeOffset.UtcNow;
+            _pausedRemaining = remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero;
+            RemainingTime = _pausedRemaining;
             State = FocusTimerState.Paused;
             _tickerTimer?.Dispose();
             _tickerTimer = null;
 
-            PublishCurrentState();
+            evt = CreateSnapshot_NoLock();
         }
+
+        _eventRouter.Publish(evt);
     }
 
     public void Resume()
     {
+        FocusTimerEvent? evt = null;
         lock (_syncRoot)
         {
             if (_isDisposed || State != FocusTimerState.Paused) return;
 
             _sessionEndTime = DateTimeOffset.UtcNow + _pausedRemaining;
             State = FocusTimerState.Running;
-            PublishCurrentState();
+            evt = CreateSnapshot_NoLock();
 
             _tickerTimer?.Dispose();
             _tickerTimer = new Timer(OnTimerTick, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
+
+        _eventRouter.Publish(evt);
     }
 
     public void Reset()
@@ -95,23 +107,28 @@ public sealed class FocusTimerService : IFocusTimerService
             RemainingTime = _workDuration;
             TotalDuration = _workDuration;
             _pausedRemaining = _workDuration;
-
-            _eventRouter.Dismiss(FocusTimerEventId);
         }
+
+        _eventRouter.Dismiss(FocusTimerEventId);
     }
 
     public void Restart()
     {
+        TimeSpan work;
+        TimeSpan @break;
         lock (_syncRoot)
         {
             if (_isDisposed) return;
+            work = _workDuration;
+            @break = _breakDuration;
         }
 
-        Start(_workDuration, _breakDuration);
+        Start(work, @break);
     }
 
     public void SkipToNextSession()
     {
+        FocusTimerEvent? evt = null;
         lock (_syncRoot)
         {
             if (_isDisposed) return;
@@ -120,13 +137,16 @@ public sealed class FocusTimerService : IFocusTimerService
             var duration = IsBreak ? _breakDuration : _workDuration;
             TotalDuration = duration;
             RemainingTime = duration;
+            _pausedRemaining = duration;
             _sessionEndTime = DateTimeOffset.UtcNow + duration;
             State = FocusTimerState.Running;
-            PublishCurrentState();
+            evt = CreateSnapshot_NoLock();
 
             _tickerTimer?.Dispose();
             _tickerTimer = new Timer(OnTimerTick, null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
         }
+
+        _eventRouter.Publish(evt);
     }
 
     private void OnTimerTick(object? state)
@@ -141,58 +161,46 @@ public sealed class FocusTimerService : IFocusTimerService
             var remaining = _sessionEndTime - DateTimeOffset.UtcNow;
             if (remaining <= TimeSpan.Zero)
             {
-                remaining = TimeSpan.Zero;
                 RemainingTime = TimeSpan.Zero;
+                _pausedRemaining = TimeSpan.Zero;
                 State = FocusTimerState.Completed;
                 isCompleted = true;
 
                 _tickerTimer?.Dispose();
                 _tickerTimer = null;
 
-                evt = new FocusTimerEvent(
-                    FocusTimerEventId,
-                    TimeSpan.Zero,
-                    TotalDuration,
-                    IsBreak,
-                    FocusTimerState.Completed
-                );
+                evt = CreateSnapshot_NoLock();
             }
             else
             {
                 RemainingTime = remaining;
-                evt = new FocusTimerEvent(
-                    FocusTimerEventId,
-                    remaining,
-                    TotalDuration,
-                    IsBreak,
-                    FocusTimerState.Running
-                );
+                evt = CreateSnapshot_NoLock();
             }
-
-            _eventRouter.Publish(evt);
         }
+
+        if (_isDisposed || evt is null)
+        {
+            return;
+        }
+
+        _eventRouter.Publish(evt);
 
         if (isCompleted)
         {
-            SessionCompleted?.Invoke(this, evt!);
+            SessionCompleted?.Invoke(this, evt);
         }
         else
         {
-            Tick?.Invoke(this, evt!);
+            Tick?.Invoke(this, evt);
         }
     }
 
-    private void PublishCurrentState()
-    {
-        var evt = new FocusTimerEvent(
-            FocusTimerEventId,
-            RemainingTime,
-            TotalDuration,
-            IsBreak,
-            State
-        );
-        _eventRouter.Publish(evt);
-    }
+    private FocusTimerEvent CreateSnapshot_NoLock() => new(
+        FocusTimerEventId,
+        RemainingTime,
+        TotalDuration,
+        IsBreak,
+        State);
 
     public void Dispose()
     {

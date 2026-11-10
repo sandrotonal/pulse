@@ -78,4 +78,39 @@ public sealed class SystemEventServiceTests
         Assert.Equal(EventCategory.Screenshot, active.Category);
         Assert.Equal("Screen_01.png", active.Subtitle);
     }
+
+    private sealed class ToggleSettingsService : Pulse.Core.Interfaces.ISettingsService
+    {
+        public Pulse.Core.Models.AppSettings Current { get; set; } = new()
+        {
+            PowerNotifications = false,
+            BluetoothNotifications = false,
+            AudioNotifications = false,
+            SystemToastNotifications = false
+        };
+        public string? LastSaveError => null;
+        public event EventHandler<Pulse.Core.Models.AppSettings>? SettingsChanged;
+        public Task LoadAsync() => Task.CompletedTask;
+        public Task SaveAsync(Pulse.Core.Models.AppSettings settings)
+        {
+            Current = settings;
+            SettingsChanged?.Invoke(this, settings);
+            return Task.CompletedTask;
+        }
+        public Task FlushAsync() => Task.CompletedTask;
+    }
+
+    [Fact]
+    public void DisabledNotificationSettingsSuppressEvents()
+    {
+        using var router = new EventRouter();
+        var service = new SystemEventService(router, new ToggleSettingsService());
+
+        service.ReportPowerConnected(80);
+        service.ReportBluetoothStatus("AirPods", true);
+        service.ReportAudioStatus(50, false);
+        service.ReportSystemToast("id1", "Title", "Sub", "\uE7E7");
+
+        Assert.Null(router.CurrentActiveEvent);
+    }
 }

@@ -271,4 +271,92 @@ public sealed class SettingsServiceTests
             }
         }
     }
+
+    [Fact]
+    public async Task MalformedSinglePropertyFallsBackOnlyThatFieldWithoutWipingValidSettings()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), """
+                {
+                  "Theme": "Light",
+                  "IslandScale": 110,
+                  "IdleLocationCity": "Ankara",
+                  "TopOffset": "not-an-integer",
+                  "UseTransparency": 12345,
+                  "PowerNotifications": "invalid-bool"
+                }
+                """);
+
+            using var service = new SettingsService(directory);
+            await service.LoadAsync();
+
+            Assert.Equal("Light", service.Current.Theme);
+            Assert.Equal(110, service.Current.IslandScale);
+            Assert.Equal("Ankara", service.Current.IdleLocationCity);
+            Assert.Equal(14, service.Current.TopOffset);
+            Assert.False(service.Current.UseTransparency);
+            Assert.True(service.Current.PowerNotifications);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("dark", "Dark")]
+    [InlineData("LIGHT", "Light")]
+    [InlineData("system", "System")]
+    [InlineData("Neon", "System")]
+    public async Task ThemeNormalizationIsCaseInsensitive(string input, string expected)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var service = new SettingsService(directory);
+            await service.SaveAsync(new AppSettings { Theme = input });
+
+            Assert.Equal(expected, service.Current.Theme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("{bad")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("")]
+    public async Task CorruptOrNonObjectJsonFallsBackToDefaults(string payload)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), payload);
+
+            using var service = new SettingsService(directory);
+            await service.LoadAsync();
+
+            Assert.Equal(new AppSettings(), service.Current);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
 }

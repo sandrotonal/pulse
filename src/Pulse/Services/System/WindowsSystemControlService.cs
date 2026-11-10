@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Services;
 
@@ -14,23 +15,23 @@ namespace Pulse.Services.System;
 public sealed class WindowsSystemControlService : ISystemControlService, IDisposable
 {
     private static readonly Guid ClsidMmDeviceEnumerator = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
+    private static readonly Guid IidIMMDeviceEnumerator = new("A95664D2-9614-4F35-A746-DE8DB63617E6");
     private static readonly Guid IidIAudioEndpointVolume = new("5CDF2C82-841E-4546-9722-0CF74078229A");
     private static readonly Guid SelfEventContext = new("87A1F2B6-6F1C-4A28-92A7-5C6B7A9E4123");
 
     private readonly object _audioLock = new();
-    private readonly IntPtr _selfContextPtr;
+    private readonly DispatcherQueue? _dispatcherQueue;
     private readonly VolumeCallbackSink _volumeCallback;
     private readonly DeviceNotificationClient _deviceCallback;
 
     private IMMDeviceEnumerator? _deviceEnumerator;
     private IAudioEndpointVolume? _endpointVolume;
     private bool _callbacksRegistered;
-    private bool _disposed;
+    private volatile bool _disposed;
 
-    public WindowsSystemControlService()
+    public WindowsSystemControlService(DispatcherQueue? dispatcherQueue = null)
     {
-        _selfContextPtr = Marshal.AllocHGlobal(16);
-        Marshal.Copy(SelfEventContext.ToByteArray(), 0, _selfContextPtr, 16);
+        _dispatcherQueue = dispatcherQueue;
         _volumeCallback = new VolumeCallbackSink(OnVolumeNotify);
         _deviceCallback = new DeviceNotificationClient(OnDefaultRenderDeviceChanged);
 
@@ -60,8 +61,10 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             {
                 if (_deviceEnumerator is null)
                 {
-                    var comType = Type.GetTypeFromCLSID(ClsidMmDeviceEnumerator);
-                    if (comType is not null && Activator.CreateInstance(comType) is IMMDeviceEnumerator enumerator)
+                    var clsid = ClsidMmDeviceEnumerator;
+                    var enumeratorIid = IidIMMDeviceEnumerator;
+                    if (CoCreateInstance(ref clsid, IntPtr.Zero, (uint)CLSCTX.CLSCTX_ALL, ref enumeratorIid, out var rawEnumerator) == 0 &&
+                        rawEnumerator is IMMDeviceEnumerator enumerator)
                     {
                         _deviceEnumerator = enumerator;
                         _ = _deviceEnumerator.RegisterEndpointNotificationCallback(_deviceCallback);
@@ -137,6 +140,11 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     {
         for (var attempt = 0; attempt < 2; attempt++)
         {
+            if (_disposed)
+            {
+                return fallback;
+            }
+
             var endpoint = GetEndpointVolume();
             if (endpoint is null)
             {
@@ -147,7 +155,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             {
                 return action(endpoint);
             }
-            catch (COMException)
+            catch (Exception ex) when (ex is COMException or InvalidComObjectException)
             {
                 lock (_audioLock)
                 {
@@ -227,7 +235,8 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         var scalar = Math.Clamp(percent, 0, 100) / 100f;
         _ = ExecuteWithEndpointRetry(endpoint =>
         {
-            var hr = endpoint.SetMasterVolumeLevelScalar(scalar, _selfContextPtr);
+            var context = SelfEventContext;
+            var hr = endpoint.SetMasterVolumeLevelScalar(scalar, ref context);
             if (hr != 0)
             {
                 Marshal.ThrowExceptionForHR(hr);
@@ -255,7 +264,8 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     {
         _ = ExecuteWithEndpointRetry(endpoint =>
         {
-            var hr = endpoint.SetMute(muted, _selfContextPtr);
+            var context = SelfEventContext;
+            var hr = endpoint.SetMute(muted, ref context);
             if (hr != 0)
             {
                 Marshal.ThrowExceptionForHR(hr);
@@ -271,12 +281,60 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
     public string CaptureScreenshot()
     {
+        var (path, pngBytes) = CaptureScreenshotBytes();
+        if (pngBytes is not null)
+        {
+            CopyPngBytesToClipboard(pngBytes);
+        }
+
+        return path;
+    }
+
+    public async Task<string> CaptureScreenshotAsync()
+    {
+        var (path, pngBytes) = await Task.Run(CaptureScreenshotBytes).ConfigureAwait(false);
+        if (pngBytes is null)
+        {
+            return path;
+        }
+
+        if (_dispatcherQueue is { HasThreadAccess: false } dispatcher)
+        {
+            var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!dispatcher.TryEnqueue(() =>
+                {
+                    try
+                    {
+                        CopyPngBytesToClipboard(pngBytes);
+                    }
+                    finally
+                    {
+                        tcs.TrySetResult();
+                    }
+                }))
+            {
+                CopyPngBytesToClipboard(pngBytes);
+                return path;
+            }
+
+            await tcs.Task.ConfigureAwait(false);
+        }
+        else
+        {
+            CopyPngBytesToClipboard(pngBytes);
+        }
+
+        return path;
+    }
+
+    private static (string Path, byte[]? PngBytes) CaptureScreenshotBytes()
+    {
         try
         {
             var bounds = GetScreenBounds();
             if (bounds is null)
             {
-                return string.Empty;
+                return (string.Empty, null);
             }
 
             using var bitmap = new Bitmap(bounds.Value.Width, bounds.Value.Height, PixelFormat.Format32bppArgb);
@@ -288,17 +346,19 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             var directory = KnownFolderResolver.GetScreenshotsDirectory();
             Directory.CreateDirectory(directory);
 
-            var fileName = $"Pulse_{DateTime.Now:yyyyMMdd_HHmmss}.png";
+            var fileName = $"Pulse_{DateTime.Now:yyyyMMdd_HHmmss_fff}.png";
             var path = Path.Combine(directory, fileName);
-            bitmap.Save(path, ImageFormat.Png);
 
-            CopyToClipboard(bitmap);
-            return path;
+            using var stream = new MemoryStream();
+            bitmap.Save(stream, ImageFormat.Png);
+            var bytes = stream.ToArray();
+            File.WriteAllBytes(path, bytes);
+            return (path, bytes);
         }
         catch (Exception ex)
         {
             CrashLogger.Write("WindowsSystemControlService.CaptureScreenshot", ex);
-            return string.Empty;
+            return (string.Empty, null);
         }
     }
 
@@ -311,26 +371,25 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         return width <= 0 || height <= 0 ? null : new Rectangle(x, y, width, height);
     }
 
-    private static void CopyToClipboard(Bitmap bitmap)
+    private static void CopyPngBytesToClipboard(byte[] bytes)
     {
         try
         {
-            using var stream = new MemoryStream();
-            bitmap.Save(stream, ImageFormat.Png);
-            var bytes = stream.ToArray();
-
-            var memoryStream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+            using var memoryStream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
             using (var writer = new global::Windows.Storage.Streams.DataWriter(memoryStream.GetOutputStreamAt(0)))
             {
                 writer.WriteBytes(bytes);
                 _ = writer.StoreAsync().AsTask().GetAwaiter().GetResult();
                 _ = writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+                writer.DetachStream();
             }
 
+            memoryStream.Seek(0);
             var package = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
             package.RequestedOperation = global::Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
             package.SetBitmap(global::Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(memoryStream));
             global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+            global::Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
         }
         catch (Exception ex)
         {
@@ -376,13 +435,24 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             try
             {
                 var processName = Path.GetFileNameWithoutExtension(fileName);
-                foreach (var process in global::System.Diagnostics.Process.GetProcessesByName(processName))
+                var processes = global::System.Diagnostics.Process.GetProcessesByName(processName);
+                try
                 {
-                    if (process.MainWindowHandle != IntPtr.Zero)
+                    foreach (var process in processes)
                     {
-                        _ = ShowWindow(process.MainWindowHandle, SwRestore);
-                        _ = SetForegroundWindow(process.MainWindowHandle);
-                        return true;
+                        if (process.MainWindowHandle != IntPtr.Zero)
+                        {
+                            _ = ShowWindow(process.MainWindowHandle, SwRestore);
+                            _ = SetForegroundWindow(process.MainWindowHandle);
+                            return true;
+                        }
+                    }
+                }
+                finally
+                {
+                    foreach (var process in processes)
+                    {
+                        process.Dispose();
                     }
                 }
             }
@@ -394,7 +464,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         // Packaged apps (e.g. "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify").
         try
         {
-            global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
+            using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
                 "explorer.exe",
                 $"shell:AppsFolder\\{appId}")
             {
@@ -408,7 +478,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
         try
         {
-            global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(appId) { UseShellExecute = true });
+            using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(appId) { UseShellExecute = true });
             return true;
         }
         catch
@@ -428,18 +498,18 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         {
             if (File.Exists(path))
             {
-                global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
+                using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
                     "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
                 return true;
             }
 
             if (Directory.Exists(path))
             {
-                global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
                 return true;
             }
 
-            global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
+            using var fallback = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
                 "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
             return true;
         }
@@ -475,7 +545,6 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             }
         }
 
-        Marshal.FreeHGlobal(_selfContextPtr);
         GC.KeepAlive(_volumeCallback);
         GC.KeepAlive(_deviceCallback);
     }
@@ -526,6 +595,14 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     private const int SM_YVIRTUALSCREEN = 77;
     private const int SM_CXVIRTUALSCREEN = 78;
     private const int SM_CYVIRTUALSCREEN = 79;
+
+    [DllImport("ole32.dll", PreserveSig = true)]
+    private static extern int CoCreateInstance(
+        ref Guid rclsid,
+        IntPtr pUnkOuter,
+        uint dwClsContext,
+        ref Guid riid,
+        [MarshalAs(UnmanagedType.IUnknown)] out object? ppv);
 
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int nIndex);
@@ -650,7 +727,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         int SetMasterVolumeLevel(float fLevelDB, IntPtr pguidEventContext);
 
         [PreserveSig]
-        int SetMasterVolumeLevelScalar(float fLevel, IntPtr pguidEventContext);
+        int SetMasterVolumeLevelScalar(float fLevel, ref Guid guidEventContext);
 
         [PreserveSig]
         int GetMasterVolumeLevel(out float pfLevelDB);
@@ -671,9 +748,9 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         int GetChannelVolumeLevelScalar(uint nChannel, out float pfLevel);
 
         [PreserveSig]
-        int SetMute(bool bMute, IntPtr pguidEventContext);
+        int SetMute([MarshalAs(UnmanagedType.Bool)] bool bMute, ref Guid guidEventContext);
 
         [PreserveSig]
-        int GetMute(out bool pbMute);
+        int GetMute([MarshalAs(UnmanagedType.Bool)] out bool pbMute);
     }
 }

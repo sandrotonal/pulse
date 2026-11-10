@@ -22,6 +22,7 @@ public sealed class WindowsToastNotificationService : IDisposable
     private readonly string _dbPath;
     private readonly string _walPath;
     private readonly string _shmPath;
+    private readonly object _debounceSync = new();
     private readonly SemaphoreSlim _scanGate = new(1, 1);
     private readonly FileSystemWatcher? _watcher;
     private readonly Timer _pollTimer;
@@ -29,14 +30,17 @@ public sealed class WindowsToastNotificationService : IDisposable
     private CancellationTokenSource? _debounceCts;
     private long _lastSeenOrder;
     private bool _seeded;
+    private bool _enabled;
     private DateTime _lastKnownStampUtc;
     private long _lastKnownWalLength = -1;
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public WindowsToastNotificationService(ISystemEventService systemEvents, ISettingsService settings)
     {
         _systemEvents = systemEvents ?? throw new ArgumentNullException(nameof(systemEvents));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
+        _enabled = _settings.Current.SystemToastNotifications;
+        _settings.SettingsChanged += OnSettingsChanged;
 
         _notificationsDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
@@ -58,24 +62,74 @@ public sealed class WindowsToastNotificationService : IDisposable
                 };
                 _watcher.Changed += OnDatabaseFileChanged;
                 _watcher.Created += OnDatabaseFileChanged;
-                _watcher.EnableRaisingEvents = true;
+                _watcher.EnableRaisingEvents = _enabled;
             }
             catch (Exception ex)
             {
                 CrashLogger.Write("WindowsToastNotificationService.WatcherInit", ex);
+                _watcher?.Dispose();
                 _watcher = null;
             }
         }
 
-        _ = Task.Run(SeedBaselineOrderAsync);
-
         // Low-overhead stat check catches WAL appends that Windows skips emitting FSW events for until flush.
-        _pollTimer = new Timer(_ => CheckForMetadataChange(), null, TimeSpan.FromMilliseconds(1200), TimeSpan.FromMilliseconds(1500));
+        _pollTimer = new Timer(
+            _ => CheckForMetadataChange(),
+            null,
+            _enabled ? TimeSpan.FromMilliseconds(1200) : Timeout.InfiniteTimeSpan,
+            TimeSpan.FromMilliseconds(1500));
+
+        if (_enabled)
+        {
+            _ = Task.Run(SeedBaselineOrderAsync);
+        }
+    }
+
+    private void OnSettingsChanged(object? sender, Core.Models.AppSettings settings)
+    {
+        if (_disposed || _enabled == settings.SystemToastNotifications)
+        {
+            return;
+        }
+
+        _enabled = settings.SystemToastNotifications;
+        if (!_enabled)
+        {
+            CancelPendingScan();
+            try
+            {
+                _pollTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                if (_watcher is not null)
+                {
+                    _watcher.EnableRaisingEvents = false;
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            return;
+        }
+
+        _seeded = false;
+        try
+        {
+            if (_watcher is not null)
+            {
+                _watcher.EnableRaisingEvents = true;
+            }
+
+            _pollTimer.Change(1200, 1500);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        _ = Task.Run(SeedBaselineOrderAsync);
     }
 
     private void OnDatabaseFileChanged(object sender, FileSystemEventArgs e)
     {
-        if (_disposed || !_settings.Current.SystemToastNotifications)
+        if (_disposed || !_enabled)
         {
             return;
         }
@@ -85,7 +139,7 @@ public sealed class WindowsToastNotificationService : IDisposable
 
     private void CheckForMetadataChange()
     {
-        if (_disposed || !_settings.Current.SystemToastNotifications || !File.Exists(_dbPath))
+        if (_disposed || !_enabled || !File.Exists(_dbPath))
         {
             return;
         }
@@ -112,43 +166,80 @@ public sealed class WindowsToastNotificationService : IDisposable
         }
     }
 
-    private void ScheduleScan()
+    private void CancelPendingScan()
     {
-        if (_disposed)
+        CancellationTokenSource? prev;
+        lock (_debounceSync)
         {
-            return;
+            prev = _debounceCts;
+            _debounceCts = null;
         }
 
-        var nextCts = new CancellationTokenSource();
-        var prev = Interlocked.Exchange(ref _debounceCts, nextCts);
         if (prev is not null)
         {
-            try { prev.Cancel(); } catch { }
-            prev.Dispose();
+            try { prev.Cancel(); } catch (ObjectDisposedException) { }
+        }
+    }
+
+    private void ScheduleScan()
+    {
+        CancellationTokenSource? prev;
+        CancellationTokenSource nextCts;
+        lock (_debounceSync)
+        {
+            if (_disposed || !_enabled)
+            {
+                return;
+            }
+
+            prev = _debounceCts;
+            nextCts = new CancellationTokenSource();
+            _debounceCts = nextCts;
         }
 
-        _ = Task.Run(async () =>
+        if (prev is not null)
         {
-            try
+            try { prev.Cancel(); } catch (ObjectDisposedException) { }
+        }
+
+        _ = Task.Run(() => RunDebouncedScanAsync(nextCts));
+    }
+
+    private async Task RunDebouncedScanAsync(CancellationTokenSource cts)
+    {
+        try
+        {
+            await Task.Delay(140, cts.Token).ConfigureAwait(false);
+            await ScanNewToastsAsync(cts.Token).ConfigureAwait(false);
+        }
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
+        {
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("WindowsToastNotificationService.ScheduleScan", ex);
+        }
+        finally
+        {
+            lock (_debounceSync)
             {
-                await Task.Delay(140, nextCts.Token).ConfigureAwait(false);
-                await ScanNewToastsAsync(nextCts.Token).ConfigureAwait(false);
+                if (ReferenceEquals(_debounceCts, cts))
+                {
+                    _debounceCts = null;
+                }
             }
-            catch (OperationCanceledException)
-            {
-            }
-            catch (Exception ex)
-            {
-                CrashLogger.Write("WindowsToastNotificationService.ScheduleScan", ex);
-            }
-        });
+
+            cts.Dispose();
+        }
     }
 
     private async Task SeedBaselineOrderAsync()
     {
-        await _scanGate.WaitAsync().ConfigureAwait(false);
+        var gateEntered = false;
         try
         {
+            await _scanGate.WaitAsync().ConfigureAwait(false);
+            gateEntered = true;
             if (_disposed || !File.Exists(_dbPath))
             {
                 _seeded = true;
@@ -158,10 +249,13 @@ public sealed class WindowsToastNotificationService : IDisposable
             UpdateMetadataBaseline();
             if (TryQueryMaxOrder(out var maxOrder))
             {
-                _lastSeenOrder = maxOrder;
+                _lastSeenOrder = Math.Max(_lastSeenOrder, maxOrder);
             }
 
             _seeded = true;
+        }
+        catch (ObjectDisposedException)
+        {
         }
         catch (Exception ex)
         {
@@ -170,7 +264,10 @@ public sealed class WindowsToastNotificationService : IDisposable
         }
         finally
         {
-            _scanGate.Release();
+            if (gateEntered)
+            {
+                try { _scanGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
     }
 
@@ -197,26 +294,30 @@ public sealed class WindowsToastNotificationService : IDisposable
             return;
         }
 
-        await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        var gateEntered = false;
         try
         {
+            await _scanGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            gateEntered = true;
             if (_disposed || cancellationToken.IsCancellationRequested)
             {
                 return;
             }
 
+            UpdateMetadataBaseline();
+
             if (!_seeded)
             {
                 if (TryQueryMaxOrder(out var maxOrder))
                 {
-                    _lastSeenOrder = maxOrder;
+                    _lastSeenOrder = Math.Max(_lastSeenOrder, maxOrder);
                 }
 
                 _seeded = true;
                 return;
             }
 
-            if (!_settings.Current.SystemToastNotifications)
+            if (!_enabled || !_settings.Current.SystemToastNotifications)
             {
                 if (TryQueryMaxOrder(out var skippedMax))
                 {
@@ -248,7 +349,7 @@ public sealed class WindowsToastNotificationService : IDisposable
                     parsed.IsHighPriority);
             }
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
         }
         catch (Exception ex)
@@ -257,7 +358,10 @@ public sealed class WindowsToastNotificationService : IDisposable
         }
         finally
         {
-            _scanGate.Release();
+            if (gateEntered)
+            {
+                try { _scanGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
     }
 
@@ -328,7 +432,7 @@ public sealed class WindowsToastNotificationService : IDisposable
                 LEFT JOIN NotificationHandler h ON n.HandlerId = h.RecordId
                 WHERE n.[Order] > ?1 AND n.Type = 'toast' AND n.Payload IS NOT NULL
                 ORDER BY n.[Order] ASC
-                LIMIT 10;
+                LIMIT 50;
                 """;
 
             if (sqlite3_prepare_v2(db, sql, -1, out stmt, out _) != SqliteOk)
@@ -426,7 +530,8 @@ public sealed class WindowsToastNotificationService : IDisposable
         }
 
         _disposed = true;
-        _pollTimer.Dispose();
+        _settings.SettingsChanged -= OnSettingsChanged;
+        try { _pollTimer.Dispose(); } catch (ObjectDisposedException) { }
 
         if (_watcher is not null)
         {
@@ -436,13 +541,7 @@ public sealed class WindowsToastNotificationService : IDisposable
             _watcher.Dispose();
         }
 
-        var cts = Interlocked.Exchange(ref _debounceCts, null);
-        if (cts is not null)
-        {
-            try { cts.Cancel(); } catch { }
-            cts.Dispose();
-        }
-
+        CancelPendingScan();
         _scanGate.Dispose();
     }
 

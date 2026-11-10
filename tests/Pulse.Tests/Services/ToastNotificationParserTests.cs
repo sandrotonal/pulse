@@ -73,5 +73,33 @@ public sealed class ToastNotificationParserTests
 
         Assert.Null(ToastNotificationParser.TryParse("SomeApp", xxeXml));
     }
+
+    [Fact]
+    public void ParsesUtf16LeBomUrgentScenarioAndAttributionFallback()
+    {
+        const string xml = """
+            <toast scenario="incomingCall">
+              <visual>
+                <binding template="ToastGeneric">
+                  <text>Mesaj</text>
+                  <text placement="attribution">Özelİstemci</text>
+                </binding>
+              </visual>
+            </toast>
+            """;
+
+        var preamble = Encoding.Unicode.GetPreamble();
+        var body = Encoding.Unicode.GetBytes(xml);
+        var combined = new byte[preamble.Length + body.Length];
+        Buffer.BlockCopy(preamble, 0, combined, 0, preamble.Length);
+        Buffer.BlockCopy(body, 0, combined, preamble.Length, body.Length);
+
+        var parsed = ToastNotificationParser.TryParse(string.Empty, combined);
+
+        Assert.NotNull(parsed);
+        Assert.True(parsed!.IsHighPriority);
+        Assert.Equal("Özelİstemci", parsed.AppName);
+        Assert.Equal("Mesaj", parsed.Subtitle);
+    }
 }
 

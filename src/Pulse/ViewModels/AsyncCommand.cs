@@ -1,4 +1,5 @@
 using System.Windows.Input;
+using Pulse.Core.Services;
 
 namespace Pulse.ViewModels;
 
@@ -22,6 +23,10 @@ public sealed class AsyncCommand(Func<Task> execute) : ICommand
         try
         {
             await execute();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("AsyncCommand.Execute", ex);
         }
         finally
         {

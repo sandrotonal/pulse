@@ -11,19 +11,39 @@ namespace Pulse.Core.Services;
 /// </summary>
 public sealed class DownloadsWatcherService : IDisposable
 {
+    private const int DefaultMaxLockRetries = 12;
+
     private static readonly string[] TempExtensions =
         [".crdownload", ".part", ".partial", ".opdownload", ".tmp", ".download"];
 
     private readonly IEventRouter _eventRouter;
     private readonly ISettingsService? _settings;
+    private readonly TimeSpan _settleDelay;
+    private readonly int _maxLockRetries;
     private readonly FileSystemWatcher? _watcher;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _pending = new();
-    private bool _isDisposed;
+    private readonly object _pendingSync = new();
+    private volatile bool _isDisposed;
 
-    public DownloadsWatcherService(IEventRouter eventRouter, ISettingsService? settings = null, string? downloadsDirectory = null)
+    public DownloadsWatcherService(
+        IEventRouter eventRouter,
+        ISettingsService? settings = null,
+        string? downloadsDirectory = null)
+        : this(eventRouter, settings, downloadsDirectory, TimeSpan.FromMilliseconds(1500), DefaultMaxLockRetries)
+    {
+    }
+
+    public DownloadsWatcherService(
+        IEventRouter eventRouter,
+        ISettingsService? settings,
+        string? downloadsDirectory,
+        TimeSpan settleDelay,
+        int maxLockRetries)
     {
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
         _settings = settings;
+        _settleDelay = settleDelay > TimeSpan.Zero ? settleDelay : TimeSpan.FromMilliseconds(25);
+        _maxLockRetries = Math.Max(0, maxLockRetries);
 
         var downloads = string.IsNullOrWhiteSpace(downloadsDirectory)
             ? KnownFolderResolver.GetDownloadsDirectory()
@@ -52,37 +72,77 @@ public sealed class DownloadsWatcherService : IDisposable
         }
     }
 
-    private void OnFileTouched(object sender, FileSystemEventArgs e) => ScheduleCheck(e.FullPath);
+    public int PendingCount => _pending.Count;
 
-    private void OnFileRenamed(object sender, RenamedEventArgs e) => ScheduleCheck(e.FullPath);
-
-    private void ScheduleCheck(string path)
+    private void OnFileTouched(object sender, FileSystemEventArgs e)
     {
-        if (_isDisposed || !IsCandidate(path))
+        try
+        {
+            ScheduleCheck(e.FullPath, attempt: 0);
+        }
+        catch
+        {
+        }
+    }
+
+    private void OnFileRenamed(object sender, RenamedEventArgs e)
+    {
+        try
+        {
+            ScheduleCheck(e.FullPath, attempt: 0);
+        }
+        catch
+        {
+        }
+    }
+
+    private void ScheduleCheck(string path, int attempt)
+    {
+        if (_isDisposed ||
+            !IsCandidate(path) ||
+            (_settings is not null && !_settings.Current.DownloadNotifications))
         {
             return;
         }
 
-        var cts = new CancellationTokenSource();
-        _pending.AddOrUpdate(
-            path,
-            cts,
-            (_, previous) =>
-            {
-                previous.Cancel();
-                previous.Dispose();
-                return cts;
-            });
+        CancellationTokenSource? cts = null;
+        CancellationToken token;
 
-        _ = CompleteWhenSettledAsync(path, cts.Token);
+        lock (_pendingSync)
+        {
+            if (_isDisposed)
+            {
+                return;
+            }
+
+            cts = new CancellationTokenSource();
+            token = cts.Token;
+            if (_pending.TryGetValue(path, out var previous))
+            {
+                try { previous.Cancel(); } catch { }
+                try { previous.Dispose(); } catch { }
+            }
+
+            _pending[path] = cts;
+        }
+
+        _ = CompleteWhenSettledAsync(path, cts, token, attempt);
     }
 
-    private async Task CompleteWhenSettledAsync(string path, CancellationToken token)
+    private async Task CompleteWhenSettledAsync(
+        string path,
+        CancellationTokenSource cts,
+        CancellationToken token,
+        int attempt)
     {
+        var rescheduled = false;
         try
         {
-            await Task.Delay(1500, token).ConfigureAwait(false);
-            if (token.IsCancellationRequested || _isDisposed || !IsCandidate(path))
+            await Task.Delay(_settleDelay, token).ConfigureAwait(false);
+            if (token.IsCancellationRequested ||
+                _isDisposed ||
+                !IsCandidate(path) ||
+                (_settings is not null && !_settings.Current.DownloadNotifications))
             {
                 return;
             }
@@ -94,20 +154,17 @@ public sealed class DownloadsWatcherService : IDisposable
 
             if (IsLocked(path))
             {
-                // Still being written — check again shortly.
-                ScheduleCheck(path);
+                if (attempt < _maxLockRetries && !_isDisposed && !token.IsCancellationRequested)
+                {
+                    rescheduled = true;
+                    ScheduleCheck(path, attempt + 1);
+                }
+
                 return;
             }
 
             var info = new FileInfo(path);
             if (info.Length <= 0)
-            {
-                return;
-            }
-
-            _pending.TryRemove(path, out _);
-
-            if (_settings is not null && !_settings.Current.DownloadNotifications)
             {
                 return;
             }
@@ -127,6 +184,18 @@ public sealed class DownloadsWatcherService : IDisposable
         catch
         {
             // Best-effort watcher: ignore transient IO races.
+        }
+        finally
+        {
+            if (!rescheduled)
+            {
+                lock (_pendingSync)
+                {
+                    _pending.TryRemove(KeyValuePair.Create(path, cts));
+                }
+            }
+
+            try { cts.Dispose(); } catch { }
         }
     }
 
@@ -178,15 +247,21 @@ public sealed class DownloadsWatcherService : IDisposable
         if (_watcher is not null)
         {
             _watcher.EnableRaisingEvents = false;
+            _watcher.Created -= OnFileTouched;
+            _watcher.Changed -= OnFileTouched;
+            _watcher.Renamed -= OnFileRenamed;
             _watcher.Dispose();
         }
 
-        foreach (var cts in _pending.Values)
+        lock (_pendingSync)
         {
-            cts.Cancel();
-            cts.Dispose();
-        }
+            foreach (var cts in _pending.Values)
+            {
+                try { cts.Cancel(); } catch { }
+                try { cts.Dispose(); } catch { }
+            }
 
-        _pending.Clear();
+            _pending.Clear();
+        }
     }
 }

@@ -10,13 +10,15 @@ namespace Pulse.Services.System;
 /// </summary>
 public sealed class ScreenshotWatcherService : IDisposable
 {
+    private const int MaxLockRetries = 10;
     private static readonly string[] ImageExtensions = [".png", ".jpg", ".jpeg", ".bmp"];
 
     private readonly ISystemEventService _systemEvents;
     private readonly FileSystemWatcher? _watcher;
-    private readonly ConcurrentDictionary<string, CancellationTokenSource> _pending = new();
+    private readonly object _pendingSync = new();
+    private readonly Dictionary<string, CancellationTokenSource> _pending = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, DateTimeOffset> _reportedRecently = new(StringComparer.OrdinalIgnoreCase);
-    private bool _disposed;
+    private volatile bool _disposed;
 
     public ScreenshotWatcherService(ISystemEventService systemEvents, string? screenshotsDirectory = null)
     {
@@ -45,39 +47,76 @@ public sealed class ScreenshotWatcherService : IDisposable
         catch (Exception ex)
         {
             CrashLogger.Write("ScreenshotWatcherService.Ctor", ex);
+            _watcher?.Dispose();
             _watcher = null;
         }
     }
 
-    private void OnFileTouched(object sender, FileSystemEventArgs e) => ScheduleReport(e.FullPath);
-
-    private void OnFileRenamed(object sender, RenamedEventArgs e) => ScheduleReport(e.FullPath);
-
-    private void ScheduleReport(string path)
+    private void OnFileTouched(object sender, FileSystemEventArgs e)
     {
-        if (_disposed || !IsExternalScreenshot(path))
+        try
+        {
+            ScheduleReport(e.FullPath);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("ScreenshotWatcherService.OnFileTouched", ex);
+        }
+    }
+
+    private void OnFileRenamed(object sender, RenamedEventArgs e)
+    {
+        try
+        {
+            ScheduleReport(e.FullPath);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("ScreenshotWatcherService.OnFileRenamed", ex);
+        }
+    }
+
+    private void ScheduleReport(string path, int attempt = 0)
+    {
+        if (!IsExternalScreenshot(path))
         {
             return;
         }
 
+        CancellationTokenSource? prev = null;
         var cts = new CancellationTokenSource();
-        _pending.AddOrUpdate(
-            path,
-            cts,
-            (_, prev) =>
+        lock (_pendingSync)
+        {
+            if (_disposed)
             {
-                try { prev.Cancel(); } catch { }
-                prev.Dispose();
-                return cts;
-            });
+                cts.Dispose();
+                return;
+            }
 
-        _ = WaitAndReportAsync(path, cts.Token);
+            if (_pending.TryGetValue(path, out prev))
+            {
+                _pending[path] = cts;
+            }
+            else
+            {
+                _pending.Add(path, cts);
+            }
+        }
+
+        if (prev is not null)
+        {
+            try { prev.Cancel(); } catch (ObjectDisposedException) { }
+        }
+
+        _ = WaitAndReportAsync(path, cts, attempt);
     }
 
-    private async Task WaitAndReportAsync(string path, CancellationToken token)
+    private async Task WaitAndReportAsync(string path, CancellationTokenSource cts, int attempt)
     {
+        var requeued = false;
         try
         {
+            var token = cts.Token;
             await Task.Delay(260, token).ConfigureAwait(false);
             if (_disposed || token.IsCancellationRequested || !File.Exists(path))
             {
@@ -86,7 +125,12 @@ public sealed class ScreenshotWatcherService : IDisposable
 
             if (IsLocked(path))
             {
-                ScheduleReport(path);
+                if (attempt + 1 < MaxLockRetries)
+                {
+                    requeued = true;
+                    ScheduleReport(path, attempt + 1);
+                }
+
                 return;
             }
 
@@ -96,9 +140,18 @@ public sealed class ScreenshotWatcherService : IDisposable
                 return;
             }
 
-            _pending.TryRemove(path, out _);
-
             var now = DateTimeOffset.UtcNow;
+            if (_reportedRecently.Count > 32)
+            {
+                foreach (var entry in _reportedRecently)
+                {
+                    if ((now - entry.Value) >= TimeSpan.FromSeconds(30))
+                    {
+                        _reportedRecently.TryRemove(entry.Key, out _);
+                    }
+                }
+            }
+
             if (_reportedRecently.TryGetValue(path, out var prevTime) && (now - prevTime) < TimeSpan.FromSeconds(5))
             {
                 return;
@@ -107,12 +160,27 @@ public sealed class ScreenshotWatcherService : IDisposable
             _reportedRecently[path] = now;
             _systemEvents.ReportScreenshotSaved(path);
         }
-        catch (OperationCanceledException)
+        catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {
         }
         catch (Exception ex)
         {
             CrashLogger.Write("ScreenshotWatcherService.WaitAndReportAsync", ex, $"Path={path}");
+        }
+        finally
+        {
+            if (!requeued)
+            {
+                lock (_pendingSync)
+                {
+                    if (_pending.TryGetValue(path, out var current) && ReferenceEquals(current, cts))
+                    {
+                        _pending.Remove(path);
+                    }
+                }
+            }
+
+            cts.Dispose();
         }
     }
 
@@ -164,13 +232,17 @@ public sealed class ScreenshotWatcherService : IDisposable
             _watcher.Dispose();
         }
 
-        foreach (var cts in _pending.Values)
+        List<CancellationTokenSource> toCancel;
+        lock (_pendingSync)
         {
-            try { cts.Cancel(); } catch { }
-            cts.Dispose();
+            toCancel = [.. _pending.Values];
+            _pending.Clear();
         }
 
-        _pending.Clear();
+        foreach (var cts in toCancel)
+        {
+            try { cts.Cancel(); } catch (ObjectDisposedException) { }
+        }
     }
 }
 

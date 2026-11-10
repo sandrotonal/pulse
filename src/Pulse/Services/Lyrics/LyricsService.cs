@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 
@@ -6,14 +7,24 @@ namespace Pulse.Services.Lyrics;
 
 public sealed class LyricsService
 {
-    private readonly HttpClient _httpClient = new()
-    {
-        BaseAddress = new Uri("https://lrclib.net/"),
-        Timeout = TimeSpan.FromSeconds(4)
-    };
-    private readonly Dictionary<string, LyricsResult?> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private const int MaxCacheEntries = 100;
+    private static readonly Uri BaseEndpoint = new("https://lrclib.net/");
 
-    public async Task<LyricsResult?> FindLyricsAsync(string title, string artist, string album, TimeSpan? duration)
+    private readonly HttpClient _httpClient;
+    private readonly Dictionary<string, LyricsResult?> _cache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly LinkedList<string> _cacheOrder = [];
+
+    public LyricsService(HttpClient? httpClient = null)
+    {
+        _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+    }
+
+    public async Task<LyricsResult?> FindLyricsAsync(
+        string title,
+        string artist,
+        string album,
+        TimeSpan? duration,
+        CancellationToken cancellationToken = default)
     {
         title = Clean(title);
         artist = Clean(artist);
@@ -29,6 +40,7 @@ public sealed class LyricsService
             return cached;
         }
 
+        var transientFailure = false;
         try
         {
             var baseQuery = $"api/get?track_name={Uri.EscapeDataString(title)}&artist_name={Uri.EscapeDataString(artist)}";
@@ -55,35 +67,81 @@ public sealed class LyricsService
 
             foreach (var query in attempts)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
-                    var response = await _httpClient.GetFromJsonAsync(
-                        query,
-                        LyricsJsonContext.Default.LrcLibResponse);
+                    using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(BaseEndpoint, query));
+                    if (request.Headers.UserAgent.Count == 0)
+                    {
+                        request.Headers.UserAgent.ParseAdd("Pulse/1.0 (+https://github.com/pulse-dynamic-island)");
+                    }
+
+                    using var httpResponse = await _httpClient.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                    if (httpResponse.StatusCode == HttpStatusCode.TooManyRequests || (int)httpResponse.StatusCode >= 500)
+                    {
+                        transientFailure = true;
+                        break;
+                    }
+
+                    if (!httpResponse.IsSuccessStatusCode)
+                    {
+                        continue;
+                    }
+
+                    var response = await httpResponse.Content.ReadFromJsonAsync(
+                        LyricsJsonContext.Default.LrcLibResponse,
+                        cancellationToken).ConfigureAwait(false);
                     var result = response is null
                         ? null
                         : new LyricsResult(ParseSyncedLyrics(response.SyncedLyrics), string.IsNullOrWhiteSpace(response.PlainLyrics) ? null : response.PlainLyrics.Trim());
 
                     if (result?.HasLyrics == true)
                     {
-                        _cache[cacheKey] = result;
+                        StoreCacheEntry(cacheKey, result);
                         return result;
                     }
                 }
+                catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                {
+                    throw;
+                }
                 catch
                 {
-                    // Try the next, looser query variant.
+                    transientFailure = true;
                 }
             }
 
-            _cache[cacheKey] = null;
+            if (!transientFailure)
+            {
+                StoreCacheEntry(cacheKey, null);
+            }
+
+            return null;
+        }
+        catch (OperationCanceledException)
+        {
             return null;
         }
         catch
         {
-            _cache[cacheKey] = null;
             return null;
         }
+    }
+
+    private void StoreCacheEntry(string key, LyricsResult? value)
+    {
+        if (_cache.ContainsKey(key))
+        {
+            _cacheOrder.Remove(key);
+        }
+        else if (_cache.Count >= MaxCacheEntries && _cacheOrder.Last is { } oldest)
+        {
+            _cacheOrder.RemoveLast();
+            _cache.Remove(oldest.Value);
+        }
+
+        _cache[key] = value;
+        _cacheOrder.AddFirst(key);
     }
 
     private static IReadOnlyList<LyricsLine> ParseSyncedLyrics(string? syncedLyrics)
