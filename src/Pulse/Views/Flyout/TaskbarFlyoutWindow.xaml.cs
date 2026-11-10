@@ -203,9 +203,24 @@ public sealed partial class TaskbarFlyoutWindow : Window
     private void OnSeekBarScrubDelta(object? sender, double percent) => _viewModel.UpdateScrub(percent);
     private async void OnSeekBarScrubCompleted(object? sender, double percent) => await _viewModel.EndScrubAsync(percent);
 
+    private static readonly Windows.UI.ViewManagement.UISettings SystemUiSettings = new();
+
+    private static bool IsSystemLightTheme()
+    {
+        try
+        {
+            var background = SystemUiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
+            return (background.R * 0.299 + background.G * 0.587 + background.B * 0.114) > 128;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     public void ApplyTheme(string theme)
     {
-        var isLight = theme == "Light";
+        var isLight = theme == "Light" || (theme != "Dark" && IsSystemLightTheme());
         FlyoutRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
 
         // Dark: deep charcoal with strong transparency — Apple Control Center style

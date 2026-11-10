@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml.Media.Imaging;
 using Pulse.Core.Events;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
+using Pulse.Core.Services;
 using Pulse.Core.Services.Weather;
 
 namespace Pulse.ViewModels;
@@ -153,6 +154,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         {
             _masterVolume = _systemControl.GetMasterVolume();
             _systemMuted = _systemControl.IsMuted();
+            _systemControl.AudioStateChanged += OnSystemAudioStateChanged;
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
 
@@ -551,11 +553,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsMediaActive => !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && (_media.HasTrack || _isSplitDemoForced || _activeEvent is MediaEvent);
 
-    public bool IsSplitModeActive => IsCompact && (
-        _isSplitDemoForced ||
-        (HasTrack && (IsFocusTimerActive || IsNotificationActive || IsFileOperationActive)) ||
-        (IsFocusTimerActive && (IsNotificationActive || IsFileOperationActive))
-    );
+    public bool IsSplitModeActive => IslandPresentationPolicy.ShouldUseSplitMode(
+        IsCompact,
+        _isSplitDemoForced,
+        HasTrack,
+        IsFocusTimerActive,
+        IsNotificationActive,
+        IsFileOperationActive);
     public Microsoft.UI.Xaml.Visibility SplitModeVisibility => IsSplitModeActive ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public string DetachedGlyph => IsFocusTimerActive ? "\uE916" : (IsNotificationActive ? NotificationGlyph : (_isSplitDemoForced ? "\uE916" : "\uE896"));
@@ -1333,6 +1337,47 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         RefreshBattery(notify: true);
     }
 
+    /// <summary>Refreshes battery, system audio endpoint, and SMTC media session state after returning from fullscreen or display shifts.</summary>
+    public async Task RefreshExternalStatesAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        RefreshBattery(notify: false);
+        RefreshSystemAudio();
+        await _media.RefreshSessionAsync();
+    }
+
+    private void OnSystemAudioStateChanged(object? sender, AudioStateChangedEventArgs e)
+    {
+        ApplyOnUi(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            var changed = _masterVolume != e.VolumePercent || _systemMuted != e.IsMuted;
+            _masterVolume = e.VolumePercent;
+            _systemMuted = e.IsMuted;
+
+            if (changed)
+            {
+                OnPropertyChanged(nameof(MasterVolume));
+                OnPropertyChanged(nameof(MasterVolumeLabel));
+                OnPropertyChanged(nameof(IsSystemMuted));
+                OnPropertyChanged(nameof(SystemMuteGlyph));
+            }
+
+            if (!e.IsSelfOriginated && (changed || e.IsDeviceSwitch))
+            {
+                _systemEvents.ReportAudioStatus(e.VolumePercent, e.IsMuted);
+            }
+        });
+    }
+
     /// <summary>Re-reads endpoint volume and mute state from the real audio device.</summary>
     private void RefreshSystemAudio()
     {
@@ -1425,6 +1470,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         if (_settingsService is not null)
         {
             _settingsService.SettingsChanged -= OnIdleSettingsChanged;
+        }
+
+        if (_systemControl is not null)
+        {
+            _systemControl.AudioStateChanged -= OnSystemAudioStateChanged;
         }
 
         _media.PropertyChanged -= OnMediaPropertyChanged;

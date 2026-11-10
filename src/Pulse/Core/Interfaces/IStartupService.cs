@@ -4,4 +4,5 @@ public interface IStartupService
 {
     Task<bool> IsEnabledAsync();
     Task<bool> SetEnabledAsync(bool enabled);
+    Task<bool> ReconcileAsync(bool desiredEnabled) => IsEnabledAsync();
 }

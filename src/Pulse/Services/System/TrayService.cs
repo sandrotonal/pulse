@@ -1,4 +1,6 @@
 using System.Runtime.InteropServices;
+using Microsoft.UI.Dispatching;
+using Pulse.Core.Services;
 
 namespace Pulse.Services.System;
 
@@ -24,13 +26,16 @@ public sealed class TrayService : IDisposable
     private const uint MfChecked = 0x8;
     private const uint TpmRightButton = 0x2;
     private const uint TpmReturnCommand = 0x100;
-    private static readonly IntPtr HwndMessage = new(-3);
+    private const uint WsExToolWindow = 0x00000080;
     private static readonly Guid IconGuid = new("1D5B773E-2E97-4B39-AE78-7624A0110F51");
 
     private readonly string _windowClassName = $"PulseTray_{Guid.NewGuid():N}";
     private readonly WndProcDelegate _windowProcedure;
     private readonly IntPtr _windowHandle;
     private readonly IntPtr _iconHandle;
+    private readonly uint _taskbarCreatedMessage;
+    private readonly DispatcherQueueTimer? _retryAddTimer;
+    private int _retryAttempts;
     private bool _startupEnabled;
     private bool _notificationsPaused;
     private bool _disposed;
@@ -47,6 +52,8 @@ public sealed class TrayService : IDisposable
     {
         _startupEnabled = startWithWindows;
         _windowProcedure = WindowProcedure;
+        _taskbarCreatedMessage = RegisterWindowMessage("TaskbarCreated");
+
         var instance = GetModuleHandle(null);
         var windowClass = new WindowClassEx
         {
@@ -61,8 +68,10 @@ public sealed class TrayService : IDisposable
             throw new InvalidOperationException($"Tray message window registration failed ({Marshal.GetLastWin32Error()}).");
         }
 
-        _windowHandle = CreateWindowEx(0, _windowClassName, "PulseTray", 0, 0, 0, 0, 0,
-            HwndMessage, IntPtr.Zero, instance, IntPtr.Zero);
+        // Top-level hidden tool window (IntPtr.Zero parent, NOT HWND_MESSAGE) so Explorer
+        // broadcasts ("TaskbarCreated") arrive on Explorer restart or delayed logon shell init.
+        _windowHandle = CreateWindowEx(WsExToolWindow, _windowClassName, "PulseTray", 0, 0, 0, 0, 0,
+            IntPtr.Zero, IntPtr.Zero, instance, IntPtr.Zero);
         if (_windowHandle == IntPtr.Zero)
         {
             throw new InvalidOperationException($"Tray message window creation failed ({Marshal.GetLastWin32Error()}).");
@@ -74,43 +83,97 @@ public sealed class TrayService : IDisposable
             throw new FileNotFoundException("Pulse tray icon could not be loaded.", iconPath);
         }
 
-        var data = CreateIconData();
-        // Remove orphan if previous session terminated abruptly
-        _ = Shell_NotifyIcon(NimDelete, ref data);
-
-        if (!Shell_NotifyIcon(NimAdd, ref data))
+        if (!TryAddTrayIcon(deleteOrphanFirst: true))
         {
-            // Fallback without NifGuid if Windows Explorer locked the GUID to a previous process
-            data.Flags &= ~NifGuid;
-            data.Guid = Guid.Empty;
-            if (!Shell_NotifyIcon(NimAdd, ref data))
+            // During Windows startup logon, Explorer tray may not exist yet for a few seconds.
+            var dispatcher = DispatcherQueue.GetForCurrentThread();
+            if (dispatcher is not null)
             {
-                _ = Shell_NotifyIcon(NimModify, ref data);
+                _retryAddTimer = dispatcher.CreateTimer();
+                _retryAddTimer.Interval = TimeSpan.FromMilliseconds(1500);
+                _retryAddTimer.Tick += OnRetryAddTimerTick;
+                _retryAddTimer.Start();
             }
         }
-
-        data.Version = 4;
-        _ = Shell_NotifyIcon(NimSetVersion, ref data);
     }
 
     public void SetStartupEnabled(bool enabled) => _startupEnabled = enabled;
     public void SetNotificationsPaused(bool paused) => _notificationsPaused = paused;
 
+    private void OnRetryAddTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        if (_disposed)
+        {
+            sender.Stop();
+            return;
+        }
+
+        _retryAttempts++;
+        if (TryAddTrayIcon(deleteOrphanFirst: false) || _retryAttempts >= 12)
+        {
+            sender.Stop();
+        }
+    }
+
+    private bool TryAddTrayIcon(bool deleteOrphanFirst)
+    {
+        if (_disposed || _windowHandle == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        var data = CreateIconData();
+        if (deleteOrphanFirst)
+        {
+            _ = Shell_NotifyIcon(NimDelete, ref data);
+        }
+
+        var added = Shell_NotifyIcon(NimAdd, ref data);
+        if (!added)
+        {
+            // Fallback without NifGuid if Explorer still associates the GUID with a prior session
+            data.Flags &= ~NifGuid;
+            data.Guid = Guid.Empty;
+            added = Shell_NotifyIcon(NimAdd, ref data) || Shell_NotifyIcon(NimModify, ref data);
+        }
+
+        if (added)
+        {
+            data.Version = 4;
+            _ = Shell_NotifyIcon(NimSetVersion, ref data);
+        }
+
+        return added;
+    }
+
     private IntPtr WindowProcedure(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam)
     {
-        if (message == TrayCallbackMessage)
+        try
         {
-            var mouseEvent = unchecked((uint)lParam.ToInt64());
-            if (mouseEvent == WmLButtonUp)
+            if (message == TrayCallbackMessage)
             {
-                ShowRequested?.Invoke(this, EventArgs.Empty);
-            }
-            else if (mouseEvent == WmRButtonUp)
-            {
-                ShowContextMenu();
+                var mouseEvent = unchecked((uint)lParam.ToInt64());
+                if (mouseEvent == WmLButtonUp)
+                {
+                    ShowRequested?.Invoke(this, EventArgs.Empty);
+                }
+                else if (mouseEvent == WmRButtonUp)
+                {
+                    ShowContextMenu();
+                }
+
+                return IntPtr.Zero;
             }
 
-            return IntPtr.Zero;
+            if (_taskbarCreatedMessage != 0 && message == _taskbarCreatedMessage)
+            {
+                _ = TryAddTrayIcon(deleteOrphanFirst: true);
+                return IntPtr.Zero;
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("TrayService.WindowProcedure", ex);
         }
 
         return DefWindowProc(hwnd, message, wParam, lParam);
@@ -181,6 +244,7 @@ public sealed class TrayService : IDisposable
         }
 
         _disposed = true;
+        _retryAddTimer?.Stop();
         var data = CreateIconData();
         Shell_NotifyIcon(NimDelete, ref data);
         DestroyIcon(_iconHandle);
@@ -229,6 +293,7 @@ public sealed class TrayService : IDisposable
     [UnmanagedFunctionPointer(CallingConvention.Winapi)] private delegate IntPtr WndProcDelegate(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool Shell_NotifyIcon(uint message, ref NotifyIconData data);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern uint RegisterWindowMessage(string lpString);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern ushort RegisterClassEx(ref WindowClassEx windowClass);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateWindowEx(uint exStyle, string className, string windowName, uint style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr parameter);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);

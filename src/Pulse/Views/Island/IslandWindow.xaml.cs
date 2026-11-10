@@ -119,6 +119,12 @@ public sealed partial class IslandWindow : Window
 
     private DispatcherQueueTimer? _hideAnimationTimer;
     private DispatcherQueueTimer? _topmostGuardTimer;
+    private DispatcherQueueTimer? _displaySettleTimer;
+    private DispatcherQueueTimer? _unhideRecoveryTimer;
+    private int _displaySettlePassesRemaining;
+    private long _hideShowGeneration;
+    private readonly FullscreenStabilityTracker _fullscreenTracker = new(exitConfirmationThreshold: 2);
+    private const int DwmwaCloaked = 14;
     private string? _lastPulseTrackKey;
 
     private double _dpiScale = 1.0;
@@ -306,7 +312,7 @@ public sealed partial class IslandWindow : Window
     /// <summary>Keeps the island above everything, even if another app demoted its z-order.</summary>
     public void ReassertTopmost()
     {
-        if (_hwnd == IntPtr.Zero)
+        if (_hwnd == IntPtr.Zero || (_isIslandHidden && !_hideAnchorVisible))
         {
             return;
         }
@@ -323,10 +329,29 @@ public sealed partial class IslandWindow : Window
             _userOverrodeFullscreenHide = true;
         }
 
-        if (_isIslandHidden) UnhideIslandAnimated();
+        // Make the native HWND visible first so Composition keyframe/scoped batches advance on a live window.
         ShowWindow(_hwnd, 4); // SW_SHOWNOACTIVATE
+        if (_isIslandHidden)
+        {
+            UnhideIslandAnimated();
+        }
+        else
+        {
+            _pillMaskVisual.StopAnimation("Opacity");
+            _pillMaskVisual.StopAnimation("Scale");
+            _pillMaskVisual.StopAnimation("Translation");
+            _pillMaskVisual.Opacity = 1f;
+            _pillMaskVisual.Scale = Vector3.One;
+            PillMaskHost.Translation = Vector3.Zero;
+            Surface.Visibility = Visibility.Visible;
+            HiddenAnchor.Visibility = Visibility.Collapsed;
+        }
+
         ApplyWindowStyles();
         PositionHostWindow();
+        _lastWindowRegion = null;
+        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius > 0 ? _currentCornerRadius : 20.0, forceRedraw: true);
+        ReassertTopmost();
     }
 
     public void HideIslandAnimated(bool showAnchor = true)
@@ -334,7 +359,21 @@ public sealed partial class IslandWindow : Window
         if (_isIslandHidden) return;
         _isIslandHidden = true;
         _hideAnchorVisible = showAnchor;
+        var gen = ++_hideShowGeneration;
         _hideAnimationTimer?.Stop();
+        _unhideRecoveryTimer?.Stop();
+
+        _hoverExpandTimer?.Stop();
+        _longPressTimer?.Stop();
+        _collapseDelayTimer.Stop();
+        _isPointerOverSurface = false;
+        _isInteractingWithControl = false;
+        _longPressTriggered = false;
+
+        if (!showAnchor)
+        {
+            StopAmbientAnimations();
+        }
 
         try
         {
@@ -385,11 +424,13 @@ public sealed partial class IslandWindow : Window
                     HiddenAnchor.Visibility = _hideAnchorVisible ? Visibility.Visible : Visibility.Collapsed;
                     if (!_hideAnchorVisible)
                     {
+                        _lastWindowRegion = null;
+                        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius);
                         ShowWindow(_hwnd, 0); // SW_HIDE: leave no artifact over fullscreen content
                     }
                     else
                     {
-                        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius);
+                        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
                     }
                 }
             };
@@ -402,19 +443,40 @@ public sealed partial class IslandWindow : Window
     {
         if (!_isIslandHidden) return;
         _hideAnimationTimer?.Stop();
+        _unhideRecoveryTimer?.Stop();
         _isIslandHidden = false;
+        var gen = ++_hideShowGeneration;
 
+        ShowWindow(_hwnd, 4); // SW_SHOWNOACTIVATE
+        ApplyWindowStyles();
+        PositionHostWindow();
         ReassertTopmost();
+
         HiddenAnchor.Visibility = Visibility.Collapsed;
         Surface.Visibility = Visibility.Visible;
-        if (DetachedPill is not null && _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing)
-        {
-            DetachedPill.Visibility = Visibility.Visible;
-            _detachedVisual.StopAnimation("Opacity");
-            _detachedVisual.Opacity = (float)Math.Clamp(_currentDetachedOpacity, 0.0, 1.0);
-        }
 
-        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius);
+        // Re-sync layout bounds & visibility cleanly before reveal so returning from fullscreen never shows stale widths.
+        UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
+        RestoreAmbientAnimations();
+
+        _pillMaskVisual.StopAnimation("Scale");
+        _pillMaskVisual.StopAnimation("Opacity");
+        _pillMaskVisual.StopAnimation("Translation");
+
+        _lastWindowRegion = null;
+        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
+
+        if (ReducedMotion)
+        {
+            _pillMaskVisual.Opacity = 1f;
+            _pillMaskVisual.Scale = Vector3.One;
+            PillMaskHost.Translation = Vector3.Zero;
+            if (_glassEnabled)
+            {
+                _ = RefreshFrostAsync(force: true);
+            }
+            return;
+        }
 
         try
         {
@@ -440,16 +502,79 @@ public sealed partial class IslandWindow : Window
             translateAnim.InsertKeyFrame(0f, new Vector3(0f, -18f, 0f));
             translateAnim.InsertKeyFrame(1f, Vector3.Zero, easing);
 
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
             _pillMaskVisual.StartAnimation("Scale", scaleAnim);
             _pillMaskVisual.StartAnimation("Opacity", opacityAnim);
             _pillMaskVisual.StartAnimation("Translation", translateAnim);
+            batch.End();
+            batch.Completed += (_, _) =>
+            {
+                _ = DispatcherQueue.TryEnqueue(() => FinalizeUnhideSurface(gen));
+            };
+
+            // Fallback timer ensures surface never stays hidden if DWM drops a composition batch on mode switch.
+            if (_unhideRecoveryTimer is null)
+            {
+                _unhideRecoveryTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+                _unhideRecoveryTimer.IsRepeating = false;
+                _unhideRecoveryTimer.Interval = TimeSpan.FromMilliseconds(390);
+                _unhideRecoveryTimer.Tick += (_, _) => FinalizeUnhideSurface(_hideShowGeneration);
+            }
+            _unhideRecoveryTimer.Stop();
+            _unhideRecoveryTimer.Start();
         }
         catch
         {
-            _pillMaskVisual.Opacity = 1f;
-            _pillMaskVisual.Scale = Vector3.One;
-            PillMaskHost.Translation = Vector3.Zero;
+            FinalizeUnhideSurface(gen);
         }
+    }
+
+    private void FinalizeUnhideSurface(long generation)
+    {
+        if (_isIslandHidden || generation != _hideShowGeneration)
+        {
+            return;
+        }
+
+        _unhideRecoveryTimer?.Stop();
+        _pillMaskVisual.StopAnimation("Scale");
+        _pillMaskVisual.StopAnimation("Opacity");
+        _pillMaskVisual.StopAnimation("Translation");
+        _pillMaskVisual.Opacity = 1f;
+        _pillMaskVisual.Scale = Vector3.One;
+        PillMaskHost.Translation = Vector3.Zero;
+        ApplySurfaceShape(_currentCornerRadius, _currentPillWidth, _currentPillHeight);
+        _lastWindowRegion = null;
+        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
+
+        if (_glassEnabled)
+        {
+            _ = RefreshFrostAsync(force: true);
+        }
+    }
+
+    private void StopAmbientAnimations()
+    {
+        StopEqualizerWave();
+        if (_batteryChargeAnimating)
+        {
+            _batteryChargeAnimating = false;
+            try
+            {
+                _batteryChargeHaloVisual.StopAnimation("Opacity");
+                _batteryChargeHaloVisual.StopAnimation("Scale");
+            }
+            catch { }
+        }
+    }
+
+    private void RestoreAmbientAnimations()
+    {
+        if (_viewModel.IsPlaying)
+        {
+            StartEqualizerWave();
+        }
+        UpdateBatteryChargingAnimation();
     }
 
     public void ToggleHideIsland()
@@ -474,63 +599,85 @@ public sealed partial class IslandWindow : Window
     /// </summary>
     /// <summary>
     /// Detects borderless/windowed fullscreen (most modern games): the foreground window
-    /// covers the whole monitor, including the space the taskbar would occupy.
+    /// covers the whole monitor on the island's monitor, excluding cloaked UWP hosts,
+    /// transparent/no-activate overlays (NVIDIA, Game Bar, Vanguard), and desktop shells.
     /// </summary>
     private bool IsBorderlessFullscreenForeground()
     {
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero || foreground == _hwnd) return false;
-        if (!IsWindowVisible(foreground) || IsIconic(foreground)) return false;
 
-        // A maximized window also covers the monitor when the taskbar auto-hides,
-        // so it must be excluded explicitly - otherwise every maximized app reads as a game.
-        if (IsZoomed(foreground)) return false;
+        var isVisible = IsWindowVisible(foreground);
+        var isMinimized = IsIconic(foreground);
+        var isMaximized = IsZoomed(foreground);
 
-        // The desktop and its wallpaper hosts cover the monitor but are never a game.
-        var className = new char[64];
-        var length = GetClassName(foreground, className, className.Length);
+        var cloaked = 0;
+        var cloakedResult = DwmGetWindowAttribute(foreground, DwmwaCloaked, ref cloaked, sizeof(int));
+        var isCloaked = cloakedResult == 0 && cloaked != 0;
+
+        var exStyle = GetWindowLongPtr(foreground, GwlExStyle).ToInt64();
+
+        string? className = null;
+        var classBuffer = new char[64];
+        var length = GetClassName(foreground, classBuffer, classBuffer.Length);
         if (length > 0)
         {
-            var name = new string(className, 0, length);
-            if (name is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
+            className = new string(classBuffer, 0, length);
         }
 
         if (!GetWindowRect(foreground, out var windowRect)) return false;
 
-        var monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
-        if (monitor == IntPtr.Zero) return false;
+        var fgMonitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
+        if (fgMonitor == IntPtr.Zero) return false;
 
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfo(monitor, ref info)) return false;
+        if (!GetMonitorInfo(fgMonitor, ref info)) return false;
 
-        // A maximized window stops at the work area, so it never matches the target rect.
-        const int tolerance = 2;
-        var bounds = info.Monitor;
-        return windowRect.Left <= bounds.Left + tolerance
-            && windowRect.Top <= bounds.Top + tolerance
-            && windowRect.Right >= bounds.Right - tolerance
-            && windowRect.Bottom >= bounds.Bottom - tolerance;
+        var islandMonitor = MonitorFromWindow(_hwnd, MonitorDefaultToNearest);
+        var isSameMonitor = islandMonitor == IntPtr.Zero || fgMonitor == islandMonitor;
+
+        var candidate = new FullscreenWindowCandidate(
+            Handle: foreground,
+            OwnHandle: _hwnd,
+            ClassName: className,
+            IsVisible: isVisible,
+            IsMinimized: isMinimized,
+            IsMaximized: isMaximized,
+            IsCloaked: isCloaked,
+            ExStyle: exStyle,
+            Left: windowRect.Left,
+            Top: windowRect.Top,
+            Right: windowRect.Right,
+            Bottom: windowRect.Bottom,
+            MonitorLeft: info.Monitor.Left,
+            MonitorTop: info.Monitor.Top,
+            MonitorRight: info.Monitor.Right,
+            MonitorBottom: info.Monitor.Bottom,
+            IsSameMonitorAsIsland: isSameMonitor);
+
+        return FullscreenWindowEvaluator.IsBorderlessFullscreen(candidate);
     }
 
     private void PollFullscreenState()
     {
-        var isFullscreen = false;
+        var rawIsFullscreen = false;
         try
         {
             if (SHQueryUserNotificationState(out var state) == 0)
             {
-                isFullscreen = FullscreenNotificationState.IsFullscreen(state);
+                rawIsFullscreen = FullscreenNotificationState.IsFullscreen(state);
             }
 
             // Exclusive fullscreen is not the only case: borderless/windowed fullscreen
             // games report QUNS_ACCEPTS_NOTIFICATIONS, so check the foreground window too.
-            isFullscreen = isFullscreen || IsBorderlessFullscreenForeground();
+            rawIsFullscreen = rawIsFullscreen || IsBorderlessFullscreenForeground();
         }
         catch
         {
             // Shell API is best-effort; a failure must never break the island.
         }
 
+        var isFullscreen = _fullscreenTracker.Update(rawIsFullscreen);
         var wasFullscreen = _fullscreenActive;
         _fullscreenActive = isFullscreen;
 
@@ -541,6 +688,8 @@ public sealed partial class IslandWindow : Window
 
         if (!_viewModel.AutoHideOnFullscreen)
         {
+            _fullscreenTracker.Reset();
+            _fullscreenActive = false;
             if (_autoHiddenForFullscreen)
             {
                 _autoHiddenForFullscreen = false;
@@ -548,6 +697,8 @@ public sealed partial class IslandWindow : Window
                 {
                     ShowIsland();
                 }
+                ScheduleDisplaySettle();
+                _ = _viewModel.RefreshExternalStatesAsync();
             }
             return;
         }
@@ -557,20 +708,75 @@ public sealed partial class IslandWindow : Window
             _autoHiddenForFullscreen = true;
             HideIslandAnimated(showAnchor: false);
         }
-        else if (!isFullscreen && _autoHiddenForFullscreen)
+        else if (!isFullscreen && (_autoHiddenForFullscreen || (wasFullscreen && _isIslandHidden)))
         {
             _autoHiddenForFullscreen = false;
             if (_isIslandHidden)
             {
                 ShowIsland();
             }
+            ScheduleDisplaySettle();
+            _ = _viewModel.RefreshExternalStatesAsync();
         }
+    }
+
+    private void ScheduleDisplaySettle()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (_displaySettleTimer is null)
+        {
+            _displaySettleTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _displaySettleTimer.IsRepeating = false;
+            _displaySettleTimer.Tick += (_, _) =>
+            {
+                _displaySettleTimer?.Stop();
+                if (_isIslandHidden && _autoHiddenForFullscreen)
+                {
+                    return;
+                }
+
+                PositionHostWindow();
+                ApplyWindowStyles();
+                _lastWindowRegion = null;
+                UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius > 0 ? _currentCornerRadius : 20.0, forceRedraw: true);
+                ReassertTopmost();
+
+                if (_displaySettlePassesRemaining > 1)
+                {
+                    _displaySettlePassesRemaining--;
+                    if (_displaySettleTimer is not null)
+                    {
+                        _displaySettleTimer.Interval = TimeSpan.FromMilliseconds(600);
+                        _displaySettleTimer.Start();
+                    }
+                }
+                else
+                {
+                    _displaySettlePassesRemaining = 0;
+                    if (_glassEnabled && !_isIslandHidden)
+                    {
+                        _ = RefreshFrostAsync(force: true);
+                    }
+                }
+            };
+        }
+
+        _displaySettlePassesRemaining = 2;
+        _displaySettleTimer.Stop();
+        _displaySettleTimer.Interval = TimeSpan.FromMilliseconds(350);
+        _displaySettleTimer.Start();
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
         _topmostGuardTimer?.Stop();
         _hideAnimationTimer?.Stop();
+        _unhideRecoveryTimer?.Stop();
+        _displaySettleTimer?.Stop();
         _collapseDelayTimer.Stop();
         _fullscreenPollTimer?.Stop();
         _hoverExpandTimer?.Stop();
@@ -632,7 +838,8 @@ public sealed partial class IslandWindow : Window
         var y = workArea.Top + (int)Math.Round(effectiveTopOffset * _dpiScale);
 
         // Startup / DPI / display / settings changes only; transitions never resize the native window.
-        QueueHostWindowResize(x, y, winWidth, winHeight);
+        // Always invoke SetWindowPos directly on the UI owner thread so DWM mode-switches never race.
+        _ = SetWindowPos(_hwnd, HwndTopmost, x, y, winWidth, winHeight, SwpNoActivate);
 
         // Window moves under the cursor can synthesize pointer exit/enter pairs in WinUI;
         // suppress them briefly so hover state cannot oscillate with the resize itself.
@@ -644,7 +851,7 @@ public sealed partial class IslandWindow : Window
     /// region are not part of the window, so clicks pass through to whatever is below -
     /// while the window itself keeps a fixed size and never causes resize hitches.
     /// </summary>
-    private void UpdateWindowRegion(double pillWidth, double pillHeight, double cornerRadius, bool includeOvershootPadding = false)
+    private void UpdateWindowRegion(double pillWidth, double pillHeight, double cornerRadius, bool includeOvershootPadding = false, bool forceRedraw = false)
     {
         if (_hwnd == IntPtr.Zero) return;
 
@@ -679,7 +886,7 @@ public sealed partial class IslandWindow : Window
             var anchorRgn = CreateRoundRectRgn(aLeft, 0, aRight + 1, aBottom + 1, aCorner, aCorner);
             if (anchorRgn != IntPtr.Zero)
             {
-                _ = SetWindowRgn(_hwnd, anchorRgn, false);
+                _ = SetWindowRgn(_hwnd, anchorRgn, forceRedraw);
             }
             return;
         }
@@ -720,7 +927,7 @@ public sealed partial class IslandWindow : Window
             var spanRgn = CreateRoundRectRgn(spanLeft, 0, spanRight + 1, spanBottom + 1, cornerD, cornerD);
             if (spanRgn != IntPtr.Zero)
             {
-                _ = SetWindowRgn(_hwnd, spanRgn, false);
+                _ = SetWindowRgn(_hwnd, spanRgn, forceRedraw);
             }
             return;
         }
@@ -762,7 +969,7 @@ public sealed partial class IslandWindow : Window
 
             if (rgn != IntPtr.Zero)
             {
-                _ = SetWindowRgn(_hwnd, rgn, false);
+                _ = SetWindowRgn(_hwnd, rgn, forceRedraw);
             }
             return;
         }
@@ -786,66 +993,7 @@ public sealed partial class IslandWindow : Window
         var normalRgn = CreateRoundRectRgn(left, top, right + 1, bottom + 1, cornerDiam, cornerDiam);
         if (normalRgn != IntPtr.Zero)
         {
-            _ = SetWindowRgn(_hwnd, normalRgn, false);
-        }
-    }
-
-    private readonly object _hostResizeLock = new();
-    private (int X, int Y, int W, int H, long Version)? _pendingHostResize;
-    private long _hostResizeVersion;
-    private bool _hostResizeWorkerRunning;
-
-    private void QueueHostWindowResize(int x, int y, int width, int height)
-    {
-        lock (_hostResizeLock)
-        {
-            _hostResizeVersion++;
-            _pendingHostResize = (x, y, width, height, _hostResizeVersion);
-            if (_hostResizeWorkerRunning)
-            {
-                return;
-            }
-
-            _hostResizeWorkerRunning = true;
-        }
-
-        _ = Task.Run(ProcessHostResizes);
-    }
-
-    private async Task ProcessHostResizes()
-    {
-        try
-        {
-            while (true)
-            {
-                (int X, int Y, int W, int H, long Version) job;
-                lock (_hostResizeLock)
-                {
-                    if (_pendingHostResize is null)
-                    {
-                        _hostResizeWorkerRunning = false;
-                        return;
-                    }
-
-                    job = _pendingHostResize.Value;
-                    _pendingHostResize = null;
-                }
-
-                if (_hwnd != IntPtr.Zero)
-                {
-                    _ = SetWindowPos(_hwnd, HwndTopmost, job.X, job.Y, job.W, job.H, SwpNoActivate);
-                }
-
-                // Let the owner thread breathe so bursts of resize requests coalesce.
-                await Task.Delay(12).ConfigureAwait(false);
-            }
-        }
-        catch
-        {
-            lock (_hostResizeLock)
-            {
-                _hostResizeWorkerRunning = false;
-            }
+            _ = SetWindowRgn(_hwnd, normalRgn, forceRedraw);
         }
     }
 
@@ -853,15 +1001,18 @@ public sealed partial class IslandWindow : Window
     {
         if (e.PropertyName == nameof(IslandViewModel.BatteryIsCharging))
         {
-            UpdateBatteryChargingAnimation();
+            if (!_isIslandHidden || _hideAnchorVisible)
+            {
+                UpdateBatteryChargingAnimation();
+            }
         }
         else if (e.PropertyName == nameof(MediaViewModel.CurrentIslandState))
         {
-            UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+            UpdateStateLayout(_viewModel.CurrentIslandState, animated: !_isIslandHidden);
         }
         else if (e.PropertyName is nameof(MediaViewModel.CurrentTrack) or nameof(MediaViewModel.IsPlaying))
         {
-            if (_viewModel.IsPlaying)
+            if (_viewModel.IsPlaying && (!_isIslandHidden || _hideAnchorVisible))
             {
                 StartEqualizerWave();
             }
@@ -1376,7 +1527,7 @@ public sealed partial class IslandWindow : Window
         // A page slide must not keep writing panel offsets after the panels are reset below.
         CancelPageTransition();
 
-        if (ReducedMotion)
+        if (ReducedMotion || _isIslandHidden)
         {
             animated = false;
         }
@@ -1409,58 +1560,19 @@ public sealed partial class IslandWindow : Window
             _expandedVisual.Scale = new Vector3((float)_currentExpandedScale, (float)_currentExpandedScale, 1f);
         }
 
-        double targetWidth;
-        double targetHeight;
-        double targetCornerRadius;
-
         bool isSplit = _viewModel.IsSplitModeActive && !isExpanded && !isCollapsing;
 
-        if (isExpanded)
-        {
-            targetWidth = 384;
-            targetHeight = 240;
-            // Continuous island corners: large enough to read as an Apple surface
-            // instead of a generic rounded card, still inside the content insets.
-            targetCornerRadius = 56;
-        }
-        else if (isSplit)
-        {
-            targetWidth = 196;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (_viewModel.IsNotificationActive || _viewModel.IsFileOperationActive)
-        {
-            targetWidth = 268;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (_viewModel.IsFocusTimerActive)
-        {
-            targetWidth = 220;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (!hasTrack && state is IslandState.Idle)
-        {
-            // The smart idle strip needs the full compact width. This also removes
-            // the old 76 -> 86 hover jump when no media is playing.
-            targetWidth = 216;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (isHover)
-        {
-            targetWidth = hasTrack ? 252 : 216;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else
-        {
-            targetWidth = 216;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
+        double targetWidth = IslandPresentationPolicy.ComputeCompactTargetWidth(
+            state,
+            hasTrack,
+            isSplit,
+            _viewModel.IsNotificationActive,
+            _viewModel.IsFileOperationActive,
+            _viewModel.IsFocusTimerActive);
+        double targetHeight = isExpanded ? 240 : 40;
+        // Continuous island corners: large enough to read as an Apple surface
+        // instead of a generic rounded card, still inside the content insets.
+        double targetCornerRadius = isExpanded ? 56 : 20;
 
         var scale = isExpanded ? 1.0 : _viewModel.IslandScale;
         targetWidth *= scale;
@@ -1521,7 +1633,7 @@ public sealed partial class IslandWindow : Window
             if (DetachedPill is not null)
             {
                 DetachedPill.Opacity = targetDetachedOpacity;
-                DetachedPill.Visibility = isSplit ? Visibility.Visible : Visibility.Collapsed;
+                DetachedPill.Visibility = isSplit && !_isIslandHidden ? Visibility.Visible : Visibility.Collapsed;
             }
             UpdateWindowRegion(targetWidth, targetHeight, targetCornerRadius);
 
@@ -1676,7 +1788,7 @@ public sealed partial class IslandWindow : Window
             if (DetachedPill is not null)
             {
                 DetachedPill.Opacity = targetDetachedOpacity;
-                DetachedPill.Visibility = isSplit ? Visibility.Visible : Visibility.Collapsed;
+                DetachedPill.Visibility = isSplit && !_isIslandHidden ? Visibility.Visible : Visibility.Collapsed;
             }
             _compactVisual.Opacity = isExpanded ? 0 : 1;
             _expandedVisual.Opacity = isExpanded ? 1 : 0;
@@ -2643,6 +2755,11 @@ public sealed partial class IslandWindow : Window
 
             RunOnDispatcher(() =>
             {
+                if (_isIslandHidden || !_glassEnabled || FrostLayer is null)
+                {
+                    return;
+                }
+
                 var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
                 using (var writer = new Windows.Storage.Streams.DataWriter(stream.GetOutputStreamAt(0)))
                 {
@@ -2737,6 +2854,11 @@ public sealed partial class IslandWindow : Window
     /// </summary>
     private System.Drawing.Bitmap? CaptureDesktopSample(int x, int y, int width, int height)
     {
+        if (_isIslandHidden)
+        {
+            return null;
+        }
+
         try
         {
             _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpHideWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
@@ -2750,21 +2872,27 @@ public sealed partial class IslandWindow : Window
         System.Drawing.Bitmap? captured = null;
         try
         {
-            captured = new System.Drawing.Bitmap(width, height);
-            using var g = System.Drawing.Graphics.FromImage(captured);
-            g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
+            if (!_isIslandHidden)
+            {
+                captured = new System.Drawing.Bitmap(width, height);
+                using var g = System.Drawing.Graphics.FromImage(captured);
+                g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
+            }
         }
         catch
         {
         }
         finally
         {
-            try
+            if (!_isIslandHidden)
             {
-                _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
-            }
-            catch
-            {
+                try
+                {
+                    _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
+                }
+                catch
+                {
+                }
             }
         }
 
@@ -2947,6 +3075,7 @@ public sealed partial class IslandWindow : Window
     private IntPtr WndProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData)
     {
         const uint WM_GETMINMAXINFO = 0x0024;
+        const uint WM_SETTINGCHANGE = 0x001A;
         const uint WM_WINDOWPOSCHANGING = 0x0046;
         const uint WM_DISPLAYCHANGE = 0x007E;
         const uint WM_NCHITTEST = 0x0084;
@@ -2966,9 +3095,13 @@ public sealed partial class IslandWindow : Window
             return DefSubclassProc(hWnd, uMsg, wParam, lParam);
         }
 
-        if (uMsg == WM_DPICHANGED || uMsg == WM_DISPLAYCHANGE)
+        if (uMsg == WM_DPICHANGED || uMsg == WM_DISPLAYCHANGE || (uMsg == WM_SETTINGCHANGE && wParam.ToInt32() == 0x002F))
         {
-            _ = DispatcherQueue.TryEnqueue(PositionHostWindow);
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                PositionHostWindow();
+                ScheduleDisplaySettle();
+            });
             return DefSubclassProc(hWnd, uMsg, wParam, lParam);
         }
 
@@ -3081,6 +3214,9 @@ public sealed partial class IslandWindow : Window
 
     [DllImport("comctl32.dll", SetLastError = true)]
     private static extern IntPtr DefSubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, uint dwAttribute, ref int pvAttribute, int cbAttribute);

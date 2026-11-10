@@ -117,6 +117,41 @@ public sealed class SettingsServiceTests
         Assert.Equal(200, settings.HoverExpandDelayMs);
         Assert.True(settings.AutoHideOnFullscreen);
         Assert.True(settings.FocusCompletionSound);
+        Assert.False(settings.NotificationsPaused);
+        Assert.True(settings.SystemToastNotifications);
+        Assert.True(settings.BluetoothNotifications);
+    }
+
+    [Fact]
+    public async Task FlushAsyncWaitsForActiveSaveAndClearsLastSaveError()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            var service = new SettingsService(directory);
+            await service.SaveAsync(new AppSettings
+            {
+                StartWithWindows = true,
+                SystemToastNotifications = false,
+                BluetoothNotifications = false
+            });
+            await service.FlushAsync();
+
+            Assert.Null(service.LastSaveError);
+
+            var reloaded = new SettingsService(directory);
+            await reloaded.LoadAsync();
+            Assert.True(reloaded.Current.StartWithWindows);
+            Assert.False(reloaded.Current.SystemToastNotifications);
+            Assert.False(reloaded.Current.BluetoothNotifications);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
     }
 
     [Fact]

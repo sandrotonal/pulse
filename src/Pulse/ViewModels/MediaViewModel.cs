@@ -296,6 +296,18 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         }
     }
 
+    public async Task RefreshSessionAsync()
+    {
+        try
+        {
+            await _mediaSessionService.RefreshAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("MediaViewModel.RefreshSessionAsync", ex);
+        }
+    }
+
     public Task<bool> SeekToPercentAsync(double percent)
     {
         if (CurrentTrack?.Duration is not { } duration)

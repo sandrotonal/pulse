@@ -12,6 +12,7 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
     private GlobalSystemMediaTransportControlsSessionManager? _manager;
     private GlobalSystemMediaTransportControlsSession? _session;
     private readonly IArtworkService _artworkService;
+    private readonly SemaphoreSlim _sessionGate = new(1, 1);
     private bool _disposed;
 
     public WindowsMediaSessionService(IArtworkService artworkService) => _artworkService = artworkService;
@@ -28,6 +29,30 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
         _manager.CurrentSessionChanged += OnCurrentSessionChanged;
         _manager.SessionsChanged += OnSessionsChanged;
         await BindCurrentSessionAsync();
+    }
+
+    public async Task RefreshAsync()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (_manager is null)
+        {
+            try
+            {
+                await InitializeAsync().ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("WindowsMediaSessionService.RefreshAsync", ex);
+            }
+
+            return;
+        }
+
+        await BindCurrentSessionAsync().ConfigureAwait(false);
     }
 
     public Task<bool> PlayAsync() => RunSessionCommandAsync(session => session.TryPlayAsync());
@@ -152,9 +177,15 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
             return;
         }
 
-        DetachSessionEvents();
+        await _sessionGate.WaitAsync().ConfigureAwait(false);
         try
         {
+            if (_disposed || _manager is null)
+            {
+                return;
+            }
+
+            DetachSessionEvents();
             _session = _manager.GetCurrentSession();
             if (_session is null)
             {
@@ -165,11 +196,15 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
             _session.MediaPropertiesChanged += OnMediaPropertiesChanged;
             _session.PlaybackInfoChanged += OnPlaybackInfoChanged;
             _session.TimelinePropertiesChanged += OnTimelinePropertiesChanged;
-            await RefreshCurrentTrackAsync();
+            await RefreshCurrentTrackCoreAsync().ConfigureAwait(false);
         }
         catch (Exception)
         {
             SetCurrentTrack(null);
+        }
+        finally
+        {
+            _sessionGate.Release();
         }
     }
 
@@ -186,6 +221,24 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
     }
 
     private async Task RefreshCurrentTrackAsync()
+    {
+        if (_disposed || _session is null)
+        {
+            return;
+        }
+
+        await _sessionGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            await RefreshCurrentTrackCoreAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _sessionGate.Release();
+        }
+    }
+
+    private async Task RefreshCurrentTrackCoreAsync()
     {
         var session = _session;
         if (_disposed || session is null)

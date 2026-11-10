@@ -32,15 +32,27 @@ public sealed partial class SettingsWindow : Window
         SettingsRoot.ActualThemeChanged += OnActualThemeChanged;
         Closed += (_, _) =>
         {
-            viewModel.FlushPendingSave();
             viewModel.PropertyChanged -= OnSettingsPropertyChanged;
             SettingsRoot.ActualThemeChanged -= OnActualThemeChanged;
+            _ = FlushAndDisposeAsync(viewModel);
         };
         Activated += async (_, _) =>
         {
             await viewModel.InitializeAsync();
             ApplyTheme(viewModel.ThemeIndex);
         };
+    }
+
+    private static async Task FlushAndDisposeAsync(SettingsViewModel viewModel)
+    {
+        try
+        {
+            await viewModel.FlushPendingSaveAsync();
+        }
+        finally
+        {
+            viewModel.Dispose();
+        }
     }
 
     private void FitToWorkArea()

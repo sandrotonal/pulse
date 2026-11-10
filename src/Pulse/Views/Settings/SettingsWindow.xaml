@@ -324,7 +324,7 @@
                                 <TextBlock Text="Yeni parça başladığında adanın kısa bir bilgilendirme göstermesini sağlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                          OnContent="" OffContent="" IsOn="{Binding NotificationsPaused, Mode=TwoWay}"
+                                          OnContent="" OffContent="" IsOn="{Binding ShowTrackChangeNotifications, Mode=TwoWay}"
                                           AutomationProperties.Name="Parça değişim bildirimleri" />
                         </Grid>
                     </StackPanel>
@@ -370,6 +370,32 @@
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding DownloadNotifications, Mode=TwoWay}"
                                           AutomationProperties.Name="İndirme bildirimleri" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Windows System Toasts -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Windows sistem bildirimleri" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="WhatsApp, Discord, tarayıcı ve Windows bildirimlerini canlı olarak adada gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding SystemToastNotifications, Mode=TwoWay}"
+                                          AutomationProperties.Name="Windows sistem bildirimleri" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Bluetooth Devices -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Bluetooth cihaz bildirimleri" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Bluetooth kulaklık veya çevre birimleri bağlandığında bilgi gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding BluetoothNotifications, Mode=TwoWay}"
+                                          AutomationProperties.Name="Bluetooth cihaz bildirimleri" />
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 

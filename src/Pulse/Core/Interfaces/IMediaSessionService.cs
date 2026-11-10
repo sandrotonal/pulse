@@ -8,6 +8,7 @@ public interface IMediaSessionService : IAsyncDisposable
     event EventHandler<MediaTrack?>? CurrentTrackChanged;
 
     Task InitializeAsync();
+    Task RefreshAsync() => Task.CompletedTask;
     Task<bool> PlayAsync();
     Task<bool> PauseAsync();
     Task<bool> TogglePlayPauseAsync();

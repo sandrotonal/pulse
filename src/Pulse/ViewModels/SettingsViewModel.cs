@@ -3,14 +3,16 @@ using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
+using Pulse.Core.Services;
 
 namespace Pulse.ViewModels;
 
-public sealed class SettingsViewModel : INotifyPropertyChanged
+public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly ISettingsService _settingsService;
     private readonly IStartupService _startupService;
     private readonly ILocationService? _locationService;
+    private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private bool _startWithWindows;
     private bool _autoCollapse = true;
     private bool _showSeekControls = true;
@@ -18,6 +20,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private bool _audioNotifications = true;
     private bool _powerNotifications = true;
     private bool _downloadNotifications = true;
+    private bool _systemToastNotifications = true;
+    private bool _bluetoothNotifications = true;
     private bool _focusCompletionSound = true;
     private bool _enableHoverExpand = true;
     private double _hoverExpandDelayMs = 200;
@@ -44,6 +48,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     private string _statusMessage = string.Empty;
     private bool _loading;
     private bool _initialized;
+    private bool _isSelfSaving;
+    private bool _disposed;
 
     public SettingsViewModel(
         ISettingsService settingsService,
@@ -53,7 +59,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         _settingsService = settingsService;
         _startupService = startupService;
         _locationService = locationService;
+        _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         ApplyLocationCommand = new AsyncCommand(ApplyLocationAsync);
+        _settingsService.SettingsChanged += OnExternalSettingsChanged;
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -74,10 +82,32 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 
     public bool AutoCollapse { get => _autoCollapse; set { if (SetProperty(ref _autoCollapse, value)) Save(); } }
     public bool ShowSeekControls { get => _showSeekControls; set { if (SetProperty(ref _showSeekControls, value)) Save(); } }
-    public bool NotificationsPaused { get => _notificationsPaused; set { if (SetProperty(ref _notificationsPaused, value)) Save(); } }
+
+    public bool NotificationsPaused
+    {
+        get => _notificationsPaused;
+        set
+        {
+            if (SetProperty(ref _notificationsPaused, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowTrackChangeNotifications)));
+                Save();
+            }
+        }
+    }
+
+    /// <summary>Positive UI polarity: ON means track change banners are enabled.</summary>
+    public bool ShowTrackChangeNotifications
+    {
+        get => !_notificationsPaused;
+        set => NotificationsPaused = !value;
+    }
+
     public bool AudioNotifications { get => _audioNotifications; set { if (SetProperty(ref _audioNotifications, value)) Save(); } }
     public bool PowerNotifications { get => _powerNotifications; set { if (SetProperty(ref _powerNotifications, value)) Save(); } }
     public bool DownloadNotifications { get => _downloadNotifications; set { if (SetProperty(ref _downloadNotifications, value)) Save(); } }
+    public bool SystemToastNotifications { get => _systemToastNotifications; set { if (SetProperty(ref _systemToastNotifications, value)) Save(); } }
+    public bool BluetoothNotifications { get => _bluetoothNotifications; set { if (SetProperty(ref _bluetoothNotifications, value)) Save(); } }
     public bool FocusCompletionSound { get => _focusCompletionSound; set { if (SetProperty(ref _focusCompletionSound, value)) Save(); } }
     public bool EnableHoverExpand { get => _enableHoverExpand; set { if (SetProperty(ref _enableHoverExpand, value)) Save(); } }
     public double HoverExpandDelayMs
@@ -239,12 +269,51 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         try
         {
             await _settingsService.LoadAsync();
-            ApplySettings(_settingsService.Current);
-            StartWithWindows = await _startupService.IsEnabledAsync();
+            var osStartupEnabled = await _startupService.IsEnabledAsync();
+            ApplySettings(_settingsService.Current with { StartWithWindows = osStartupEnabled });
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("SettingsViewModel.InitializeAsync", ex);
         }
         finally
         {
             _loading = false;
+        }
+    }
+
+    private void OnExternalSettingsChanged(object? sender, AppSettings settings)
+    {
+        if (_disposed || _isSelfSaving || _loading || !_initialized)
+        {
+            return;
+        }
+
+        void Sync()
+        {
+            if (_disposed || _isSelfSaving || _loading)
+            {
+                return;
+            }
+
+            _loading = true;
+            try
+            {
+                ApplySettings(settings);
+            }
+            finally
+            {
+                _loading = false;
+            }
+        }
+
+        if (_dispatcherQueue is not null && !_dispatcherQueue.HasThreadAccess)
+        {
+            _ = _dispatcherQueue.TryEnqueue(Sync);
+        }
+        else
+        {
+            Sync();
         }
     }
 
@@ -253,9 +322,12 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         AutoCollapse = settings.AutoCollapse;
         ShowSeekControls = settings.ShowSeekControls;
         NotificationsPaused = settings.NotificationsPaused;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ShowTrackChangeNotifications)));
         AudioNotifications = settings.AudioNotifications;
         PowerNotifications = settings.PowerNotifications;
         DownloadNotifications = settings.DownloadNotifications;
+        SystemToastNotifications = settings.SystemToastNotifications;
+        BluetoothNotifications = settings.BluetoothNotifications;
         FocusCompletionSound = settings.FocusCompletionSound;
         EnableHoverExpand = settings.EnableHoverExpand;
         HoverExpandDelayMs = settings.HoverExpandDelayMs;
@@ -334,23 +406,42 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         }
 
         LocationStatusMessage = $"Konum: {location.City}";
-        Save();
+        await SaveAsyncImmediate(BuildSettings());
     }
 
     private async Task ApplyStartupAsync(bool enabled)
     {
-        var accepted = await _startupService.SetEnabledAsync(enabled);
-        if (accepted)
+        try
         {
-            StatusMessage = enabled ? "Windows başlangıcı açıldı." : "Windows başlangıcı kapatıldı.";
-            await _settingsService.SaveAsync(_settingsService.Current with { StartWithWindows = enabled });
+            var accepted = await _startupService.SetEnabledAsync(enabled);
+            var actual = await _startupService.IsEnabledAsync();
+            if (accepted && actual == enabled)
+            {
+                await SaveAsyncImmediate(_settingsService.Current with { StartWithWindows = enabled });
+                StatusMessage = _settingsService.LastSaveError is null
+                    ? (enabled ? "Windows başlangıcı açıldı." : "Windows başlangıcı kapatıldı.")
+                    : $"Kayıt hatası: {_settingsService.LastSaveError}";
+            }
+            else
+            {
+                _loading = true;
+                try
+                {
+                    StartWithWindows = actual;
+                }
+                finally
+                {
+                    _loading = false;
+                }
+
+                await SaveAsyncImmediate(_settingsService.Current with { StartWithWindows = actual });
+                StatusMessage = "Başlangıç ayarı Windows tarafından değiştirilemedi.";
+            }
         }
-        else
+        catch (Exception ex)
         {
-            _loading = true;
-            StartWithWindows = await _startupService.IsEnabledAsync();
-            _loading = false;
-            StatusMessage = "Başlangıç ayarı Windows tarafından değiştirilemedi.";
+            CrashLogger.Write("SettingsViewModel.ApplyStartupAsync", ex);
+            StatusMessage = "Başlangıç ayarı güncellenemedi.";
         }
     }
 
@@ -361,8 +452,21 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             return;
         }
 
-        await _settingsService.SaveAsync(BuildSettings());
-        StatusMessage = "Ayarlar kaydedildi.";
+        _saveDebounce?.Stop();
+        _pendingSave = null;
+
+        if (IsManualLocation &&
+            !string.IsNullOrWhiteSpace(LocationCityDraft) &&
+            (IdleLocationLatitude is null ||
+             !string.Equals(LocationCityDraft.Trim(), IdleLocationCity, StringComparison.OrdinalIgnoreCase)))
+        {
+            await ApplyLocationAsync();
+        }
+
+        await SaveAsyncImmediate(BuildSettings());
+        StatusMessage = _settingsService.LastSaveError is null
+            ? "Ayarlar kaydedildi."
+            : $"Kayıt hatası: {_settingsService.LastSaveError}";
     }
 
     public async Task RestoreDefaultsAsync()
@@ -371,6 +475,9 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         {
             return;
         }
+
+        _saveDebounce?.Stop();
+        _pendingSave = null;
 
         var defaults = new AppSettings();
         _loading = true;
@@ -383,8 +490,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             _loading = false;
         }
 
-        // StartWithWindows is backed by the Windows startup task, not just JSON.
-        // Apply it once here instead of letting every property setter save separately.
         if (await _startupService.IsEnabledAsync())
         {
             var accepted = await _startupService.SetEnabledAsync(false);
@@ -401,14 +506,16 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
                     _loading = false;
                 }
 
-                await _settingsService.SaveAsync(BuildSettings());
+                await SaveAsyncImmediate(BuildSettings());
                 StatusMessage = "Ayarlar sıfırlandı; başlangıç ayarı değiştirilemedi.";
                 return;
             }
         }
 
-        await _settingsService.SaveAsync(BuildSettings());
-        StatusMessage = "Varsayılan ayarlar geri yüklendi.";
+        await SaveAsyncImmediate(BuildSettings());
+        StatusMessage = _settingsService.LastSaveError is null
+            ? "Varsayılan ayarlar geri yüklendi."
+            : $"Sıfırlama kayıt hatası: {_settingsService.LastSaveError}";
     }
 
     private AppSettings? _pendingSave;
@@ -421,30 +528,54 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             return;
         }
 
-        // Slider drags and typing fire dozens of changes per second; persist once they settle.
         _pendingSave = BuildSettings();
 
         if (_saveDebounce is null)
         {
-            _saveDebounce = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+            var dispatcher = _dispatcherQueue ?? Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+            _saveDebounce = dispatcher.CreateTimer();
             _saveDebounce.IsRepeating = false;
             _saveDebounce.Interval = TimeSpan.FromMilliseconds(300);
-            _saveDebounce.Tick += (_, _) => FlushPendingSave();
+            _saveDebounce.Tick += (_, _) => _ = FlushPendingSaveAsync();
         }
 
         _saveDebounce.Stop();
         _saveDebounce.Start();
     }
 
-    /// <summary>Writes any debounced change immediately (window close, app exit).</summary>
-    public void FlushPendingSave()
+    public void FlushPendingSave() => _ = FlushPendingSaveAsync();
+
+    public async Task FlushPendingSaveAsync()
     {
-        // Must run on the UI thread: SaveAsync raises SettingsChanged, which touches bindings.
+        _saveDebounce?.Stop();
         var pending = _pendingSave;
         _pendingSave = null;
+
         if (pending is not null)
         {
-            _ = _settingsService.SaveAsync(pending);
+            await SaveAsyncImmediate(pending);
+        }
+        else
+        {
+            await _settingsService.FlushAsync();
+        }
+    }
+
+    private async Task SaveAsyncImmediate(AppSettings settings)
+    {
+        _isSelfSaving = true;
+        try
+        {
+            await _settingsService.SaveAsync(settings);
+            await _settingsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("SettingsViewModel.SaveAsyncImmediate", ex);
+        }
+        finally
+        {
+            _isSelfSaving = false;
         }
     }
 
@@ -459,6 +590,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
             AudioNotifications = AudioNotifications,
             PowerNotifications = PowerNotifications,
             DownloadNotifications = DownloadNotifications,
+            SystemToastNotifications = SystemToastNotifications,
+            BluetoothNotifications = BluetoothNotifications,
             FocusCompletionSound = FocusCompletionSound,
             EnableHoverExpand = EnableHoverExpand,
             HoverExpandDelayMs = (int)Math.Round(HoverExpandDelayMs),
@@ -493,5 +626,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         field = value;
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         return true;
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _saveDebounce?.Stop();
+        _settingsService.SettingsChanged -= OnExternalSettingsChanged;
     }
 }

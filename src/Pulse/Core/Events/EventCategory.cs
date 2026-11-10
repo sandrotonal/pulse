@@ -11,5 +11,6 @@ public enum EventCategory
     Screenshot,
     Download,
     FocusTimer,
-    Clipboard
+    Clipboard,
+    SystemToast
 }
