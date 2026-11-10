@@ -12,7 +12,7 @@
     </Window.SystemBackdrop>
 
     <Grid x:Name="WindowRoot"
-          Width="424" Height="260"
+          Width="560" Height="300"
           Background="{x:Null}"
           HorizontalAlignment="Center"
           VerticalAlignment="Top">
@@ -143,25 +143,21 @@
             </ToolTipService.ToolTip>
         </Border>
 
-        <!-- Dynamic Island Surface Pill / Card -->
-        <Border x:Name="Surface"
-                Width="216" Height="40"
-                CornerRadius="20"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                Background="{ThemeResource IslandBackground}"
-                BorderBrush="Transparent"
-                BorderThickness="0"
-                PointerEntered="OnPointerEntered"
-                PointerExited="OnPointerExited"
-                PointerPressed="OnSurfacePointerPressed"
-                PointerReleased="OnSurfacePointerReleased"
-                PointerCanceled="OnSurfacePointerCanceled"
-                PointerCaptureLost="OnSurfacePointerCaptureLost"
-                PointerWheelChanged="OnSurfacePointerWheelChanged">
+        <!-- Dynamic Island Surface Pill / Card (fixed host bounds; GPU Composition clip shapes the pill with zero XAML reflow) -->
+        <Grid x:Name="Surface"
+              Width="560" Height="300"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Top"
+              Background="{x:Null}"
+              PointerEntered="OnPointerEntered"
+              PointerExited="OnPointerExited"
+              PointerPressed="OnSurfacePointerPressed"
+              PointerReleased="OnSurfacePointerReleased"
+              PointerCanceled="OnSurfacePointerCanceled"
+              PointerCaptureLost="OnSurfacePointerCaptureLost"
+              PointerWheelChanged="OnSurfacePointerWheelChanged">
 
-
-                <Border.ContextFlyout>
+            <Grid.ContextFlyout>
                 <MenuFlyout>
                     <MenuFlyoutItem Text="Genişlet / Daralt" Click="OnToggleExpandedClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE740;" /></MenuFlyoutItem.Icon>
@@ -221,50 +217,64 @@
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                 </MenuFlyout>
-            </Border.ContextFlyout>
+            </Grid.ContextFlyout>
 
-            <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                <!-- Liquid-Glass frost layer: samples + blurs the real desktop behind the island -->
-                <Rectangle x:Name="FrostLayer"
-                           RadiusX="20" RadiusY="20"
-                           Visibility="Collapsed"
-                           HorizontalAlignment="Stretch"
-                           VerticalAlignment="Stretch"
-                           IsHitTestVisible="False" />
+            <Grid x:Name="PillMaskHost"
+                  Width="560" Height="300"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top"
+                  Background="{x:Null}">
 
-                <!-- Live album tint over the neutral blur. Keeping the tint separate
-                     lets track changes recolor the glass instantly without re-capturing
-                     the desktop (which briefly hides the window and blinks). -->
-                <Rectangle x:Name="FrostTintLayer"
-                           RadiusX="20" RadiusY="20"
-                           Visibility="Collapsed"
-                           HorizontalAlignment="Stretch"
-                           VerticalAlignment="Stretch"
-                           IsHitTestVisible="False" />
+                <!-- Backdrop & Liquid-Glass layers: non-hit-testable and clipped on the GPU by PillMaskHost -->
+                <Border x:Name="PillBackdrop"
+                        Width="560" Height="300"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        Background="{ThemeResource IslandBackground}"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        IsHitTestVisible="False">
+                    <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <!-- Liquid-Glass frost layer: samples + blurs the real desktop behind the island -->
+                        <Rectangle x:Name="FrostLayer"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch"
+                                   IsHitTestVisible="False" />
 
-                <!-- Specular sheen stays proportional to the surface instead of being
-                     baked into the desktop snapshot, so it survives every morph. -->
-                <Rectangle x:Name="FrostSheen"
-                           RadiusX="20" RadiusY="20"
-                           Height="18"
-                           Visibility="Collapsed"
-                           HorizontalAlignment="Stretch"
-                           VerticalAlignment="Top"
-                           IsHitTestVisible="False">
-                    <Rectangle.Fill>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#24FFFFFF" Offset="0" />
-                            <GradientStop Color="#00FFFFFF" Offset="1" />
-                        </LinearGradientBrush>
-                    </Rectangle.Fill>
-                </Rectangle>
+                        <!-- Live album tint over the neutral blur. Keeping the tint separate
+                             lets track changes recolor the glass instantly without re-capturing
+                             the desktop (which briefly hides the window and blinks). -->
+                        <Rectangle x:Name="FrostTintLayer"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch"
+                                   IsHitTestVisible="False" />
 
+                        <!-- Specular sheen scaled on GPU via Composition Visual.Scale -->
+                        <Rectangle x:Name="FrostSheen"
+                                   Height="18"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Top"
+                                   IsHitTestVisible="False">
+                            <Rectangle.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop Color="#24FFFFFF" Offset="0" />
+                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Rectangle.Fill>
+                        </Rectangle>
+                    </Grid>
+                </Border>
 
-                <!-- 01 & 02: COMPACT VIEW (Capsule mode: 216-252 x 40) -->
+                <!-- 01 & 02: COMPACT VIEW (Capsule mode: 216-268 x 40; sized per state, never per-frame) -->
                 <Grid x:Name="CompactView"
+                      Width="216" Height="40"
                       Opacity="1"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
+                      Background="Transparent"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Top"
                       Padding="10,0,10,0">
 
                     <!-- Idle: live clock/date + weather strip; brand fallback when all info is off -->
@@ -520,8 +530,12 @@
                     </Grid>
                 </Grid>
 
-                <!-- 03: EXPANDED VIEW (Multi-Panel Apple Dynamic Island Carousel) -->
+                <!-- 03: EXPANDED VIEW (Fixed target layout bounds; GPU Opacity/Scale & PillMaskHost clip avoid reflow) -->
                 <Grid x:Name="ExpandedView"
+                      Width="384" Height="240"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Top"
+                      Background="Transparent"
                       Visibility="Collapsed"
                       IsHitTestVisible="False"
                       Padding="16,14,16,14"
@@ -566,16 +580,41 @@
                                        Margin="8,0,0,0" />
                         </StackPanel>
 
-                        <!-- Center: iOS-style Interactive Carousel Page Indicators -->
-                        <StackPanel Grid.Column="1"
-                                    Orientation="Horizontal"
-                                    HorizontalAlignment="Center"
+                        <!-- Center: iOS-style Interactive Carousel Page Indicators (GPU clip + translation) -->
+                        <Grid Grid.Column="1"
+                              Width="40" Height="16"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <Border x:Name="PageDotVisual0"
+                                    Width="18" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Spacing="5">
+                                    Background="{ThemeResource PrimaryText}"
+                                    IsHitTestVisible="False" />
+                            <Border x:Name="PageDotVisual1"
+                                    Width="18" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    IsHitTestVisible="False" />
+                            <Border x:Name="PageDotVisual2"
+                                    Width="18" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    IsHitTestVisible="False" />
+
                             <Button x:Name="PageDot0"
                                     Style="{StaticResource IslandButtonStyle}"
-                                    Width="18" Height="5" CornerRadius="2.5"
-                                    Background="{ThemeResource PrimaryText}"
+                                    Width="18" Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
                                     Padding="0"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
@@ -583,9 +622,10 @@
                                     ToolTipService.ToolTip="Medya Çalar" />
                             <Button x:Name="PageDot1"
                                     Style="{StaticResource IslandButtonStyle}"
-                                    Width="6" Height="5" CornerRadius="2.5"
-                                    Background="{ThemeResource PrimaryText}"
-                                    Opacity="0.35"
+                                    Width="6" Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
                                     Padding="0"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
@@ -593,15 +633,16 @@
                                     ToolTipService.ToolTip="Odak Sayacı" />
                             <Button x:Name="PageDot2"
                                     Style="{StaticResource IslandButtonStyle}"
-                                    Width="6" Height="5" CornerRadius="2.5"
-                                    Background="{ThemeResource PrimaryText}"
-                                    Opacity="0.35"
+                                    Width="6" Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
                                     Padding="0"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
                                     Click="OnPageDot2Click"
                                     ToolTipService.ToolTip="Sistem &amp; Denetim" />
-                        </StackPanel>
+                        </Grid>
 
                         <!-- Right: Header Action Buttons (Collapse, Settings) -->
                         <StackPanel Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -627,6 +668,9 @@
 
                         <!-- Panel 0: Müzik & Medya -->
                         <Grid x:Name="MediaExpandedPanel" Visibility="Visible" RowDefinitions="*,Auto">
+                            <Grid.CacheMode>
+                                <BitmapCache />
+                            </Grid.CacheMode>
                             <!-- Existing Media Art & Metadata -->
                             <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,4,0,10">
                                 <!-- Square Album Art -->
@@ -783,6 +827,9 @@
 
                         <!-- Panel 1: Odak Sayacı (Pomodoro) -->
                         <Grid x:Name="FocusExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto,Auto" Margin="0,4,0,8">
+                            <Grid.CacheMode>
+                                <BitmapCache />
+                            </Grid.CacheMode>
                             <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="4">
                                 <TextBlock Text="{Binding FocusTimerModeText, TargetNullValue='Odaklanma'}"
                                            FontSize="11" FontWeight="SemiBold"
@@ -911,6 +958,9 @@
 
                         <!-- Panel 2: Sistem & Denetim (flat, Apple Control Center feel — no cards) -->
                         <Grid x:Name="SystemExpandedPanel" Visibility="Collapsed">
+                            <Grid.CacheMode>
+                                <BitmapCache />
+                            </Grid.CacheMode>
                             <StackPanel VerticalAlignment="Center" Spacing="14" Margin="6,0">
                                 <!-- Volume row (flat Apple Control Center style) -->
                                 <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
@@ -979,7 +1029,7 @@
                     </Grid>
                 </Grid>
             </Grid>
-        </Border>
+        </Grid>
 
         <!-- Trailing Detached Capsule for Secondary Contextual Events (Apple Split Island) -->
         <Border x:Name="DetachedPill"
