@@ -1,8 +1,11 @@
 using Microsoft.UI;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Windows.System;
 
 namespace Pulse.Controls;
 
@@ -136,6 +139,9 @@ public sealed partial class PulseSeekBar : UserControl
 
     private void UpdateVisuals(double percent)
     {
+        var hostHeight = ActualHeight > 0 ? ActualHeight : (Height > 0 ? Height : 22.0);
+        Canvas.SetTop(ThumbKnob, (hostHeight - ThumbKnob.Height) / 2.0);
+
         if (ActualWidth <= 0)
         {
             return;
@@ -162,8 +168,68 @@ public sealed partial class PulseSeekBar : UserControl
         ThumbKnob.Width = expanded ? 12.0 : 10.0;
         ThumbKnob.Height = expanded ? 12.0 : 10.0;
         ThumbKnob.CornerRadius = new CornerRadius(ThumbKnob.Width / 2.0);
-        Canvas.SetTop(ThumbKnob, (22.0 - ThumbKnob.Height) / 2.0);
+        var hostHeight = ActualHeight > 0 ? ActualHeight : (Height > 0 ? Height : 22.0);
+        Canvas.SetTop(ThumbKnob, (hostHeight - ThumbKnob.Height) / 2.0);
         ThumbKnob.Opacity = expanded ? 1.0 : 0.85;
+    }
+
+    private void OnKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (!CanSeek)
+        {
+            return;
+        }
+
+        var delta = e.Key switch
+        {
+            VirtualKey.Left or VirtualKey.Down => -5.0,
+            VirtualKey.Right or VirtualKey.Up => 5.0,
+            VirtualKey.Home => -100.0,
+            VirtualKey.End => 100.0,
+            _ => 0.0
+        };
+
+        if (Math.Abs(delta) < 0.01)
+        {
+            return;
+        }
+
+        var next = Math.Clamp(Value + delta, 0.0, 100.0);
+        UpdateVisuals(next);
+        Value = next;
+        ScrubCompleted?.Invoke(this, next);
+        e.Handled = true;
+    }
+
+    protected override AutomationPeer OnCreateAutomationPeer() => new PulseSeekBarAutomationPeer(this);
+
+    private sealed class PulseSeekBarAutomationPeer(PulseSeekBar owner)
+        : FrameworkElementAutomationPeer(owner), IRangeValueProvider
+    {
+        protected override AutomationControlType GetAutomationControlTypeCore() => AutomationControlType.Slider;
+
+        protected override object? GetPatternCore(PatternInterface patternInterface) =>
+            patternInterface == PatternInterface.RangeValue ? this : base.GetPatternCore(patternInterface);
+
+        public bool IsReadOnly => !owner.CanSeek;
+        public double LargeChange => 15.0;
+        public double Maximum => 100.0;
+        public double Minimum => 0.0;
+        public double SmallChange => 5.0;
+        public double Value => owner.Value;
+
+        public void SetValue(double value)
+        {
+            if (!owner.CanSeek)
+            {
+                return;
+            }
+
+            var clamped = Math.Clamp(value, Minimum, Maximum);
+            owner.UpdateVisuals(clamped);
+            owner.Value = clamped;
+            owner.ScrubCompleted?.Invoke(owner, clamped);
+        }
     }
 
     private void OnPointerEntered(object sender, PointerRoutedEventArgs e)

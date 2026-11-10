@@ -344,6 +344,10 @@ public sealed class IslandSurfaceLayoutTests
 
         // Action buttons & wave bars remain safely inside the scaled pill height
         Assert.True(m.CompactActionButtonSize < m.PillHeight);
+        Assert.True(m.CompactActionButtonSize >= 22.0, $"CompactActionButtonSize {m.CompactActionButtonSize} < 22 DIP");
+        Assert.True(m.EventDismissButtonSize >= 22.0, $"EventDismissButtonSize {m.EventDismissButtonSize} < 22 DIP");
+        Assert.Equal(m.CompactActionButtonSize * 0.5, m.CompactActionButtonRadius, precision: 3);
+        Assert.Equal(m.EventDismissButtonSize * 0.5, m.EventDismissButtonRadius, precision: 3);
         Assert.True(m.CompactArtSize < m.PillHeight);
         Assert.True(m.CompactWaveBarHeight < m.PillHeight);
     }

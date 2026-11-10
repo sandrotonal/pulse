@@ -107,10 +107,15 @@ public static class LiquidGlassEngine
         }
 
         var primaryText = isLightTheme ? 0xFF141518u : 0xFFFFFFFFu;
-        var secondaryText = isLightTheme ? 0xFF5C5F66u : 0xB8EBEBF5u;
 
         // Guarantee primary text meets >= 4.5:1 even if tint shifts luminance on solid/frosted surface.
         mixedSurfaceRgb = EnforceTextContrastAgainstSurface(mixedSurfaceRgb, primaryText, isLightTheme);
+        uiAccent = EnsureContrastAgainstSurface(uiAccent, mixedSurfaceRgb, isLightTheme, 3.5);
+        var secondaryText = EnsureSecondaryTextContrast(
+            isLightTheme ? 0xFF52555Du : 0xCCEBEBF5u,
+            mixedSurfaceRgb,
+            isLightTheme);
+
         fallbackBackground = (alphaByte << 24) | (mixedSurfaceRgb & 0x00FFFFFFu);
         if (!useTransparency)
         {
@@ -183,6 +188,23 @@ public static class LiquidGlassEngine
         return (lighter + 0.05) / (darker + 0.05);
     }
 
+    public static double ComputeCompositedContrastRatio(uint foregroundArgb, uint backgroundRgb)
+    {
+        var composited = CompositeOver(foregroundArgb, backgroundRgb);
+        return ComputeContrastRatio(composited, 0xFF000000u | (backgroundRgb & 0x00FFFFFFu));
+    }
+
+    public static uint CompositeOver(uint foregroundArgb, uint backgroundRgb)
+    {
+        var alpha = ((foregroundArgb >> 24) & 0xFF) / 255.0;
+        if (alpha >= 0.999)
+        {
+            return 0xFF000000u | (foregroundArgb & 0x00FFFFFFu);
+        }
+
+        return BlendRgb(0xFF000000u | (backgroundRgb & 0x00FFFFFFu), foregroundArgb, alpha);
+    }
+
     public static uint PickContrastingForeground(uint backgroundArgb)
     {
         var whiteContrast = ComputeContrastRatio(0xFFFFFFFFu, backgroundArgb);
@@ -216,23 +238,54 @@ public static class LiquidGlassEngine
 
     private static uint EnsureAccentReadability(uint accentArgb, bool isLightTheme)
     {
-        var r = ((accentArgb >> 16) & 0xFF) / 255.0;
-        var g = ((accentArgb >> 8) & 0xFF) / 255.0;
-        var b = (accentArgb & 0xFF) / 255.0;
+        var baseSurface = isLightTheme ? 0xFFF4F6FAu : 0xFF0C1018u;
+        return EnsureContrastAgainstSurface(accentArgb, baseSurface, isLightTheme, 3.5);
+    }
 
-        // Avoid near-black accents disappearing in Dark mode or neon-white accents disappearing in Light mode.
-        var lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-        if (!isLightTheme && lum < 0.16)
+    private static uint EnsureContrastAgainstSurface(uint colorArgb, uint surfaceRgb, bool isLightTheme, double minContrastRatio)
+    {
+        var opaqueColor = 0xFF000000u | (colorArgb & 0x00FFFFFFu);
+        var opaqueSurface = 0xFF000000u | (surfaceRgb & 0x00FFFFFFu);
+        if (ComputeContrastRatio(opaqueColor, opaqueSurface) >= minContrastRatio)
         {
-            return BlendRgb(accentArgb, 0xFFFFFFFFu, 0.28);
+            return opaqueColor;
         }
 
-        if (isLightTheme && lum > 0.74)
+        var anchor = isLightTheme ? 0xFF0F172Au : 0xFFFFFFFFu;
+        for (var step = 1; step <= 20; step++)
         {
-            return BlendRgb(accentArgb, 0xFF0F172Au, 0.36);
+            var candidate = BlendRgb(opaqueColor, anchor, step * 0.05);
+            if (ComputeContrastRatio(candidate, opaqueSurface) >= minContrastRatio)
+            {
+                return candidate;
+            }
         }
 
-        return accentArgb;
+        return anchor;
+    }
+
+    private static uint EnsureSecondaryTextContrast(uint secondaryArgb, uint surfaceRgb, bool isLightTheme)
+    {
+        var opaqueSurface = 0xFF000000u | (surfaceRgb & 0x00FFFFFFu);
+        if (ComputeCompositedContrastRatio(secondaryArgb, opaqueSurface) >= MinTextContrastRatio)
+        {
+            return secondaryArgb;
+        }
+
+        var alpha = (secondaryArgb >> 24) & 0xFF;
+        var anchor = isLightTheme ? 0xFF141518u : 0xFFFFFFFFu;
+        for (var step = 1; step <= 20; step++)
+        {
+            var rgbCandidate = BlendRgb(0xFF000000u | (secondaryArgb & 0x00FFFFFFu), anchor, step * 0.05);
+            var candidateAlpha = Math.Clamp((uint)Math.Round(alpha + (255 - (double)alpha) * (step * 0.05)), 0u, 255u);
+            var candidate = (candidateAlpha << 24) | (rgbCandidate & 0x00FFFFFFu);
+            if (ComputeCompositedContrastRatio(candidate, opaqueSurface) >= MinTextContrastRatio)
+            {
+                return candidate;
+            }
+        }
+
+        return anchor;
     }
 
     private static uint EnforceTextContrastAgainstSurface(uint surfaceRgb, uint primaryText, bool isLightTheme)

@@ -141,4 +141,54 @@ public sealed class LiquidGlassEngineTests
         Assert.True(alphaBefore > 0x70, $"Expected readable fallback opacity before frost, got 0x{alphaBefore:X2}");
         Assert.Equal(0x14u, alphaAfter);
     }
+
+    [Theory]
+    [InlineData(0xFFFFFF33u, true)]
+    [InlineData(0xFF30D158u, true)]
+    [InlineData(0xFF7CE8FFu, true)]
+    [InlineData(0xFF121826u, false)]
+    [InlineData(0xFF0A1428u, false)]
+    public void ComputeIslandPalette_EnsuresAccentAndSecondaryTextContrastAcrossLightAndDark(uint coverColor, bool isLight)
+    {
+        var palette = LiquidGlassEngine.ComputeIslandPalette(
+            isLightTheme: isLight,
+            useTransparency: false,
+            transparencyLevel: 60,
+            dynamicColorTint: true,
+            artworkAccentColor: coverColor,
+            artworkTintStrength: 100,
+            hasFrostBitmap: false);
+
+        var accentSurfaceRatio = LiquidGlassEngine.ComputeContrastRatio(palette.AccentArgb, palette.FrostTintRgb);
+        Assert.True(accentSurfaceRatio >= 3.5, $"Accent contrast {accentSurfaceRatio:F2} < 3.5 against surface");
+
+        var secondaryRatio = LiquidGlassEngine.ComputeCompositedContrastRatio(palette.SecondaryTextArgb, palette.FrostTintRgb);
+        Assert.True(secondaryRatio >= LiquidGlassEngine.MinTextContrastRatio, $"Secondary text contrast {secondaryRatio:F2} < 4.5");
+    }
+
+    [Theory]
+    [InlineData("light", false, true)]
+    [InlineData("DARK", true, false)]
+    [InlineData("", true, true)]
+    public void ResolveIsLightTheme_HandlesCaseInsensitiveAndEmptyInputs(string setting, bool osLight, bool expected)
+    {
+        Assert.Equal(expected, LiquidGlassEngine.ResolveIsLightTheme(setting, osLight));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ComputeIslandPalette_PreservesDefaultBlueAccentOnNeutralSurface(bool isLight)
+    {
+        var palette = LiquidGlassEngine.ComputeIslandPalette(
+            isLightTheme: isLight,
+            useTransparency: true,
+            transparencyLevel: 60,
+            dynamicColorTint: false,
+            artworkAccentColor: 0x00000000u,
+            artworkTintStrength: 0,
+            hasFrostBitmap: false);
+
+        Assert.Equal(LiquidGlassEngine.DefaultAccentArgb, palette.AccentArgb);
+    }
 }

@@ -112,6 +112,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
                 OnPropertyChanged(nameof(PlaybackLabel));
                 OnPropertyChanged(nameof(PlayPauseGlyph));
                 OnPropertyChanged(nameof(AppDisplayName));
+                OnPropertyChanged(nameof(AppBadgeText));
                 OnPropertyChanged(nameof(IsSpotify));
                 OnPropertyChanged(nameof(PositionLabel));
                 OnPropertyChanged(nameof(DurationLabel));
@@ -157,7 +158,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         "Spotify" => "S",
         "YouTube Music" => "YT",
-        "Apple Music" => "",
+        "Apple Music" => "AM",
         "Google Chrome" => "C",
         "Microsoft Edge" => "E",
         _ => "P"

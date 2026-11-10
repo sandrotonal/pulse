@@ -50,8 +50,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private bool _isSessionLocked;
     private volatile bool _disposed;
 
-    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryChargingBrush = MakeBrush(0xFF30D158u);
-    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryLowBrush = MakeBrush(0xFFFF453Au);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryChargingDarkBrush = MakeBrush(0xFF30D158u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryChargingLightBrush = MakeBrush(0xFF1E7E34u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryLowDarkBrush = MakeBrush(0xFFFF453Au);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryLowLightBrush = MakeBrush(0xFFD70015u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryNeutralDarkBrush = MakeBrush(0xFFFFFFFFu);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryNeutralLightBrush = MakeBrush(0xFF141518u);
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FocusLightActiveBrush = MakeBrush(0x33000000u);
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FocusLightInactiveBrush = MakeBrush(0x0F000000u);
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FocusDarkActiveBrush = MakeBrush(0x40FFFFFFu);
@@ -252,6 +256,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(IsFocusPageSelected));
                 OnPropertyChanged(nameof(IsSystemPageSelected));
                 OnPropertyChanged(nameof(MediaPageVisibility));
+                OnPropertyChanged(nameof(SpotifyBadgeVisibility));
+                OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
                 OnPropertyChanged(nameof(FocusPageVisibility));
                 OnPropertyChanged(nameof(SystemPageVisibility));
                 OnPropertyChanged(nameof(ExpandedHeaderTitle));
@@ -269,6 +275,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsFocusPageSelected => _selectedPageIndex == 1;
     public bool IsSystemPageSelected => _selectedPageIndex == 2;
     public Microsoft.UI.Xaml.Visibility MediaPageVisibility => SelectedPageIndex == 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility SpotifyBadgeVisibility => (MediaPageVisibility == Microsoft.UI.Xaml.Visibility.Visible && IsSpotify)
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility GenericMediaBadgeVisibility => (MediaPageVisibility == Microsoft.UI.Xaml.Visibility.Visible && !IsSpotify)
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FocusPageVisibility => SelectedPageIndex == 1 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SystemPageVisibility => SelectedPageIndex == 2 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
@@ -338,8 +350,31 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Microsoft.UI.Xaml.Visibility BatteryChargingVisibility => _batteryIsCharging
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryStatusBrush =>
-        _batteryIsCharging ? BatteryChargingBrush : BatteryLowBrush;
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryStatusBrush
+    {
+        get
+        {
+            var isLight = DesktopFrostService.ResolveIsLightTheme(_media.Theme);
+            return _batteryIsCharging
+                ? (isLight ? BatteryChargingLightBrush : BatteryChargingDarkBrush)
+                : (isLight ? BatteryLowLightBrush : BatteryLowDarkBrush);
+        }
+    }
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryIconBrush
+    {
+        get
+        {
+            if (_batteryIsCharging || _batteryIsLow)
+            {
+                return BatteryStatusBrush;
+            }
+
+            return DesktopFrostService.ResolveIsLightTheme(_media.Theme)
+                ? BatteryNeutralLightBrush
+                : BatteryNeutralDarkBrush;
+        }
+    }
 
     private void RefreshBattery(bool notify = false)
     {
@@ -393,6 +428,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BatteryStatusVisibility));
         OnPropertyChanged(nameof(BatteryChargingVisibility));
         OnPropertyChanged(nameof(BatteryStatusBrush));
+        OnPropertyChanged(nameof(BatteryIconBrush));
     }
 
     public MediaViewModel Media => _media;
@@ -531,7 +567,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             : (isActive ? FocusDarkActiveBrush : FocusDarkInactiveBrush);
     }
 
-    public void RefreshThemeResources() => NotifyFocusBrushes();
+    public void RefreshThemeResources()
+    {
+        NotifyFocusBrushes();
+        OnPropertyChanged(nameof(BatteryStatusBrush));
+        OnPropertyChanged(nameof(BatteryIconBrush));
+    }
 
     private static Microsoft.UI.Xaml.Media.SolidColorBrush MakeBrush(uint value)
     {
@@ -559,7 +600,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return evt.Status switch
             {
                 FileOperationStatus.InProgress => $"%{evt.ProgressPercentage:F0} Tamamlandı",
-                FileOperationStatus.Completed => "İndirme Tamamlandı",
+                FileOperationStatus.Completed => "Tamamlandı",
                 FileOperationStatus.Failed => evt.ErrorMessage ?? "Başarısız Oldu",
                 _ => string.Empty
             };
@@ -1498,11 +1539,18 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         {
             OnPropertyChanged(nameof(LyricsVisibility));
         }
+        else if (e.PropertyName == nameof(MediaViewModel.IsSpotify))
+        {
+            OnPropertyChanged(nameof(SpotifyBadgeVisibility));
+            OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
+        }
         else if (e.PropertyName == nameof(MediaViewModel.HasTrack) || e.PropertyName == nameof(MediaViewModel.CurrentTrack))
         {
             OnPropertyChanged(nameof(IsMediaActive));
             OnPropertyChanged(nameof(TrackContentVisibility));
             OnPropertyChanged(nameof(CustomIdleVisibility));
+            OnPropertyChanged(nameof(SpotifyBadgeVisibility));
+            OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
             NotifySplitStateChanged();
         }
         else if (e.PropertyName is nameof(MediaViewModel.CurrentIslandState) or nameof(MediaViewModel.CompactVisibility) or nameof(MediaViewModel.IdleVisibility))
@@ -1513,7 +1561,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) or nameof(MediaViewModel.ArtworkAccentColor) or nameof(MediaViewModel.DynamicColorTint))
         {
-            NotifyFocusBrushes();
+            RefreshThemeResources();
         }
     }
 

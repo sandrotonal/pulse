@@ -74,7 +74,6 @@ public sealed partial class IslandWindow : Window
     private readonly Border[] _dotVisualElements;
     private readonly Visual[] _dotVisuals = new Visual[3];
     private readonly CompositionRoundedRectangleGeometry[] _dotClipGeometries = new CompositionRoundedRectangleGeometry[3];
-    private readonly Button[] _dotButtons;
     private readonly DampedSpringOscillator _springMinimal = new(dampingRatio: 0.95, responseSeconds: 0.25);
     private readonly DampedSpringOscillator _springNormal = new(dampingRatio: 0.82, responseSeconds: 0.34);
     private readonly DampedSpringOscillator _springDynamic = new(dampingRatio: 0.60, responseSeconds: 0.40);
@@ -216,6 +215,10 @@ public sealed partial class IslandWindow : Window
     private bool _initialPositionApplied;
     private readonly IslandSurfaceLayout.WheelStepAccumulator _wheelAccumulator = new();
     private Microsoft.UI.Xaml.Media.RectangleGeometry? _expandedPanelsClip;
+    private Microsoft.UI.Xaml.Media.ImageBrush? _detachedFrostBrush;
+    private Microsoft.UI.Xaml.Media.TranslateTransform? _detachedFrostTransform;
+    private PointerEventHandler? _sliderPressedHandler;
+    private PointerEventHandler? _sliderReleasedHandler;
 
     public event EventHandler? SettingsRequested;
 
@@ -264,11 +267,9 @@ public sealed partial class IslandWindow : Window
         _batteryChargeHaloVisual = ElementCompositionPreview.GetElementVisual(BatteryChargeHalo);
 
         _dotVisualElements = [PageDotVisual0, PageDotVisual1, PageDotVisual2];
-        _dotButtons = [PageDot0, PageDot1, PageDot2];
         for (int i = 0; i < 3; i++)
         {
             ElementCompositionPreview.SetIsTranslationEnabled(_dotVisualElements[i], true);
-            ElementCompositionPreview.SetIsTranslationEnabled(_dotButtons[i], true);
             _dotVisuals[i] = ElementCompositionPreview.GetElementVisual(_dotVisualElements[i]);
             var dotClip = _dotVisuals[i].Compositor.CreateRoundedRectangleGeometry();
             dotClip.CornerRadius = new Vector2(2.5f, 2.5f);
@@ -334,6 +335,15 @@ public sealed partial class IslandWindow : Window
             FocusProgressTrack.SizeChanged += (_, _) => UpdateFocusProgressFill();
         }
 
+        if (SystemVolumeSlider is not null)
+        {
+            _sliderPressedHandler = OnVolumeSliderPointerPressed;
+            _sliderReleasedHandler = OnVolumeSliderPointerReleased;
+            SystemVolumeSlider.AddHandler(UIElement.PointerPressedEvent, _sliderPressedHandler, handledEventsToo: true);
+            SystemVolumeSlider.AddHandler(UIElement.PointerReleasedEvent, _sliderReleasedHandler, handledEventsToo: true);
+            SystemVolumeSlider.AddHandler(UIElement.PointerCaptureLostEvent, _sliderReleasedHandler, handledEventsToo: true);
+        }
+
         // Apply initial layout without animation
         UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
 
@@ -350,6 +360,7 @@ public sealed partial class IslandWindow : Window
     }
 
     public XamlRoot IslandXamlRoot => WindowRoot.XamlRoot;
+    public ElementTheme IslandRequestedTheme => WindowRoot.ActualTheme;
     public bool IsIslandHidden => _isIslandHidden;
 
     /// <summary>Keeps the island above everything, even if another app demoted its z-order.</summary>
@@ -909,6 +920,18 @@ public sealed partial class IslandWindow : Window
         {
             ExpandedPanelsHost.SizeChanged -= OnExpandedPanelsHostSizeChanged;
         }
+        if (SystemVolumeSlider is not null)
+        {
+            if (_sliderPressedHandler is not null)
+            {
+                SystemVolumeSlider.RemoveHandler(UIElement.PointerPressedEvent, _sliderPressedHandler);
+            }
+            if (_sliderReleasedHandler is not null)
+            {
+                SystemVolumeSlider.RemoveHandler(UIElement.PointerReleasedEvent, _sliderReleasedHandler);
+                SystemVolumeSlider.RemoveHandler(UIElement.PointerCaptureLostEvent, _sliderReleasedHandler);
+            }
+        }
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
 
         if (_hwnd != IntPtr.Zero)
@@ -1294,7 +1317,9 @@ public sealed partial class IslandWindow : Window
         {
             if (CompactWaveBars is not null)
             {
-                CompactWaveBars.Opacity = (_viewModel.CurrentIslandState == IslandState.Hover && _viewModel.ShowEqualizer) ? 1.0 : 0.0;
+                bool showBars = _viewModel.CurrentIslandState == IslandState.Hover && _viewModel.ShowEqualizer;
+                CompactWaveBars.Visibility = showBars ? Visibility.Visible : Visibility.Collapsed;
+                CompactWaveBars.Opacity = showBars ? 1.0 : 0.0;
             }
             if (_viewModel.ShowEqualizer && _viewModel.IsPlaying && (!_isIslandHidden || _hideAnchorVisible))
             {
@@ -1462,6 +1487,11 @@ public sealed partial class IslandWindow : Window
             DetachedPill.CornerRadius = new CornerRadius(m.DetachedPillCornerRadius);
         }
 
+        if (DetachedInnerGrid is not null)
+        {
+            DetachedInnerGrid.CornerRadius = new CornerRadius(Math.Max(1.0, m.DetachedPillCornerRadius - 1.0));
+        }
+
         if (DetachedFrostSheen is not null)
         {
             DetachedFrostSheen.Height = m.DetachedFrostSheenHeight;
@@ -1558,7 +1588,24 @@ public sealed partial class IslandWindow : Window
         if (DetachedPill is not null)
         {
             DetachedPill.Translation = new Vector3((float)trailingX, 0, 0);
+            UpdateDetachedFrostTransform(trailingX);
         }
+    }
+
+    private void UpdateDetachedFrostTransform(double trailingX)
+    {
+        if (_detachedFrostTransform is null)
+        {
+            return;
+        }
+
+        double detachedW = DetachedPill is not null && DetachedPill.Width > 0
+            ? DetachedPill.Width
+            : IslandSurfaceLayout.DetachedPillWidthDip;
+        double leftInSurface = ((IslandSurfaceLayout.DefaultHostWidthDip - detachedW) * 0.5) + trailingX;
+        // Offset by 1 DIP BorderThickness inside DetachedPill so desktop frost stays pixel-locked.
+        _detachedFrostTransform.X = -(leftInSurface + 1.0);
+        _detachedFrostTransform.Y = -1.0;
     }
 
     private const float RimStrokeThicknessDip = 1.0f;
@@ -2110,6 +2157,10 @@ public sealed partial class IslandWindow : Window
             DetachedPill.Width = detachedWidth;
             DetachedPill.Height = detachedHeight;
             DetachedPill.CornerRadius = new CornerRadius(metrics.DetachedPillCornerRadius);
+            if (DetachedInnerGrid is not null)
+            {
+                DetachedInnerGrid.CornerRadius = new CornerRadius(Math.Max(1.0, metrics.DetachedPillCornerRadius - 1.0));
+            }
         }
 
         var (splitLeadingX, splitTrailingX) = IslandSurfaceLayout.ComputeSplitOffsets(targetWidth, detachedWidth, metrics.SplitGap);
@@ -2127,7 +2178,9 @@ public sealed partial class IslandWindow : Window
 
         if (CompactWaveBars is not null)
         {
-            CompactWaveBars.Opacity = (isHover && _viewModel.ShowEqualizer) ? 1.0 : 0.0;
+            bool showBars = isHover && _viewModel.ShowEqualizer;
+            CompactWaveBars.Visibility = showBars ? Visibility.Visible : Visibility.Collapsed;
+            CompactWaveBars.Opacity = showBars ? 1.0 : 0.0;
         }
 
         if (!animated)
@@ -3086,6 +3139,8 @@ public sealed partial class IslandWindow : Window
         }
     }
 
+    private const double DotStripStartXDip = 5.0;
+
     private void UpdatePageDots(int activeIndex, bool animated)
     {
         double[] targets =
@@ -3100,22 +3155,6 @@ public sealed partial class IslandWindow : Window
             activeIndex == 1 ? 1.0 : 0.35,
             activeIndex == 2 ? 1.0 : 0.35
         ];
-
-        // Position transparent hit buttons once per page selection (zero per-frame layout).
-        double btnX = 0.0;
-        for (int i = 0; i < 3; i++)
-        {
-            var btn = _dotButtons[i];
-            if (btn is not null)
-            {
-                if (Math.Abs(btn.Width - targets[i]) > 0.01)
-                {
-                    btn.Width = targets[i];
-                }
-                btn.Translation = new Vector3((float)btnX, 0f, 0f);
-            }
-            btnX += targets[i] + 5.0;
-        }
 
         if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
         {
@@ -3133,7 +3172,7 @@ public sealed partial class IslandWindow : Window
             _isDotAnimating = false;
             Array.Clear(_dotCurrVelWidth);
             Array.Clear(_dotCurrVelOpacity);
-            double x = 0.0;
+            double x = DotStripStartXDip;
             for (int i = 0; i < 3; i++)
             {
                 _dotCurrWidth[i] = targets[i];
@@ -3200,7 +3239,7 @@ public sealed partial class IslandWindow : Window
             settled &= widthState.HasSettled && opacityState.HasSettled;
         }
 
-        double x = 0.0;
+        double x = DotStripStartXDip;
         for (int i = 0; i < 3; i++)
         {
             ApplyDotVisualState(i, x, _dotCurrWidth[i], _dotCurrOpacity[i]);
@@ -3212,7 +3251,7 @@ public sealed partial class IslandWindow : Window
             _isDotAnimating = false;
             Array.Clear(_dotCurrVelWidth);
             Array.Clear(_dotCurrVelOpacity);
-            double snapX = 0.0;
+            double snapX = DotStripStartXDip;
             for (int i = 0; i < 3; i++)
             {
                 _dotCurrWidth[i] = _dotTargetWidth[i];
@@ -3270,6 +3309,22 @@ public sealed partial class IslandWindow : Window
         catch { }
 
         if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse)
+        {
+            _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
+            _collapseDelayTimer.Start();
+        }
+    }
+
+    private void OnVolumeSliderPointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _isInteractingWithControl = true;
+        _collapseDelayTimer.Stop();
+    }
+
+    private void OnVolumeSliderPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
         {
             _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(600);
             _collapseDelayTimer.Start();
@@ -3336,6 +3391,11 @@ public sealed partial class IslandWindow : Window
             {
                 FrostLayer.Fill = null;
             }
+            if (DetachedFrostLayer is not null)
+            {
+                DetachedFrostLayer.Fill = null;
+            }
+            _detachedFrostBrush = null;
         }
 
         UpdateFrostVisibility();
@@ -3395,6 +3455,18 @@ public sealed partial class IslandWindow : Window
         {
             FrostSheen.Visibility = visible;
         }
+        if (DetachedFrostLayer is not null)
+        {
+            DetachedFrostLayer.Visibility = visible;
+        }
+        if (DetachedFrostTintLayer is not null)
+        {
+            DetachedFrostTintLayer.Visibility = visible;
+        }
+        if (DetachedFrostSheen is not null)
+        {
+            DetachedFrostSheen.Visibility = visible;
+        }
         if (_glassEnabled)
         {
             UpdateFrostTint(ComputeCurrentPalette());
@@ -3418,16 +3490,27 @@ public sealed partial class IslandWindow : Window
     /// <summary>Recolors the live glass tint and specular sheen without touching the captured blur.</summary>
     private void UpdateFrostTint(GlassSurfacePalette palette)
     {
+        var hasBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
         if (FrostTintLayer is not null)
         {
-            var hasBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
             FrostTintLayer.Fill = DesktopFrostService.CreateBrush(palette.FrostTintRgb);
             FrostTintLayer.Opacity = hasBitmap ? palette.FrostTintOpacity : 0.0;
+        }
+
+        if (DetachedFrostTintLayer is not null)
+        {
+            DetachedFrostTintLayer.Fill = DesktopFrostService.CreateBrush(palette.FrostTintRgb);
+            DetachedFrostTintLayer.Opacity = hasBitmap ? palette.FrostTintOpacity : 0.0;
         }
 
         if (FrostSheenTopStop is not null)
         {
             FrostSheenTopStop.Color = DesktopFrostService.ToColor(palette.SheenTopArgb);
+        }
+
+        if (DetachedFrostSheenTopStop is not null)
+        {
+            DetachedFrostSheenTopStop.Color = DesktopFrostService.ToColor(palette.SheenTopArgb);
         }
     }
 
@@ -3512,6 +3595,20 @@ public sealed partial class IslandWindow : Window
                 AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Center,
                 AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Top
             };
+            if (DetachedFrostLayer is not null)
+            {
+                _detachedFrostTransform ??= new Microsoft.UI.Xaml.Media.TranslateTransform();
+                _detachedFrostBrush = new Microsoft.UI.Xaml.Media.ImageBrush
+                {
+                    ImageSource = image,
+                    Stretch = Microsoft.UI.Xaml.Media.Stretch.None,
+                    AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Left,
+                    AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Top,
+                    Transform = _detachedFrostTransform
+                };
+                DetachedFrostLayer.Fill = _detachedFrostBrush;
+                UpdateDetachedFrostTransform(_currentTrailingX);
+            }
             _hasFrostBitmap = true;
             ApplyTheme(_viewModel.Theme);
         }
@@ -3545,10 +3642,6 @@ public sealed partial class IslandWindow : Window
             : string.Equals(theme, "Light", StringComparison.OrdinalIgnoreCase)
                 ? ElementTheme.Light
                 : ElementTheme.Default;
-        if (WindowRoot.RequestedTheme != requestedTheme)
-        {
-            WindowRoot.RequestedTheme = requestedTheme;
-        }
 
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandBackground", palette.FallbackBackgroundArgb);
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandSolidSurface", 0xFF000000u | (palette.FallbackBackgroundArgb & 0x00FFFFFFu));
@@ -3561,8 +3654,8 @@ public sealed partial class IslandWindow : Window
         var sliderFillPressed = palette.IsLightTheme ? 0xFF3A3A3Cu : 0xE6FFFFFFu;
         var sliderTrack = palette.IsLightTheme ? 0x24000000u : 0x26FFFFFFu;
         var sliderTrackHover = palette.IsLightTheme ? 0x33000000u : 0x36FFFFFFu;
-        var sliderThumb = 0xFFFFFFFFu;
-        var sliderThumbPressed = palette.IsLightTheme ? 0xFFE5E5EAu : 0xE6FFFFFFu;
+        var sliderThumb = palette.IsLightTheme ? 0xFF141518u : 0xFFFFFFFFu;
+        var sliderThumbPressed = palette.IsLightTheme ? 0xFF3A3A3Cu : 0xE6FFFFFFu;
 
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFill", sliderFill);
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFillPointerOver", sliderFill);
@@ -3578,6 +3671,11 @@ public sealed partial class IslandWindow : Window
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "Accent", palette.AccentArgb);
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SeekAccent", palette.AccentArgb);
 
+        if (WindowRoot.RequestedTheme != requestedTheme)
+        {
+            WindowRoot.RequestedTheme = requestedTheme;
+        }
+
         PillBackdrop.Background = DesktopFrostService.CreateBrush(palette.SurfaceBackgroundArgb);
         PillBackdrop.BorderBrush = DesktopFrostService.CreateBrush(0x00000000u);
         PillBackdrop.BorderThickness = new Thickness(0);
@@ -3590,14 +3688,16 @@ public sealed partial class IslandWindow : Window
                 palette.BorderRimBottomArgb);
         }
 
-        if (HiddenAnchor is not null)
+        if (HiddenAnchorPill is not null)
         {
-            HiddenAnchor.Background = DesktopFrostService.CreateBrush(palette.HiddenAnchorArgb);
+            HiddenAnchorPill.Background = DesktopFrostService.CreateBrush(palette.HiddenAnchorArgb);
         }
 
+        var hasFrostBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
         if (DetachedPill is not null)
         {
-            DetachedPill.Background = DesktopFrostService.CreateBrush(palette.DetachedTintArgb);
+            DetachedPill.Background = DesktopFrostService.CreateBrush(
+                hasFrostBitmap ? palette.SurfaceBackgroundArgb : palette.DetachedTintArgb);
             DetachedPill.BorderBrush = DesktopFrostService.CreateVerticalGradientBrush(palette.BorderRimTopArgb, palette.BorderRimBottomArgb);
             DetachedPill.BorderThickness = new Thickness(1);
             if (DetachedFrostSheenTopStop is not null)
@@ -3612,6 +3712,8 @@ public sealed partial class IslandWindow : Window
         if (ExpandedSeekBar is not null)
         {
             ExpandedSeekBar.AccentBrush = DesktopFrostService.CreateBrush(palette.AccentArgb);
+            ExpandedSeekBar.TrackBackgroundBrush = DesktopFrostService.CreateBrush(palette.IsLightTheme ? 0x29000000u : 0x2DFFFFFFu);
+            ExpandedSeekBar.ThumbBrush = DesktopFrostService.CreateBrush(palette.IsLightTheme ? 0xFF141518u : 0xFFFFFFFFu);
         }
 
         if (_isDotAnimating)

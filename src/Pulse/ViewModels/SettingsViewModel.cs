@@ -60,6 +60,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         _startupService = startupService;
         _locationService = locationService;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        _themeIndex = _settingsService.Current.Theme switch { "Dark" => 1, "Light" => 2, _ => 0 };
         ApplyLocationCommand = new AsyncCommand(ApplyLocationAsync);
         _settingsService.SettingsChanged += OnExternalSettingsChanged;
     }

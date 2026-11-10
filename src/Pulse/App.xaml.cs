@@ -424,7 +424,8 @@ public partial class App : Application
                 Title = "Pulse",
                 Content = "Windows için yerel medya denetimi. Medya oturumları cihazında işlenir.\nSürüm 1.0.0",
                 CloseButtonText = "Kapat",
-                XamlRoot = _islandWindow.IslandXamlRoot
+                XamlRoot = _islandWindow.IslandXamlRoot,
+                RequestedTheme = _islandWindow.IslandRequestedTheme
             };
             await dialog.ShowAsync();
         }
