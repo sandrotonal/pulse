@@ -159,5 +159,50 @@ public sealed class IslandSurfaceLayoutTests
         // Even with 3 DIP outward AA margin on each capsule, the 10 DIP split gap stays unmerged.
         Assert.True(detachRgn.Left > leadRgn.Right);
     }
+
+    [Theory]
+    [InlineData(0.80)]
+    [InlineData(1.00)]
+    [InlineData(1.25)]
+    public void ComputeCompactMetricsScalesSynchronouslyWithCapsuleBordersAndSymmetry(double scale)
+    {
+        var m = IslandSurfaceLayout.ComputeCompactMetrics(scale);
+
+        Assert.Equal(scale, m.Scale, precision: 3);
+        Assert.Equal(40.0 * scale, m.PillHeight, precision: 3);
+        Assert.Equal(20.0 * scale, m.PillCornerRadius, precision: 3);
+        Assert.Equal(10.0 * scale, m.SplitGap, precision: 3);
+
+        // Left clock/date column and right weather/city column must share identical stacked height
+        double leftHeight = m.IdleClockLineHeight + m.IdleDateLineHeight;
+        double rightHeight = m.IdleWeatherRowHeight + m.IdleWeatherCityLineHeight;
+        Assert.Equal(leftHeight, rightHeight, precision: 3);
+
+        // 70% vertical fill leaves equal 15% breathing room above and below against the rounded pill rim
+        Assert.Equal(0.70, leftHeight / m.PillHeight, precision: 3);
+        Assert.True(m.IdleDividerHeight < leftHeight);
+
+        // Horizontal padding + inner margin must comfortably clear the capsule corner curvature at stack top/bottom
+        double topMargin = (m.PillHeight - leftHeight) * 0.5;
+        double arcDy = m.PillCornerRadius - topMargin;
+        double cornerInset = m.PillCornerRadius - Math.Sqrt((m.PillCornerRadius * m.PillCornerRadius) - (arcDy * arcDy));
+        Assert.True((m.CompactHorizontalPadding + m.IdleInnerMarginH) > (cornerInset + (4.0 * scale)));
+
+        // Action buttons & wave bars remain safely inside the scaled pill height
+        Assert.True(m.CompactActionButtonSize < m.PillHeight);
+        Assert.True(m.CompactArtSize < m.PillHeight);
+        Assert.True(m.CompactWaveBarHeight < m.PillHeight);
+    }
+
+    [Theory]
+    [InlineData(0.50, 0.80)]
+    [InlineData(2.00, 1.25)]
+    [InlineData(double.NaN, 1.00)]
+    [InlineData(double.PositiveInfinity, 1.00)]
+    public void ComputeCompactMetricsClampsInvalidOrOutOfRangeScales(double input, double expected)
+    {
+        var m = IslandSurfaceLayout.ComputeCompactMetrics(input);
+        Assert.Equal(expected, m.Scale, precision: 3);
+    }
 }
 

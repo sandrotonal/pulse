@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Input;
 using Pulse.Core.Animation;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
+using Pulse.Core.Services.Weather;
 using Pulse.Services.Glass;
 using Pulse.ViewModels;
 using Windows.Graphics;
@@ -203,9 +204,9 @@ public sealed partial class IslandWindow : Window
     private bool _lastFocusTimerActive;
     private bool _lastNotificationActive;
     private bool _lastFileOpActive;
+    private double _appliedCompactScale = double.NaN;
 
     public event EventHandler? SettingsRequested;
-    public event EventHandler? TaskbarFlyoutRequested;
 
     public IslandWindow(IslandViewModel viewModel)
     {
@@ -293,6 +294,8 @@ public sealed partial class IslandWindow : Window
         EnsureSurfaceClipAndRim();
         ApplyGlass();
         ApplyTheme(_viewModel.Theme);
+        ApplyCompactScale(_viewModel.IslandScale);
+        UpdateIdleWeatherIcon(_viewModel.IdleWeatherIconKind);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         WindowRoot.ActualThemeChanged += OnWindowRootActualThemeChanged;
@@ -931,10 +934,13 @@ public sealed partial class IslandWindow : Window
             ? DetachedPill.Height
             : IslandSurfaceLayout.DetachedPillHeightDip;
 
+        var metrics = IslandSurfaceLayout.ComputeCompactMetrics(_viewModel.IslandScale);
+        double splitGap = metrics.SplitGap;
+
         if (_isDimensionAnimating && (isSplit || isDetachedActive))
         {
-            double splitTotalSpan = (196.0 * Math.Max(1.0, _viewModel.IslandScale))
-                + IslandSurfaceLayout.SplitGapDip
+            double splitTotalSpan = (196.0 * metrics.Scale)
+                + splitGap
                 + detachedW;
             var regionWidth = Math.Min(IslandSurfaceLayout.DefaultHostWidthDip, Math.Max(effectiveWidth, splitTotalSpan + (includeOvershootPadding ? 16.0 : 0.0)));
             var regionHeight = Math.Min(IslandSurfaceLayout.DefaultHostHeightDip, Math.Max(effectiveHeight, detachedH));
@@ -964,7 +970,7 @@ public sealed partial class IslandWindow : Window
         {
             double leadingW = Math.Max(1.0, pillWidth);
             double leadingH = Math.Max(1.0, pillHeight);
-            var (leadOffX, trailOffX) = IslandSurfaceLayout.ComputeSplitOffsets(leadingW, detachedW);
+            var (leadOffX, trailOffX) = IslandSurfaceLayout.ComputeSplitOffsets(leadingW, detachedW, splitGap);
             var leadBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, leadingW, leadingH, leadOffX);
             var detachBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, detachedW, detachedH, trailOffX);
 
@@ -1091,12 +1097,21 @@ public sealed partial class IslandWindow : Window
         }
         else if (e.PropertyName is nameof(MediaViewModel.TopOffset) or nameof(MediaViewModel.IslandScale))
         {
+            if (e.PropertyName == nameof(MediaViewModel.IslandScale))
+            {
+                ApplyCompactScale(_viewModel.IslandScale);
+            }
+
             PositionHostWindow();
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
             if (_glassEnabled && !_isIslandHidden)
             {
                 ScheduleFrostRefresh(delayMs: 240);
             }
+        }
+        else if (e.PropertyName is nameof(IslandViewModel.IdleWeatherIconKind) or nameof(IslandViewModel.IdleWeatherVisibility))
+        {
+            UpdateIdleWeatherIcon(_viewModel.IdleWeatherIconKind);
         }
         else if (e.PropertyName == nameof(MediaViewModel.EnableHoverExpand))
         {
@@ -1183,6 +1198,139 @@ public sealed partial class IslandWindow : Window
         {
             UpdateFocusProgressFill();
         }
+    }
+
+    private void ApplyCompactScale(double scale)
+    {
+        var m = IslandSurfaceLayout.ComputeCompactMetrics(scale);
+        if (Math.Abs(_appliedCompactScale - m.Scale) < 0.001)
+        {
+            return;
+        }
+
+        _appliedCompactScale = m.Scale;
+
+        CompactView.Padding = new Thickness(m.CompactHorizontalPadding, 0, m.CompactHorizontalPadding, 0);
+
+        IdleContent.Margin = new Thickness(m.IdleInnerMarginH, 0, m.IdleInnerMarginH, 0);
+        IdleSmartPanel.Spacing = m.IdleItemSpacing;
+        IdleClockStack.MinWidth = m.IdleBlockMinWidth;
+        IdleClockBlock.FontSize = m.IdleClockFontSize;
+        IdleClockBlock.LineHeight = m.IdleClockLineHeight;
+        IdleDateBlock.FontSize = m.IdleDateFontSize;
+        IdleDateBlock.LineHeight = m.IdleDateLineHeight;
+        IdleDivider.Width = m.IdleDividerWidth;
+        IdleDivider.Height = m.IdleDividerHeight;
+        IdleWeatherStack.MinWidth = m.IdleBlockMinWidth;
+        IdleWeatherHeader.Height = m.IdleWeatherRowHeight;
+        IdleWeatherHeader.Spacing = m.IdleWeatherHeaderSpacing;
+        IdleWeatherIconBox.Width = m.IdleWeatherIconSize;
+        IdleWeatherIconBox.Height = m.IdleWeatherIconSize;
+        IdleWeatherTempBlock.FontSize = m.IdleWeatherTempFontSize;
+        IdleWeatherTempBlock.LineHeight = m.IdleWeatherTempLineHeight;
+        IdleWeatherCityBlock.FontSize = m.IdleWeatherCityFontSize;
+        IdleWeatherCityBlock.LineHeight = m.IdleWeatherCityLineHeight;
+        IdleWeatherCityBlock.MaxWidth = m.IdleWeatherCityMaxWidth;
+        IdleBrandPanel.Spacing = m.IdleBrandSpacing;
+        IdleBrandIconBorder.Width = m.IdleBrandIconSize;
+        IdleBrandIconBorder.Height = m.IdleBrandIconSize;
+        IdleBrandIconBorder.CornerRadius = new CornerRadius(m.IdleBrandIconCornerRadius);
+        IdleBrandIconImage.Width = m.IdleBrandIconSize;
+        IdleBrandIconImage.Height = m.IdleBrandIconSize;
+        IdleBrandText.FontSize = m.IdleBrandFontSize;
+
+        NotificationGlyphIcon.FontSize = m.EventGlyphSize;
+        NotificationGlyphIcon.Margin = new Thickness(m.EventGlyphMarginLeft, 0, m.EventGlyphMarginRight, 0);
+        NotificationTitleBlock.FontSize = m.EventTitleFontSize;
+        NotificationSubtitleBlock.FontSize = m.EventSubtitleFontSize;
+        NotificationDismissButton.Width = m.EventDismissButtonSize;
+        NotificationDismissButton.Height = m.EventDismissButtonSize;
+        NotificationDismissButton.CornerRadius = new CornerRadius(m.EventDismissButtonRadius);
+        NotificationDismissButton.Margin = new Thickness(m.EventDismissButtonMarginLeft, 0, 0, 0);
+        NotificationDismissGlyph.FontSize = m.EventDismissGlyphSize;
+
+        FocusCompactGlyphIcon.FontSize = m.EventGlyphSize;
+        FocusCompactGlyphIcon.Margin = new Thickness(m.EventGlyphMarginLeft, 0, m.EventGlyphMarginRight, 0);
+        FocusCompactTimerBlock.FontSize = m.EventTitleFontSize;
+        FocusCompactModeBlock.FontSize = m.EventSubtitleFontSize;
+        FocusCompactToggleButton.Width = m.CompactActionButtonSize;
+        FocusCompactToggleButton.Height = m.CompactActionButtonSize;
+        FocusCompactToggleButton.CornerRadius = new CornerRadius(m.CompactActionButtonRadius);
+        FocusCompactToggleButton.Margin = new Thickness(m.EventDismissButtonMarginLeft, 0, 0, 0);
+        FocusCompactToggleGlyph.FontSize = m.FocusToggleGlyphSize;
+
+        FileOpCompactGlyphIcon.FontSize = m.EventGlyphSize;
+        FileOpCompactGlyphIcon.Margin = new Thickness(m.EventGlyphMarginLeft, 0, m.EventGlyphMarginRight, 0);
+        FileOpCompactNameBlock.FontSize = m.FileOpNameFontSize;
+        FileOpCompactProgressBar.Height = m.FileOpProgressHeight;
+        FileOpCompactProgressBar.CornerRadius = new CornerRadius(m.FileOpProgressRadius);
+        FileOpCompactStatusBlock.FontSize = m.FileOpStatusFontSize;
+        FileOpCompactStatusBlock.Margin = new Thickness(m.FileOpStatusMarginLeft, 0, 0, 0);
+
+        CompactArtBorder.Width = m.CompactArtSize;
+        CompactArtBorder.Height = m.CompactArtSize;
+        CompactArtBorder.CornerRadius = new CornerRadius(m.CompactArtCornerRadius);
+        CompactArtBorder.Margin = new Thickness(0, 0, m.CompactArtMarginRight, 0);
+        CompactArtInnerGrid.CornerRadius = new CornerRadius(m.CompactArtCornerRadius);
+        CompactArtFallbackGlyph.FontSize = m.CompactArtFallbackGlyphSize;
+        CompactTrackTitleBlock.FontSize = m.CompactTrackTitleFontSize;
+        CompactTrackArtistBlock.FontSize = m.CompactTrackArtistFontSize;
+        CompactTrackRightStack.Spacing = m.CompactTrackRightSpacing;
+        CompactTrackRightStack.Margin = new Thickness(m.CompactTrackRightMarginLeft, 0, 0, 0);
+        CompactWaveBars.Spacing = m.CompactWaveSpacing;
+
+        var barRadius = new CornerRadius(m.CompactWaveBarCornerRadius);
+        WaveBar1.Width = m.CompactWaveBarWidth;
+        WaveBar1.Height = m.CompactWaveBarHeight;
+        WaveBar1.CornerRadius = barRadius;
+        WaveBar2.Width = m.CompactWaveBarWidth;
+        WaveBar2.Height = m.CompactWaveBarHeight;
+        WaveBar2.CornerRadius = barRadius;
+        WaveBar3.Width = m.CompactWaveBarWidth;
+        WaveBar3.Height = m.CompactWaveBarHeight;
+        WaveBar3.CornerRadius = barRadius;
+
+        if (_waveAnimating)
+        {
+            StopEqualizerWave();
+            StartEqualizerWave();
+        }
+
+        CompactPlayPauseButton.Width = m.CompactActionButtonSize;
+        CompactPlayPauseButton.Height = m.CompactActionButtonSize;
+        CompactPlayPauseButton.CornerRadius = new CornerRadius(m.CompactActionButtonRadius);
+        CompactPlayPauseGlyph.FontSize = m.CompactActionGlyphSize;
+
+        if (DetachedPill is not null)
+        {
+            DetachedPill.Width = m.DetachedPillWidth;
+            DetachedPill.Height = m.DetachedPillHeight;
+            DetachedPill.CornerRadius = new CornerRadius(m.DetachedPillCornerRadius);
+        }
+
+        if (DetachedFrostSheen is not null)
+        {
+            DetachedFrostSheen.Height = m.DetachedFrostSheenHeight;
+        }
+
+        DetachedInnerStack.Spacing = m.DetachedStackSpacing;
+        DetachedInnerStack.Padding = new Thickness(m.DetachedPaddingH, 0, m.DetachedPaddingH, 0);
+        DetachedGlyphIcon.FontSize = m.DetachedGlyphSize;
+        DetachedBadgeTextBlock.FontSize = m.DetachedBadgeFontSize;
+    }
+
+    private void UpdateIdleWeatherIcon(WeatherIconKind iconKind)
+    {
+        WeatherIconClearDay.Visibility = iconKind == WeatherIconKind.ClearDay ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconClearNight.Visibility = iconKind == WeatherIconKind.ClearNight ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconPartlyCloudyDay.Visibility = iconKind == WeatherIconKind.PartlyCloudyDay ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconPartlyCloudyNight.Visibility = iconKind == WeatherIconKind.PartlyCloudyNight ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconCloudy.Visibility = iconKind == WeatherIconKind.Cloudy ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconFog.Visibility = iconKind == WeatherIconKind.Fog ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconRain.Visibility = iconKind == WeatherIconKind.Rain ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconHeavyRain.Visibility = iconKind == WeatherIconKind.HeavyRain ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconSnow.Visibility = iconKind == WeatherIconKind.Snow ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconThunderstorm.Visibility = iconKind == WeatherIconKind.Thunderstorm ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void UpdateFocusProgressFill()
@@ -1465,8 +1613,9 @@ public sealed partial class IslandWindow : Window
             DetachedPill.Visibility = Visibility.Visible;
             if (!wasAnimating && _animStartDetachedOpacity <= 0.05)
             {
-                _animStartTrailingX = 66.0;
-                _currentTrailingX = 66.0;
+                double restTrailingX = DetachedPill.Width > 0 ? DetachedPill.Width : IslandSurfaceLayout.DetachedPillWidthDip;
+                _animStartTrailingX = restTrailingX;
+                _currentTrailingX = restTrailingX;
                 SetSplitPositions(_animStartLeadingX, _animStartTrailingX);
             }
         }
@@ -1686,29 +1835,25 @@ public sealed partial class IslandWindow : Window
             _viewModel.IsNotificationActive,
             _viewModel.IsFileOperationActive,
             _viewModel.IsFocusTimerActive);
-        double targetHeight = isExpanded ? 240 : 40;
+
+        var metrics = IslandSurfaceLayout.ComputeCompactMetrics(_viewModel.IslandScale);
+        var scale = isExpanded ? 1.0 : metrics.Scale;
+        double targetHeight = isExpanded ? 240.0 : metrics.PillHeight;
         // Continuous island corners: large enough to read as an Apple surface
         // instead of a generic rounded card, still inside the content insets.
-        double targetCornerRadius = isExpanded ? 56 : 20;
-
-        var scale = isExpanded ? 1.0 : _viewModel.IslandScale;
+        double targetCornerRadius = isExpanded ? 56.0 : metrics.PillCornerRadius;
         targetWidth *= scale;
-        targetHeight *= scale;
-        if (!isExpanded)
-        {
-            targetCornerRadius *= scale;
-        }
 
-        double detachedWidth = IslandSurfaceLayout.DetachedPillWidthDip * scale;
-        double detachedHeight = IslandSurfaceLayout.DetachedPillHeightDip * scale;
+        double detachedWidth = metrics.DetachedPillWidth;
+        double detachedHeight = metrics.DetachedPillHeight;
         if (DetachedPill is not null && (Math.Abs(DetachedPill.Width - detachedWidth) > 0.01 || Math.Abs(DetachedPill.Height - detachedHeight) > 0.01))
         {
             DetachedPill.Width = detachedWidth;
             DetachedPill.Height = detachedHeight;
-            DetachedPill.CornerRadius = new CornerRadius(20.0 * scale);
+            DetachedPill.CornerRadius = new CornerRadius(metrics.DetachedPillCornerRadius);
         }
 
-        var (splitLeadingX, splitTrailingX) = IslandSurfaceLayout.ComputeSplitOffsets(targetWidth, detachedWidth);
+        var (splitLeadingX, splitTrailingX) = IslandSurfaceLayout.ComputeSplitOffsets(targetWidth, detachedWidth, metrics.SplitGap);
         double targetLeadingX = isSplit ? splitLeadingX : 0.0;
         double targetTrailingX = isSplit ? splitTrailingX : detachedWidth;
         double targetDetachedOpacity = isSplit ? 1.0 : 0.0;
@@ -2691,9 +2836,6 @@ public sealed partial class IslandWindow : Window
     private void OnToggleExpandedClick(object sender, RoutedEventArgs e) => _viewModel.ToggleExpanded();
     private void OnCollapseClick(object sender, RoutedEventArgs e) => _viewModel.Collapse();
     private void OnHideIslandClick(object sender, RoutedEventArgs e) => HideIslandAnimated();
-
-    private void OnOpenTaskbarFlyoutClick(object sender, RoutedEventArgs e)
-        => TaskbarFlyoutRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnHiddenAnchorPointerEntered(object sender, PointerRoutedEventArgs e) => UnhideIslandAnimated();
     private void OnHiddenAnchorPointerReleased(object sender, PointerRoutedEventArgs e) => UnhideIslandAnimated();

@@ -20,7 +20,7 @@ public sealed record GlassSurfacePalette(
 
 /// <summary>
 /// Pure color, opacity, contrast, and Liquid Glass material engine shared by
-/// IslandWindow, DetachedPill, and TaskbarFlyoutWindow.
+/// IslandWindow and DetachedPill.
 /// </summary>
 public static class LiquidGlassEngine
 {

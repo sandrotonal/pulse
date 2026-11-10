@@ -187,7 +187,7 @@ public sealed class TrayService : IDisposable
             return;
         }
 
-        AppendMenu(menu, MfString, 1, "Pulse Kontrol Paneli");
+        AppendMenu(menu, MfString, 1, "Dynamic Island'ı Genişlet / Daralt");
         AppendMenu(menu, MfString, 7, "Dynamic Island'ı Gizle / Göster");
         AppendMenu(menu, MfString, 2, "Ayarlar");
         AppendMenu(menu, MfSeparator, 0, null);

@@ -9,7 +9,6 @@ using Pulse.Services.Media;
 using Pulse.Services.Settings;
 using Pulse.Services.System;
 using Pulse.ViewModels;
-using Pulse.Views.Flyout;
 using Pulse.Views.Island;
 using Pulse.Views.Settings;
 
@@ -35,7 +34,6 @@ public partial class App : Application
     private readonly MediaViewModel _mediaViewModel;
     private readonly IslandViewModel _islandViewModel;
     private IslandWindow? _islandWindow;
-    private TaskbarFlyoutWindow? _taskbarFlyoutWindow;
     private SettingsWindow? _settingsWindow;
     private SettingsViewModel? _activeSettingsViewModel;
     private TrayService? _trayService;
@@ -177,7 +175,6 @@ public partial class App : Application
             }
         };
         _islandWindow.SettingsRequested += OnSettingsRequested;
-        _islandWindow.TaskbarFlyoutRequested += (_, _) => _taskbarFlyoutWindow?.ToggleFlyout();
         _islandWindow.Activate();
         _islandWindow.ShowIsland();
         _islandViewModel.StartIdleMonitoring();
@@ -188,22 +185,7 @@ public partial class App : Application
         _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
             _showIslandSignal,
             (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() =>
-            {
-                islandWindow.ReassertTopmost();
-
-                if (islandWindow.IsIslandHidden)
-                {
-                    islandWindow.ShowIsland();
-                }
-
-                // Visible feedback so a re-launch clearly surfaces the running island.
-                if (!_islandViewModel.IsExpanded)
-                {
-                    _islandViewModel.ToggleExpanded();
-                }
-
-                islandWindow.Activate();
-            }),
+                SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true)),
             null,
             Timeout.Infinite,
             executeOnlyOnce: false);
@@ -216,8 +198,6 @@ public partial class App : Application
             Timeout.Infinite,
             executeOnlyOnce: false);
 
-        _taskbarFlyoutWindow = new TaskbarFlyoutWindow(_mediaViewModel);
-
         if (HasSettingsLaunchArg())
         {
             islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
@@ -228,13 +208,7 @@ public partial class App : Application
             var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
             _trayService = new TrayService(iconPath, startupEnabled);
             _trayService.ShowRequested += (_, _) =>
-            {
-                if (_islandWindow?.IsIslandHidden == true)
-                {
-                    _islandWindow.ShowIsland();
-                }
-                _taskbarFlyoutWindow?.ToggleFlyout();
-            };
+                SurfaceIsland(toggleIfAlreadyVisible: true, activateWindow: false);
             _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
             _trayService.SettingsRequested += OnSettingsRequested;
             _trayService.AboutRequested += OnAboutRequested;
@@ -246,6 +220,46 @@ public partial class App : Application
         catch (Exception ex)
         {
             CrashLogger.Write("App.TrayService", ex);
+        }
+    }
+
+    private void SurfaceIsland(bool toggleIfAlreadyVisible, bool activateWindow)
+    {
+        if (_islandWindow is not { } islandWindow)
+        {
+            return;
+        }
+
+        try
+        {
+            islandWindow.ReassertTopmost();
+
+            var wasHidden = islandWindow.IsIslandHidden;
+            if (wasHidden)
+            {
+                islandWindow.ShowIsland();
+            }
+
+            if (wasHidden || !toggleIfAlreadyVisible)
+            {
+                if (!_islandViewModel.IsExpanded)
+                {
+                    _islandViewModel.ToggleExpanded();
+                }
+            }
+            else
+            {
+                _islandViewModel.ToggleExpanded();
+            }
+
+            if (activateWindow)
+            {
+                islandWindow.Activate();
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.SurfaceIsland", ex);
         }
     }
 
@@ -399,7 +413,6 @@ public partial class App : Application
         _showSettingsSignal?.Dispose();
         _trayService?.Dispose();
         _settingsWindow?.Close();
-        _taskbarFlyoutWindow?.Close();
         _islandWindow?.Close();
         _islandViewModel.Dispose();
         _httpClient.Dispose();

@@ -596,8 +596,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public string IdleDateText => WeatherFormatter.FormatDate(DateTimeOffset.Now);
 
     public string IdleWeatherGlyph => _idleWeather is null
-        ? "\uE707"
+        ? "\uE753"
         : WeatherCodeMapper.Map(_idleWeather.WeatherCode, _idleWeather.IsDay).Glyph;
+
+    public WeatherIconKind IdleWeatherIconKind => _idleWeather is null
+        ? WeatherIconKind.Cloudy
+        : WeatherCodeMapper.Map(_idleWeather.WeatherCode, _idleWeather.IsDay).IconKind;
 
     public string IdleWeatherTemperature => _idleWeather is null
         ? "--°"
@@ -942,6 +946,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private void NotifyIdleWeather()
     {
         OnPropertyChanged(nameof(IdleWeatherGlyph));
+        OnPropertyChanged(nameof(IdleWeatherIconKind));
         OnPropertyChanged(nameof(IdleWeatherTemperature));
         OnPropertyChanged(nameof(IdleWeatherCity));
         OnPropertyChanged(nameof(IdleWeatherTooltip));
