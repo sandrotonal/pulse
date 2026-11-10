@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
+using Pulse.Core.Services;
 
 namespace Pulse.Services.Settings;
 
@@ -9,6 +10,7 @@ public sealed class SettingsService : ISettingsService
 {
     private readonly string _settingsPath;
     private readonly SemaphoreSlim _saveGate = new(1, 1);
+    private Task _activeSaveTask = Task.CompletedTask;
 
     public SettingsService(string? settingsDirectory = null)
     {
@@ -17,6 +19,7 @@ public sealed class SettingsService : ISettingsService
     }
 
     public AppSettings Current { get; private set; } = new();
+    public string? LastSaveError { get; private set; }
     public event EventHandler<AppSettings>? SettingsChanged;
 
     public async Task LoadAsync()
@@ -35,6 +38,7 @@ public sealed class SettingsService : ISettingsService
         }
         catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or InvalidOperationException)
         {
+            CrashLogger.Write("SettingsService.LoadAsync", ex, $"Path={_settingsPath}");
             Current = new AppSettings();
         }
 
@@ -64,29 +68,58 @@ public sealed class SettingsService : ISettingsService
         return merged.ToJsonString();
     }
 
-    public async Task SaveAsync(AppSettings settings)
+    public Task SaveAsync(AppSettings settings)
     {
         Current = Normalize(settings);
 
         // Notify in-memory listeners immediately for instantaneous real-time UI response
         SettingsChanged?.Invoke(this, Current);
 
-        await _saveGate.WaitAsync();
+        var saveTask = PersistLatestAsync();
+        _activeSaveTask = saveTask;
+        return saveTask;
+    }
+
+    public async Task FlushAsync()
+    {
         try
         {
+            await _activeSaveTask.ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("SettingsService.FlushAsync", ex);
+        }
+
+        await _saveGate.WaitAsync().ConfigureAwait(false);
+        _saveGate.Release();
+    }
+
+    private async Task PersistLatestAsync()
+    {
+        await _saveGate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            var snapshot = Current;
             Directory.CreateDirectory(Path.GetDirectoryName(_settingsPath)!);
             var temporaryPath = _settingsPath + ".tmp";
             await using (var stream = File.Create(temporaryPath))
             {
                 await JsonSerializer.SerializeAsync(
                     stream,
-                    Current,
-                    AppSettingsJsonContext.Default.AppSettings);
+                    snapshot,
+                    AppSettingsJsonContext.Default.AppSettings).ConfigureAwait(false);
+                await stream.FlushAsync().ConfigureAwait(false);
             }
 
             File.Move(temporaryPath, _settingsPath, overwrite: true);
+            LastSaveError = null;
         }
-        catch { }
+        catch (Exception ex)
+        {
+            LastSaveError = ex.Message;
+            CrashLogger.Write("SettingsService.SaveAsync", ex, $"Path={_settingsPath}");
+        }
         finally
         {
             _saveGate.Release();

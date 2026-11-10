@@ -12,7 +12,7 @@
     </Window.SystemBackdrop>
 
     <Grid x:Name="WindowRoot"
-          Width="424" Height="260"
+          Width="560" Height="306"
           Background="{x:Null}"
           HorizontalAlignment="Center"
           VerticalAlignment="Top">
@@ -20,6 +20,7 @@
         <Grid.Resources>
             <!-- Reference Dark Glass palette -->
             <SolidColorBrush x:Key="IslandBackground" Color="#F20B1018" />
+            <SolidColorBrush x:Key="IslandSolidSurface" Color="#FF0B1018" />
             <SolidColorBrush x:Key="IslandBorder"     Color="#33FFFFFF" />
             <SolidColorBrush x:Key="PrimaryText"      Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="SecondaryText"    Color="#FFA4ABB6" />
@@ -132,7 +133,7 @@
                 CornerRadius="3"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
-                Margin="0,2,0,0"
+                Margin="0,5,0,0"
                 Background="{ThemeResource IslandBorder}"
                 Opacity="0.6"
                 Visibility="Collapsed"
@@ -143,25 +144,22 @@
             </ToolTipService.ToolTip>
         </Border>
 
-        <!-- Dynamic Island Surface Pill / Card -->
-        <Border x:Name="Surface"
-                Width="216" Height="40"
-                CornerRadius="20"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Top"
-                Background="{ThemeResource IslandBackground}"
-                BorderBrush="Transparent"
-                BorderThickness="0"
-                PointerEntered="OnPointerEntered"
-                PointerExited="OnPointerExited"
-                PointerPressed="OnSurfacePointerPressed"
-                PointerReleased="OnSurfacePointerReleased"
-                PointerCanceled="OnSurfacePointerCanceled"
-                PointerCaptureLost="OnSurfacePointerCaptureLost"
-                PointerWheelChanged="OnSurfacePointerWheelChanged">
+        <!-- Dynamic Island Surface Pill / Card (fixed host bounds; GPU Composition clip shapes the pill with zero XAML reflow) -->
+        <Grid x:Name="Surface"
+              Width="560" Height="300"
+              Margin="0,3,0,0"
+              HorizontalAlignment="Center"
+              VerticalAlignment="Top"
+              Background="{x:Null}"
+              PointerEntered="OnPointerEntered"
+              PointerExited="OnPointerExited"
+              PointerPressed="OnSurfacePointerPressed"
+              PointerReleased="OnSurfacePointerReleased"
+              PointerCanceled="OnSurfacePointerCanceled"
+              PointerCaptureLost="OnSurfacePointerCaptureLost"
+              PointerWheelChanged="OnSurfacePointerWheelChanged">
 
-
-                <Border.ContextFlyout>
+            <Grid.ContextFlyout>
                 <MenuFlyout>
                     <MenuFlyoutItem Text="Genişlet / Daralt" Click="OnToggleExpandedClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE740;" /></MenuFlyoutItem.Icon>
@@ -214,123 +212,229 @@
                     </MenuFlyoutSubItem>
 
                     <MenuFlyoutSeparator />
-                    <MenuFlyoutItem Text="Görev Çubuğu Paneli" Click="OnOpenTaskbarFlyoutClick">
-                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8AB;" /></MenuFlyoutItem.Icon>
-                    </MenuFlyoutItem>
                     <MenuFlyoutItem Text="Ayarlar" Click="OnSettingsClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE713;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                 </MenuFlyout>
-            </Border.ContextFlyout>
+            </Grid.ContextFlyout>
 
-            <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
-                <!-- Liquid-Glass frost layer: samples + blurs the real desktop behind the island -->
-                <Rectangle x:Name="FrostLayer"
-                           RadiusX="20" RadiusY="20"
-                           Visibility="Collapsed"
-                           HorizontalAlignment="Stretch"
-                           VerticalAlignment="Stretch"
-                           IsHitTestVisible="False" />
+            <Grid x:Name="PillMaskHost"
+                  Width="560" Height="300"
+                  HorizontalAlignment="Center"
+                  VerticalAlignment="Top"
+                  Background="{x:Null}">
 
-                <!-- Live album tint over the neutral blur. Keeping the tint separate
-                     lets track changes recolor the glass instantly without re-capturing
-                     the desktop (which briefly hides the window and blinks). -->
-                <Rectangle x:Name="FrostTintLayer"
-                           RadiusX="20" RadiusY="20"
-                           Visibility="Collapsed"
-                           HorizontalAlignment="Stretch"
-                           VerticalAlignment="Stretch"
-                           IsHitTestVisible="False" />
+                <!-- Backdrop & Liquid-Glass layers: non-hit-testable and clipped on the GPU by PillMaskHost -->
+                <Border x:Name="PillBackdrop"
+                        Width="560" Height="300"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Top"
+                        Background="{ThemeResource IslandBackground}"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        IsHitTestVisible="False">
+                    <Grid HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+                        <!-- Liquid-Glass frost layer: samples + blurs the real desktop behind the island -->
+                        <Rectangle x:Name="FrostLayer"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch"
+                                   IsHitTestVisible="False" />
 
-                <!-- Specular sheen stays proportional to the surface instead of being
-                     baked into the desktop snapshot, so it survives every morph. -->
-                <Rectangle x:Name="FrostSheen"
-                           RadiusX="20" RadiusY="20"
-                           Height="18"
-                           Visibility="Collapsed"
-                           HorizontalAlignment="Stretch"
-                           VerticalAlignment="Top"
-                           IsHitTestVisible="False">
-                    <Rectangle.Fill>
-                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop Color="#24FFFFFF" Offset="0" />
-                            <GradientStop Color="#00FFFFFF" Offset="1" />
-                        </LinearGradientBrush>
-                    </Rectangle.Fill>
-                </Rectangle>
+                        <!-- Live album tint over the neutral blur. Keeping the tint separate
+                             lets track changes recolor the glass instantly without re-capturing
+                             the desktop (which briefly hides the window and blinks). -->
+                        <Rectangle x:Name="FrostTintLayer"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch"
+                                   IsHitTestVisible="False" />
 
+                        <!-- Specular sheen scaled on GPU via Composition Visual.Scale -->
+                        <Rectangle x:Name="FrostSheen"
+                                   Height="18"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Top"
+                                   IsHitTestVisible="False">
+                            <Rectangle.Fill>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                    <GradientStop x:Name="FrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
+                                    <GradientStop Color="#00FFFFFF" Offset="1" />
+                                </LinearGradientBrush>
+                            </Rectangle.Fill>
+                        </Rectangle>
 
-                <!-- 01 & 02: COMPACT VIEW (Capsule mode: 216-252 x 40) -->
+                        <!-- GPU-clipped 1px Fresnel specular rim synced every frame with surface shape -->
+                        <Border x:Name="FrostRimHost"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                IsHitTestVisible="False" />
+                    </Grid>
+                </Border>
+
+                <!-- 01 & 02: COMPACT VIEW (Capsule mode: 216-268 x 40 scaled synchronously by IslandScale; sized per state, never per-frame) -->
                 <Grid x:Name="CompactView"
+                      Width="216" Height="40"
                       Opacity="1"
-                      HorizontalAlignment="Stretch"
-                      VerticalAlignment="Stretch"
-                      Padding="10,0,10,0">
+                      Background="Transparent"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Top"
+                      Padding="12,0,12,0">
 
                     <!-- Idle: live clock/date + weather strip; brand fallback when all info is off -->
                     <Grid x:Name="IdleContent"
                           Visibility="{Binding CustomIdleVisibility}"
+                          Margin="4,0,4,0"
                           HorizontalAlignment="Center"
                           VerticalAlignment="Center">
-                        <StackPanel Orientation="Horizontal"
+                        <StackPanel x:Name="IdleSmartPanel"
+                                    Orientation="Horizontal"
                                     Spacing="10"
                                     VerticalAlignment="Center"
                                     Visibility="{Binding IdleSmartVisibility}">
-                            <StackPanel Width="64"
+                            <StackPanel x:Name="IdleClockStack"
+                                        MinWidth="52"
                                         Spacing="0"
+                                        HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         Visibility="{Binding IdleClockStackVisibility}">
-                                <TextBlock Text="{Binding IdleClockText}"
-                                           FontSize="20" FontWeight="SemiBold"
-                                           LineHeight="22" LineStackingStrategy="BlockLineHeight"
+                                <TextBlock x:Name="IdleClockBlock"
+                                           Text="{Binding IdleClockText}"
+                                           FontSize="15" FontWeight="SemiBold"
+                                           LineHeight="17" LineStackingStrategy="BlockLineHeight"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
+                                           Typography.NumeralAlignment="Tabular"
                                            Foreground="{ThemeResource PrimaryText}"
                                            Visibility="{Binding IdleClockVisibility}" />
-                                <TextBlock Text="{Binding IdleDateText}"
-                                           FontSize="9" FontWeight="Medium"
-                                           LineHeight="10" LineStackingStrategy="BlockLineHeight"
+                                <TextBlock x:Name="IdleDateBlock"
+                                           Text="{Binding IdleDateText}"
+                                           FontSize="9.5" FontWeight="Medium"
+                                           LineHeight="11" LineStackingStrategy="BlockLineHeight"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
                                            Foreground="{ThemeResource PrimaryText}"
                                            Opacity="0.72"
                                            Visibility="{Binding IdleDateVisibility}" />
                             </StackPanel>
 
-                            <Border Width="1" Height="20"
+                            <Border x:Name="IdleDivider"
+                                    Width="1" Height="18"
                                     Background="{ThemeResource PrimaryText}"
                                     Opacity="0.24"
                                     VerticalAlignment="Center"
                                     Visibility="{Binding IdleDividerVisibility}" />
 
-                            <StackPanel Width="64"
+                            <StackPanel x:Name="IdleWeatherStack"
+                                        MinWidth="52"
                                         Spacing="0"
+                                        HorizontalAlignment="Center"
                                         VerticalAlignment="Center"
                                         Visibility="{Binding IdleWeatherVisibility}"
                                         Opacity="{Binding IdleWeatherOpacity}"
                                         ToolTipService.ToolTip="{Binding IdleWeatherTooltip}">
-                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                    <FontIcon Glyph="{Binding IdleWeatherGlyph}"
-                                              FontSize="14"
-                                              Foreground="{ThemeResource PrimaryText}" />
-                                    <TextBlock Text="{Binding IdleWeatherTemperature}"
+                                <StackPanel x:Name="IdleWeatherHeader"
+                                            Height="17"
+                                            Orientation="Horizontal"
+                                            Spacing="4"
+                                            HorizontalAlignment="Center"
+                                            VerticalAlignment="Center">
+                                    <Viewbox x:Name="IdleWeatherIconBox"
+                                             Width="13.5" Height="13.5"
+                                             Stretch="Uniform"
+                                             VerticalAlignment="Center">
+                                        <Grid Width="16" Height="16">
+                                            <Canvas x:Name="WeatherIconClearDay" Width="16" Height="16" Visibility="Collapsed">
+                                                <Ellipse Canvas.Left="4.8" Canvas.Top="4.8" Width="6.4" Height="6.4" Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" />
+                                                <Path Data="M 8,1.5 L 8,3.2 M 8,12.8 L 8,14.5 M 1.5,8 L 3.2,8 M 12.8,8 L 14.5,8 M 3.4,3.4 L 4.6,4.6 M 12.6,3.4 L 11.4,4.6 M 3.4,12.6 L 4.6,11.4 M 12.6,12.6 L 11.4,11.4"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconClearNight" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 8.2,2.7 A 5.2,5.2 0 1 0 13.3,7.9 A 3.9,3.9 0 0 1 8.2,2.7 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                                <Ellipse Canvas.Left="11.4" Canvas.Top="2.6" Width="1.7" Height="1.7" Fill="{ThemeResource PrimaryText}" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconPartlyCloudyDay" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 5.0,2.1 L 5.0,2.9 M 2.2,3.4 L 2.8,4.0 M 1.3,6.2 L 2.1,6.2 M 7.8,3.4 L 7.2,4.0 M 3.2,8.1 A 2.5,2.5 0 1 1 7.2,5.0"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                <Path Data="M 5.4,13.2 L 12.2,13.2 C 13.5,13.2 14.5,12.2 14.5,10.9 C 14.5,9.7 13.6,8.7 12.4,8.6 C 12.0,6.9 10.5,5.7 8.7,5.7 C 6.8,5.7 5.3,7.1 5.1,8.9 C 4.0,9.1 3.2,10.0 3.2,11.1 C 3.2,12.3 4.2,13.2 5.4,13.2 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconPartlyCloudyNight" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 11.8,1.7 A 2.4,2.4 0 1 0 14.2,4.1 A 1.85,1.85 0 0 1 11.8,1.7 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.25" StrokeLineJoin="Round" />
+                                                <Path Data="M 4.0,13.2 L 10.4,13.2 C 11.6,13.2 12.6,12.2 12.6,11.0 C 12.6,9.8 11.7,8.9 10.6,8.8 C 10.2,7.1 8.8,6.0 7.0,6.0 C 5.2,6.0 3.7,7.3 3.5,9.1 C 2.5,9.3 1.8,10.1 1.8,11.1 C 1.8,12.3 2.8,13.2 4.0,13.2 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconCloudy" Width="16" Height="16" Visibility="Visible">
+                                                <Path Data="M 4.4,11.8 L 11.8,11.8 C 13.1,11.8 14.1,10.8 14.1,9.5 C 14.1,8.3 13.2,7.3 12.0,7.2 C 11.6,5.3 9.9,4.0 8.0,4.0 C 5.9,4.0 4.2,5.6 4.0,7.6 C 2.8,7.8 1.9,8.8 1.9,10.0 C 1.9,11.0 3.0,11.8 4.4,11.8 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconFog" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 4.4,8.6 L 11.8,8.6 C 13.0,8.6 13.9,7.7 13.9,6.6 C 13.9,5.6 13.1,4.7 12.1,4.6 C 11.7,3.2 10.3,2.2 8.6,2.2 C 6.7,2.2 5.2,3.5 5.0,5.1 C 3.8,5.2 2.9,6.1 2.9,7.1 C 2.9,8.0 3.6,8.6 4.4,8.6 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.3" StrokeLineJoin="Round" />
+                                                <Path Data="M 2.5,11.1 L 13.5,11.1 M 4.2,13.6 L 11.8,13.6"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconRain" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 4.4,9.5 L 11.8,9.5 C 13.0,9.5 14.0,8.6 14.0,7.4 C 14.0,6.3 13.1,5.4 12.0,5.3 C 11.6,3.6 10.0,2.3 8.1,2.3 C 6.0,2.3 4.3,3.8 4.1,5.7 C 3.0,5.9 2.1,6.8 2.1,7.9 C 2.1,8.8 3.1,9.5 4.4,9.5 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                                <Path Data="M 5.4,11.5 L 4.5,13.9 M 8.2,11.5 L 7.3,13.9 M 11.0,11.5 L 10.1,13.9"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconHeavyRain" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 4.4,9.2 L 11.8,9.2 C 13.0,9.2 14.0,8.3 14.0,7.1 C 14.0,6.0 13.1,5.1 12.0,5.0 C 11.6,3.3 10.0,2.0 8.1,2.0 C 6.0,2.0 4.3,3.5 4.1,5.4 C 3.0,5.6 2.1,6.5 2.1,7.6 C 2.1,8.5 3.1,9.2 4.4,9.2 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                                <Path Data="M 4.5,11.1 L 3.4,14.2 M 7.0,11.1 L 5.9,14.2 M 9.5,11.1 L 8.4,14.2 M 12.0,11.1 L 10.9,14.2"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconSnow" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 4.4,9.4 L 11.8,9.4 C 13.0,9.4 14.0,8.5 14.0,7.3 C 14.0,6.2 13.1,5.3 12.0,5.2 C 11.6,3.5 10.0,2.2 8.1,2.2 C 6.0,2.2 4.3,3.7 4.1,5.6 C 3.0,5.8 2.1,6.7 2.1,7.8 C 2.1,8.7 3.1,9.4 4.4,9.4 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                                <Ellipse Canvas.Left="4.1" Canvas.Top="11.3" Width="2.0" Height="2.0" Fill="{ThemeResource PrimaryText}" />
+                                                <Ellipse Canvas.Left="7.1" Canvas.Top="12.6" Width="2.0" Height="2.0" Fill="{ThemeResource PrimaryText}" />
+                                                <Ellipse Canvas.Left="10.1" Canvas.Top="11.3" Width="2.0" Height="2.0" Fill="{ThemeResource PrimaryText}" />
+                                            </Canvas>
+                                            <Canvas x:Name="WeatherIconThunderstorm" Width="16" Height="16" Visibility="Collapsed">
+                                                <Path Data="M 4.4,9.2 L 11.8,9.2 C 13.0,9.2 14.0,8.3 14.0,7.1 C 14.0,6.0 13.1,5.1 12.0,5.0 C 11.6,3.3 10.0,2.0 8.1,2.0 C 6.0,2.0 4.3,3.5 4.1,5.4 C 3.0,5.6 2.1,6.5 2.1,7.6 C 2.1,8.5 3.1,9.2 4.4,9.2 Z"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeLineJoin="Round" />
+                                                <Path Data="M 8.8,9.3 L 6.6,12.1 L 8.9,12.1 L 7.2,14.8"
+                                                      Stroke="{ThemeResource PrimaryText}" StrokeThickness="1.35" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" />
+                                            </Canvas>
+                                        </Grid>
+                                    </Viewbox>
+                                    <TextBlock x:Name="IdleWeatherTempBlock"
+                                               Text="{Binding IdleWeatherTemperature}"
                                                FontSize="13.5" FontWeight="SemiBold"
+                                               LineHeight="17" LineStackingStrategy="BlockLineHeight"
+                                               Typography.NumeralAlignment="Tabular"
                                                Foreground="{ThemeResource PrimaryText}"
                                                VerticalAlignment="Center" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding IdleWeatherCity}"
-                                           FontSize="9" FontWeight="Medium"
+                                <TextBlock x:Name="IdleWeatherCityBlock"
+                                           Text="{Binding IdleWeatherCity}"
+                                           FontSize="9.5" FontWeight="Medium"
+                                           LineHeight="11" LineStackingStrategy="BlockLineHeight"
+                                           TextAlignment="Center"
+                                           HorizontalAlignment="Center"
                                            Foreground="{ThemeResource PrimaryText}"
                                            Opacity="0.72"
                                            TextTrimming="CharacterEllipsis"
-                                           MaxWidth="64" />
+                                           MaxWidth="72" />
                             </StackPanel>
                         </StackPanel>
 
-                        <StackPanel Orientation="Horizontal"
+                        <StackPanel x:Name="IdleBrandPanel"
+                                    Orientation="Horizontal"
                                     Spacing="6"
                                     VerticalAlignment="Center"
                                     Visibility="{Binding IdleBrandVisibility}">
-                            <Border Width="12" Height="12" CornerRadius="3">
-                                <Image Source="ms-appx:///Assets/Square44x44Logo.targetsize-24_altform-unplated.png" Width="12" Height="12" />
+                            <Border x:Name="IdleBrandIconBorder" Width="12" Height="12" CornerRadius="3">
+                                <Image x:Name="IdleBrandIconImage" Source="ms-appx:///Assets/Square44x44Logo.targetsize-24_altform-unplated.png" Width="12" Height="12" />
                             </Border>
-                            <TextBlock Text="PULSE"
+                            <TextBlock x:Name="IdleBrandText"
+                                       Text="PULSE"
                                        FontSize="10" FontWeight="SemiBold"
                                        CharacterSpacing="120"
                                        Foreground="{ThemeResource PrimaryText}"
@@ -345,7 +449,8 @@
                           Background="Transparent"
                           PointerReleased="OnEventContentPointerReleased"
                           VerticalAlignment="Center">
-                        <FontIcon Grid.Column="0"
+                        <FontIcon x:Name="NotificationGlyphIcon"
+                                  Grid.Column="0"
                                   Glyph="{Binding NotificationGlyph}"
                                   FontSize="15"
                                   Foreground="{ThemeResource PrimaryText}"
@@ -353,19 +458,22 @@
                                   VerticalAlignment="Center" />
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                            <TextBlock Text="{Binding NotificationTitle}"
+                            <TextBlock x:Name="NotificationTitleBlock"
+                                       Text="{Binding NotificationTitle}"
                                        FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        TextTrimming="CharacterEllipsis"
                                        MaxLines="1" />
-                            <TextBlock Text="{Binding NotificationSubtitle}"
+                            <TextBlock x:Name="NotificationSubtitleBlock"
+                                       Text="{Binding NotificationSubtitle}"
                                        FontSize="10.5" FontWeight="Medium"
                                        Foreground="{ThemeResource SecondaryText}"
                                        TextTrimming="CharacterEllipsis"
                                        MaxLines="1" />
                         </StackPanel>
 
-                        <Button Grid.Column="2"
+                        <Button x:Name="NotificationDismissButton"
+                                Grid.Column="2"
                                 Style="{StaticResource IslandButtonStyle}"
                                 Width="22" Height="22" CornerRadius="11"
                                 Margin="6,0,0,0"
@@ -373,7 +481,7 @@
                                 PointerPressed="OnButtonPointerPressed"
                                 PointerReleased="OnButtonPointerReleased"
                                 ToolTipService.ToolTip="Kapat">
-                            <FontIcon Glyph="&#xE711;" FontSize="9" Foreground="{ThemeResource SecondaryText}" />
+                            <FontIcon x:Name="NotificationDismissGlyph" Glyph="&#xE711;" FontSize="9" Foreground="{ThemeResource SecondaryText}" />
                         </Button>
                     </Grid>
 
@@ -385,7 +493,8 @@
                           PointerReleased="OnCompactFocusPointerReleased"
                           ToolTipService.ToolTip="Odak panelini aç"
                           VerticalAlignment="Center">
-                        <FontIcon Grid.Column="0"
+                        <FontIcon x:Name="FocusCompactGlyphIcon"
+                                  Grid.Column="0"
                                   Glyph="&#xE916;"
                                   FontSize="15"
                                   Foreground="{ThemeResource PrimaryText}"
@@ -393,17 +502,20 @@
                                   VerticalAlignment="Center" />
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="1">
-                            <TextBlock Text="{Binding FocusTimerText}"
+                            <TextBlock x:Name="FocusCompactTimerBlock"
+                                       Text="{Binding FocusTimerText}"
                                        FontSize="12.5" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        MaxLines="1" />
-                            <TextBlock Text="{Binding FocusTimerModeText}"
+                            <TextBlock x:Name="FocusCompactModeBlock"
+                                       Text="{Binding FocusTimerModeText}"
                                        FontSize="10.5" FontWeight="Medium"
                                        Foreground="{ThemeResource SecondaryText}"
                                        MaxLines="1" />
                         </StackPanel>
 
-                        <Button Grid.Column="2"
+                        <Button x:Name="FocusCompactToggleButton"
+                                Grid.Column="2"
                                 Style="{StaticResource IslandButtonStyle}"
                                 Width="24" Height="24" CornerRadius="12"
                                 Margin="6,0,0,0"
@@ -411,7 +523,7 @@
                                 PointerPressed="OnButtonPointerPressed"
                                 PointerReleased="OnButtonPointerReleased"
                                 ToolTipService.ToolTip="Başlat / Duraklat">
-                            <FontIcon Glyph="{Binding FocusPlayPauseGlyph}" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
+                            <FontIcon x:Name="FocusCompactToggleGlyph" Glyph="{Binding FocusPlayPauseGlyph}" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
                         </Button>
                     </Grid>
 
@@ -423,7 +535,8 @@
                           PointerReleased="OnEventContentPointerReleased"
                           ToolTipService.ToolTip="Klasörde göster"
                           VerticalAlignment="Center">
-                        <FontIcon Grid.Column="0"
+                        <FontIcon x:Name="FileOpCompactGlyphIcon"
+                                  Grid.Column="0"
                                   Glyph="&#xE896;"
                                   FontSize="15"
                                   Foreground="{ThemeResource Accent}"
@@ -431,12 +544,14 @@
                                   VerticalAlignment="Center" />
 
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2">
-                            <TextBlock Text="{Binding FileOperationName}"
+                            <TextBlock x:Name="FileOpCompactNameBlock"
+                                       Text="{Binding FileOperationName}"
                                        FontSize="12" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        TextTrimming="CharacterEllipsis"
                                        MaxLines="1" />
-                            <ProgressBar Value="{Binding FileOperationProgress}"
+                            <ProgressBar x:Name="FileOpCompactProgressBar"
+                                         Value="{Binding FileOperationProgress}"
                                          Maximum="100"
                                          Height="3"
                                          Foreground="{ThemeResource Accent}"
@@ -444,7 +559,8 @@
                                          CornerRadius="1.5" />
                         </StackPanel>
 
-                        <TextBlock Grid.Column="2"
+                        <TextBlock x:Name="FileOpCompactStatusBlock"
+                                   Grid.Column="2"
                                    Text="{Binding FileOperationStatusText}"
                                    FontSize="10.5" FontWeight="Medium"
                                    Foreground="{ThemeResource SecondaryText}"
@@ -459,15 +575,16 @@
                           VerticalAlignment="Center">
 
                         <!-- Mini artwork -->
-                        <Border Grid.Column="0"
+                        <Border x:Name="CompactArtBorder"
+                                Grid.Column="0"
                                 Width="26" Height="26"
                                 CornerRadius="7"
                                 Margin="0,0,8,0"
                                 Background="{ThemeResource PillControlBackground}"
                                 PointerReleased="OnMediaSourcePointerReleased"
                                 ToolTipService.ToolTip="Uygulamada aç">
-                            <Grid CornerRadius="7">
-                                <FontIcon Glyph="&#xEC4F;" FontSize="11" Foreground="{ThemeResource SecondaryText}"
+                            <Grid x:Name="CompactArtInnerGrid" CornerRadius="7">
+                                <FontIcon x:Name="CompactArtFallbackGlyph" Glyph="&#xEC4F;" FontSize="11" Foreground="{ThemeResource SecondaryText}"
                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
                             </Grid>
@@ -475,13 +592,15 @@
 
                         <!-- Track title & Artist -->
                         <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="0.5">
-                            <TextBlock Text="{Binding CurrentTrack.Title, TargetNullValue='Pulse'}"
+                            <TextBlock x:Name="CompactTrackTitleBlock"
+                                       Text="{Binding CurrentTrack.Title, TargetNullValue='Pulse'}"
                                        FontSize="11.5" FontWeight="SemiBold"
                                        Foreground="{ThemeResource PrimaryText}"
                                        VerticalAlignment="Center"
                                        TextTrimming="CharacterEllipsis"
                                        MaxLines="1" />
-                            <TextBlock Text="{Binding CurrentTrack.Artist, TargetNullValue='Pulse'}"
+                            <TextBlock x:Name="CompactTrackArtistBlock"
+                                       Text="{Binding CurrentTrack.Artist, TargetNullValue='Pulse'}"
                                        FontSize="9.5" FontWeight="Normal"
                                        Foreground="{ThemeResource SecondaryText}"
                                        VerticalAlignment="Center"
@@ -490,7 +609,8 @@
                         </StackPanel>
 
                         <!-- Right items: Equalizer wave bars & Compact Play/Pause button -->
-                        <StackPanel Grid.Column="2"
+                        <StackPanel x:Name="CompactTrackRightStack"
+                                    Grid.Column="2"
                                     Orientation="Horizontal"
                                     Spacing="6"
                                     VerticalAlignment="Center"
@@ -508,20 +628,25 @@
                             </StackPanel>
 
                             <!-- Compact Play/Pause button -->
-                            <Button Style="{StaticResource IslandButtonStyle}"
+                            <Button x:Name="CompactPlayPauseButton"
+                                    Style="{StaticResource IslandButtonStyle}"
                                     Width="24" Height="24" CornerRadius="12"
                                     Command="{Binding PlayPauseCommand}"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
                                     ToolTipService.ToolTip="Oynat / Duraklat">
-                                <FontIcon Glyph="{Binding PlayPauseGlyph}" FontSize="12" Foreground="{ThemeResource PrimaryText}" />
+                                <FontIcon x:Name="CompactPlayPauseGlyph" Glyph="{Binding PlayPauseGlyph}" FontSize="12" Foreground="{ThemeResource PrimaryText}" />
                             </Button>
                         </StackPanel>
                     </Grid>
                 </Grid>
 
-                <!-- 03: EXPANDED VIEW (Multi-Panel Apple Dynamic Island Carousel) -->
+                <!-- 03: EXPANDED VIEW (Fixed target layout bounds; GPU Opacity/Scale & PillMaskHost clip avoid reflow) -->
                 <Grid x:Name="ExpandedView"
+                      Width="384" Height="240"
+                      HorizontalAlignment="Center"
+                      VerticalAlignment="Top"
+                      Background="Transparent"
                       Visibility="Collapsed"
                       IsHitTestVisible="False"
                       Padding="16,14,16,14"
@@ -566,16 +691,41 @@
                                        Margin="8,0,0,0" />
                         </StackPanel>
 
-                        <!-- Center: iOS-style Interactive Carousel Page Indicators -->
-                        <StackPanel Grid.Column="1"
-                                    Orientation="Horizontal"
-                                    HorizontalAlignment="Center"
+                        <!-- Center: iOS-style Interactive Carousel Page Indicators (GPU clip + translation) -->
+                        <Grid Grid.Column="1"
+                              Width="40" Height="16"
+                              HorizontalAlignment="Center"
+                              VerticalAlignment="Center">
+                            <Border x:Name="PageDotVisual0"
+                                    Width="18" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
                                     VerticalAlignment="Center"
-                                    Spacing="5">
+                                    Background="{ThemeResource PrimaryText}"
+                                    IsHitTestVisible="False" />
+                            <Border x:Name="PageDotVisual1"
+                                    Width="18" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    IsHitTestVisible="False" />
+                            <Border x:Name="PageDotVisual2"
+                                    Width="18" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    IsHitTestVisible="False" />
+
                             <Button x:Name="PageDot0"
                                     Style="{StaticResource IslandButtonStyle}"
-                                    Width="18" Height="5" CornerRadius="2.5"
-                                    Background="{ThemeResource PrimaryText}"
+                                    Width="18" Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
                                     Padding="0"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
@@ -583,9 +733,10 @@
                                     ToolTipService.ToolTip="Medya Çalar" />
                             <Button x:Name="PageDot1"
                                     Style="{StaticResource IslandButtonStyle}"
-                                    Width="6" Height="5" CornerRadius="2.5"
-                                    Background="{ThemeResource PrimaryText}"
-                                    Opacity="0.35"
+                                    Width="6" Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
                                     Padding="0"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
@@ -593,15 +744,16 @@
                                     ToolTipService.ToolTip="Odak Sayacı" />
                             <Button x:Name="PageDot2"
                                     Style="{StaticResource IslandButtonStyle}"
-                                    Width="6" Height="5" CornerRadius="2.5"
-                                    Background="{ThemeResource PrimaryText}"
-                                    Opacity="0.35"
+                                    Width="6" Height="16"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="Transparent"
                                     Padding="0"
                                     PointerPressed="OnButtonPointerPressed"
                                     PointerReleased="OnButtonPointerReleased"
                                     Click="OnPageDot2Click"
                                     ToolTipService.ToolTip="Sistem &amp; Denetim" />
-                        </StackPanel>
+                        </Grid>
 
                         <!-- Right: Header Action Buttons (Collapse, Settings) -->
                         <StackPanel Grid.Column="2" HorizontalAlignment="Right" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
@@ -627,6 +779,9 @@
 
                         <!-- Panel 0: Müzik & Medya -->
                         <Grid x:Name="MediaExpandedPanel" Visibility="Visible" RowDefinitions="*,Auto">
+                            <Grid.CacheMode>
+                                <BitmapCache />
+                            </Grid.CacheMode>
                             <!-- Existing Media Art & Metadata -->
                             <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,4,0,10">
                                 <!-- Square Album Art -->
@@ -783,6 +938,9 @@
 
                         <!-- Panel 1: Odak Sayacı (Pomodoro) -->
                         <Grid x:Name="FocusExpandedPanel" Visibility="Collapsed" RowDefinitions="*,Auto,Auto" Margin="0,4,0,8">
+                            <Grid.CacheMode>
+                                <BitmapCache />
+                            </Grid.CacheMode>
                             <StackPanel Grid.Row="0" VerticalAlignment="Center" Spacing="4">
                                 <TextBlock Text="{Binding FocusTimerModeText, TargetNullValue='Odaklanma'}"
                                            FontSize="11" FontWeight="SemiBold"
@@ -897,13 +1055,13 @@
                                     <Button Style="{StaticResource PlayPauseButtonStyle}"
                                             Width="38" Height="38" CornerRadius="19"
                                             Background="{ThemeResource PrimaryText}"
-                                            Foreground="{ThemeResource IslandBackground}"
+                                            Foreground="{ThemeResource IslandSolidSurface}"
                                             Command="{Binding ToggleFocusTimerCommand}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
                                             ToolTipService.ToolTip="Başlat / Duraklat">
                                         <FontIcon Glyph="{Binding FocusPlayPauseGlyph}" FontSize="14"
-                                                  Foreground="{ThemeResource IslandBackground}" />
+                                                  Foreground="{ThemeResource IslandSolidSurface}" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -911,6 +1069,9 @@
 
                         <!-- Panel 2: Sistem & Denetim (flat, Apple Control Center feel — no cards) -->
                         <Grid x:Name="SystemExpandedPanel" Visibility="Collapsed">
+                            <Grid.CacheMode>
+                                <BitmapCache />
+                            </Grid.CacheMode>
                             <StackPanel VerticalAlignment="Center" Spacing="14" Margin="6,0">
                                 <!-- Volume row (flat Apple Control Center style) -->
                                 <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
@@ -979,17 +1140,18 @@
                     </Grid>
                 </Grid>
             </Grid>
-        </Border>
+        </Grid>
 
         <!-- Trailing Detached Capsule for Secondary Contextual Events (Apple Split Island) -->
         <Border x:Name="DetachedPill"
                 Width="66" Height="40"
                 CornerRadius="20"
+                Margin="0,3,0,0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Background="{ThemeResource IslandBackground}"
-                BorderBrush="Transparent"
-                BorderThickness="0"
+                BorderBrush="{ThemeResource IslandBorder}"
+                BorderThickness="1"
                 Opacity="0"
                 Visibility="Collapsed"
                 PointerEntered="OnDetachedPillPointerEntered"
@@ -998,20 +1160,38 @@
                 PointerReleased="OnDetachedPillPointerReleased"
                 ToolTipService.ToolTip="{Binding DetachedToolTip}">
 
-            <StackPanel Orientation="Horizontal" Spacing="3"
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Padding="4,0,4,0">
-                <FontIcon Glyph="{Binding DetachedGlyph}"
-                          FontSize="11"
-                          Foreground="{ThemeResource PrimaryText}"
-                          VerticalAlignment="Center" />
-                <TextBlock Text="{Binding DetachedBadgeText}"
-                           FontSize="10.5"
-                           FontWeight="SemiBold"
-                           Foreground="{ThemeResource PrimaryText}"
-                           VerticalAlignment="Center"
-                           MaxLines="1" />
-            </StackPanel>
+            <Grid CornerRadius="{Binding CornerRadius, ElementName=DetachedPill}">
+                <Rectangle x:Name="DetachedFrostSheen"
+                           Height="16"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Top"
+                           IsHitTestVisible="False">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop x:Name="DetachedFrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
+                            <GradientStop Color="#00FFFFFF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+
+                <StackPanel x:Name="DetachedInnerStack"
+                            Orientation="Horizontal" Spacing="3"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Padding="4,0,4,0">
+                    <FontIcon x:Name="DetachedGlyphIcon"
+                              Glyph="{Binding DetachedGlyph}"
+                              FontSize="11"
+                              Foreground="{ThemeResource PrimaryText}"
+                              VerticalAlignment="Center" />
+                    <TextBlock x:Name="DetachedBadgeTextBlock"
+                               Text="{Binding DetachedBadgeText}"
+                               FontSize="10.5"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource PrimaryText}"
+                               VerticalAlignment="Center"
+                               MaxLines="1" />
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

@@ -7,39 +7,59 @@
 [![NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![WinUI 3](https://img.shields.io/badge/WinUI-3.0-0078D4?style=for-the-badge&logo=windows11)](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/)
 [![Windows App SDK](https://img.shields.io/badge/WindowsAppSDK-2.5.1-0078D4?style=for-the-badge)](https://github.com/microsoft/windowsappsdk)
+[![Tests](https://img.shields.io/badge/Tests-172%20Passing-30D158?style=for-the-badge)](tests/Pulse.Tests)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-*Pulse brings a sleek, interactive, micro-animated Dynamic Island experience to your Windows desktop, with native system media control, live album art, a monochrome Pomodoro focus timer, a matching system control panel, fluid dark/light theme adaptability, and a smart idle strip for the time, date and local weather.*
+*Pulse brings a sleek, GPU-animated Liquid Glass Dynamic Island experience to Windows 11 — combining native system media control, synced lyrics, adaptive album-art frost, a monochrome Pomodoro focus timer, a matching system control panel, real-time OS notifications, and a smart idle strip for time, date and weather.*
 
 ---
 
-<img src="docs/images/island-compact.png" width="360" alt="Pulse compact pill" />
+<p>
+  <img src="docs/images/island-compact.png" width="340" alt="Pulse compact media pill capturing live Spotify playback with album art tint" />
+</p>
+<p><em><strong>Compact Media Pill:</strong> Live track artwork, artist/title metadata, play/pause toggle, and adaptive artwork color tinting inside a crisp GPU-clipped capsule.</em></p>
 
-<em>Compact state: live track pill with album art, title, artist and playback control.</em>
+<br />
 
-<img src="docs/images/island-expanded-media.png" width="585" alt="Pulse media panel with synced lyrics" />
+<p>
+  <img src="docs/images/island-expanded-media.png" width="480" alt="Pulse expanded media dashboard with album artwork, seek bar, synced lyrics, and transport controls" />
+</p>
+<p><em><strong>Expanded Media Dashboard:</strong> Adaptive artwork frost tinting, drag-to-seek timeline, live synced <code>lrclib</code> lyrics (current + upcoming line), and transport controls. Tap the artwork to jump straight to the source app.</em></p>
 
-<em>Expanded media panel: album art, seek timeline, synced lyrics (current + upcoming line) and Apple-style transport controls. Tap the artwork to jump to the source app.</em>
+<br />
 
-<img src="docs/images/island-expanded-focus.png" width="585" alt="Pulse focus timer" />
+<p>
+  <img src="docs/images/island-expanded-focus.png" width="480" alt="Pulse monochrome Pomodoro focus timer panel showing live countdown and presets" />
+</p>
+<p><em><strong>Focus Timer Panel:</strong> Monochrome Pomodoro presets (25/50 min work, 5/15 min break), tabular live countdown digits, and a spring-animated progress hairline. Tap the countdown to configure custom durations from 1 to 180 minutes.</em></p>
 
-<em>Focus timer panel: monochrome Pomodoro presets (25/50 min work, 5/15 min break), tabular countdown digits and a spring-animated progress hairline. Tap the countdown to set a custom duration from 1 to 180 minutes.</em>
+<br />
 
-<img src="docs/images/island-expanded-system.png" width="585" alt="Pulse system panel" />
+<p>
+  <img src="docs/images/island-expanded-system.png" width="480" alt="Pulse system controls panel with volume slider, battery percentage, and screenshot capture" />
+</p>
+<p><em><strong>System &amp; Control Panel:</strong> Monochrome WASAPI master volume slider with mute toggle, semantic battery telemetry (green charging pulse, red low-battery warning), and one-click screenshot capture.</em></p>
 
-<em>System panel: monochrome volume control with mute state, semantic battery colors (green while charging, red when low) with a subtle charging pulse, and one-click screenshot capture.</em>
+<br />
 
-<img src="docs/images/island-split.png" width="400" alt="Pulse split island with media and focus timer" />
+<p>
+  <img src="docs/images/island-split.png" width="360" alt="Pulse split island pairing compact media capsule with active focus timer capsule" />
+</p>
+<p><em><strong>Split Island:</strong> When media playback and a focus session run concurrently, the island morphs cleanly into paired media and timer capsules. Clicking the detached timer opens the Focus panel.</em></p>
 
-<em>Split island: when media and a focus session run together, the island separates into a media capsule and a live focus capsule. Tapping the timer opens the focus panel.</em>
+<br />
 
-<img src="docs/images/settings-dark.png" width="440" alt="Pulse settings window with island behavior controls" />
+<p>
+  <img src="docs/images/settings-dark.png" width="560" alt="Pulse Settings window in Dark theme showing island behavior and idle display switches" />
+</p>
+<p><em><strong>Settings (Dark Theme):</strong> Live hover-expand controls, delay slider, auto-collapse, fullscreen auto-hide, equalizer waves, and independent idle strip toggles.</em></p>
 
-<em>Settings: dark, light and system themes with live transitions, motion profiles plus a 70-140% speed slider, artwork tint strength, glass transparency, layout controls, and smart idle clock/date/weather toggles with manual city verification.</em>
+<br />
 
-<img src="docs/images/settings-notifications.png" width="440" alt="Pulse settings notification controls" />
-
-<em>Notification controls: per-category toggles for the audio HUD, power and download alerts, plus the focus-completion chime. Changes apply live and are debounced to a single disk write.</em>
+<p>
+  <img src="docs/images/settings-notifications.png" width="560" alt="Pulse Settings window in Light theme showing notification categories and theme selector" />
+</p>
+<p><em><strong>Settings (Light Theme &amp; Notifications):</strong> Full Light/Dark parity with per-category toggles for hardware volume HUD, power events, downloads, Windows toast mirroring, Bluetooth devices, focus chime, and theme/glass controls.</em></p>
 
 ---
 
@@ -47,59 +67,47 @@
 
 ## Key Features
 
-- **Dynamic Island UI**: Floating, top-aligned desktop widget with multi-state transitions (Idle, Compact, Hover, Expanded, Track Change pulse).
-- **Smart Idle Strip**: When no media is playing, the compact pill shows a live clock, Turkish date and local weather side by side. Weather uses Open-Meteo (no API key) and refreshes every 15 minutes; location comes from an approximate IP lookup or a manually verified city. Clock, date and weather can each be hidden. Automatic mode sends the public IP to `ipwho.is`; weather coordinates go to Open-Meteo.
-- **Fully Configurable Appearance**: Dark/Light/System themes, glass transparency (0-100%), artwork tint strength (0-100%), motion profile and speed (70-140%), island scale and top offset are all live-adjustable from Settings, along with idle clock/date/weather toggles and a manual city override.
-- **Live Media Session Control**: Synchronizes automatically with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC and more.
-- **Album Art & Adaptive Theming**: Dynamic artwork extraction, caching, accent-color sampling and adjustable tint strength (0-100%) across dark, light and system themes.
-- **Interactive Timeline & Seeking**: Real-time progress with drag-to-seek support and ±15s skip controls, laid out like Apple's expanded Live Activity.
-- **Liquid-Glass Frost Effect**: Toggleable glass mode with a 0-100% transparency slider that samples and blurs the live desktop behind the island, then layers the current album-art tint on top for a true frosted-glass look.
-- **Focus Timer (Pomodoro)**: Monochrome preset work/break chips (25/50, 5/15 minutes), a tap-to-set custom duration from 1 to 180 minutes, live countdown, session auto-switching that keeps the island pinned while a session runs, and a completion state that labels the finished session and plays the Windows notification chime.
-- **System Controls Panel**: Master volume with integer stepping and a neutral mute state, live battery telemetry with green charging and red low-battery accents plus a subtle charging pulse, and instant screenshot capture that saves locally and copies to the clipboard.
-- **Avatar Pulse (Track Change)**: Smooth scale-in/out micro animations on track changes, plus layout snap animations.
-- **Tap to Open (Deep Link)**: Tap the album artwork in the island to jump straight to the app that owns the playback (Spotify, browser, any GSMTC source). Notification and download capsules open their related file or folder.
-- **Real Event Awareness**: Live AC/charging detection (plug the charger and the island reacts even at 100%), external volume-change HUD (hardware keys), and a Downloads watcher that surfaces completed downloads.
-- **Apple-Style Alert Takeover**: Incoming alerts briefly take over the presentation and then hand back to the current activity.
-- **Single-Instance Launch Guard**: Re-launching Pulse never spawns a broken second copy - the running island surfaces (and expands) instead.
-- **Alive Controls**: Every island button has hover, pressed and disabled feedback; the focus countdown uses tabular digits and an animated progress hairline.
-- **Synced Lyrics**: lrclib-backed word-timed lyrics shown in the expanded media panel with graceful query fallbacks (album/duration drift tolerant).
-- **Global Hotkeys**: Win+Alt+I shows/hides the island; Win+Shift+F starts or pauses the focus timer from anywhere.
-- **Spring Motion Profiles**: expand/collapse runs on a damped harmonic spring; the motion-intensity setting (Minimal/Balanced/Fluid) plus a 70-140% speed slider changes damping and duration for real.
-- **Notification Controls**: Per-category toggles in Settings for the audio HUD, power/charging alerts, download notifications and the focus-completion chime. Changes apply live and are debounced into one disk write.
-- **Fullscreen & Game Aware**: Exclusive fullscreen is detected through the shell, and borderless/windowed fullscreen games are detected from the foreground window covering the monitor. Maximized windows are excluded, so the island never disappears while you work.
-- **Split Island**: Media and a running focus session share the compact strip as two capsules, then merge back into one card.
-- **Reduced Motion**: Respects the Windows animation-effects setting - motion is disabled instantly when the OS asks for it.
-- **Unstealable Topmost**: z-order changes are forced back to topmost in WM_WINDOWPOSCHANGING, so the island can never be buried by other apps.
-- **System Tray Integration**: Unobtrusive background operation with quick access menu, media controls, startup toggle and quick exit.
-- **Multi-Monitor & DPI Aware**: Adapts to DPI scale factors and monitor layouts per cursor position without clipping or blurred rendering.
-- **Unit Tested Architecture**: Clean MVVM architecture with platform-decoupled state machine and weather/location coverage (116 automated tests).
+- **Zero-Reflow GPU Composition Pipeline**: Smooth multi-state morphing (Idle, Compact, Hover, Expanded, Split, Track Change pulse) driven by `Microsoft.UI.Composition` damped harmonic springs without layout thrashing, framed inside a 3 DIP antialiased `SetWindowRgn` surface and precision rounded clip so pill corners remain sharp across DPI scales.
+- **Liquid-Glass Frost Engine**: Toggleable frosted glassmorphism (`LiquidGlassEngine` + `DesktopFrostService`) with a 0–100% transparency slider that samples and blurs the live desktop behind the island, adds an optical Fresnel highlight rim, and blends album-art accent tinting cleanly across Dark, Light, and System themes.
+- **Live Theme Switching (Dark / Light / System)**: Instant runtime `RequestedTheme` updates across the Island and Settings window without restarting the app.
+- **Smart Idle Strip**: When no media is playing, the compact pill displays a live clock, Turkish date, and Open-Meteo local weather (15-minute refresh, automatic `ipwho.is` IP lookup or manually verified city). Clock, date, and weather can each be toggled independently.
+- **Live Media Session Control**: Automatic integration with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC, and more — featuring dynamic artwork caching, seekable progress bar, ±15s skip controls, and synced lyrics powered by `lrclib`.
+- **Split Island**: Concurrent media playback and an active focus countdown automatically split into paired left/right capsules and merge seamlessly when either finishes.
+- **Focus Timer (Pomodoro)**: Monochrome preset chips (`25/50` work, `5/15` break), custom duration picker (`1–180` min), tabular countdown digits, session auto-switching, pinned capsule visibility, and optional completion chime.
+- **System & Control Panel**: Stepwise WASAPI master volume slider with neutral mute state, live battery & AC charging detection (green while charging with subtle pulse, red when low), and instant screenshot capture saved locally and copied to the clipboard.
+- **Real OS Event Awareness**:
+  - **Windows Toast Listener**: Surfaces WhatsApp, Discord, browser, and system toast notifications directly inside the island.
+  - **Bluetooth Device Alerts**: Announces headset and peripheral connections/battery level via Bluetooth radio monitoring.
+  - **Audio, Power, Downloads & Screenshots**: Live hardware volume HUD, AC/charging transitions, completed file detection in Downloads, and instant screenshot alert capsules.
+- **Apple-Style Alert Takeover & Deep Links**: Transient alerts briefly take over the pill and hand back to ongoing playback/focus cleanly; tapping artwork opens the source media app, and tapping alert capsules opens their file or folder.
+- **Fullscreen & Game Mode Recovery**: Automatically hides for exclusive and borderless fullscreen games (excluding normal maximized windows) and cleanly recovers island/playback state when exiting fullscreen.
+- **Single-Instance Guard & Tray Integration**: Re-launching Pulse brings up the existing instance, `--settings` routes directly to a single Settings window, global hotkeys (`Win+Alt+I`, `Win+Shift+F`), unstealable topmost `WM_WINDOWPOSCHANGING` handling, Windows Startup registry management, and full Reduced Motion compliance.
+- **Unit Tested Architecture**: Clean MVVM separation with platform-decoupled core state, animation layout, Liquid Glass math, and weather services (**172 automated xUnit tests**).
 
 ---
 
 ## Architecture & Technology Stack
 
 - **Framework**: .NET 9.0 / C# 13
-- **UI Platform**: WinUI 3 (Windows App SDK 2.5.1, unpackaged & self-contained deployment)
-- **Effects**: Microsoft Composition (Spring/Fluid animations), DWM-backed transparent window surfaces, GDI-based frosted-desktop sampling
-- **Media API**: `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager`
-- **Weather & Location**: Open-Meteo current conditions and geocoding, ipwho.is IP lookup, JSON disk caches
-- **System APIs**: WASAPI endpoint volume, Win32 power status (`GetSystemPowerStatus`), GDI screen capture
-- **MVVM Pattern**: `CommunityToolkit.Mvvm`
-- **Testing**: xUnit with Moq
+- **UI Platform**: WinUI 3 (Windows App SDK 2.5.1, unpackaged & self-contained `win-x64`)
+- **Rendering & Motion**: `Microsoft.UI.Composition` GPU spring & clip geometry pipeline, DWM transparent host window, `LiquidGlassEngine`, GDI frosted desktop sampling
+- **Media & Lyrics**: `Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager` (GSMTC), `lrclib` synced lyrics client
+- **Notifications & System APIs**: `UserNotificationListener` (Windows toasts), Bluetooth radio/device watcher, WASAPI endpoint volume, `GetSystemPowerStatus`, `FileSystemWatcher`, Win32 `SetWindowRgn` & global hotkeys
+- **Weather & Location**: Open-Meteo forecast & geocoding APIs, `ipwho.is` IP lookup, JSON disk caches
+- **MVVM & Serialization**: `CommunityToolkit.Mvvm`, source-generated `System.Text.Json` contexts
+- **Testing**: xUnit with Moq (172 unit tests)
 
 ---
 
 ## Screens Flow
 
-The island exposes three pages while expanded. Switch pages by scrolling the mouse wheel over the expanded panel.
+While expanded, scroll the mouse wheel over the island panel to switch seamlessly between the three pages:
 
-1. **Media** - playback, timeline and transport controls.
-2. **Focus Timer** - monochrome Pomodoro focus timer with preset chips.
-3. **System & Control** - monochrome master volume, battery status with semantic charging/low colors, screenshot capture.
+1. **Media** — playback metadata, drag-to-seek timeline, synced lyrics, and transport controls.
+2. **Focus Timer** — monochrome Pomodoro focus timer with presets and custom duration picker.
+3. **System & Control** — monochrome master volume, semantic charging/low battery status, and screenshot capture.
 
-The Focus and System pages share a restrained monochrome control palette; battery green/red is the only semantic color exception. When nothing is playing, the compact pill switches to the smart idle strip: clock and date on the left, local weather on the right. The wordmark remains as a fallback when all idle information is disabled or unavailable.
-
-Clicking the collapsed pill expands the island; clicking outside (or the collapse arrow) returns it to the compact state. The island can be hidden from the tray or the right-click menu and restored later.
+Clicking the collapsed pill expands the dashboard; clicking outside or pressing the collapse chevron returns to compact mode. Right-click the island or use the tray icon to expand the island, open Settings, trigger Focus shortcuts, or Hide/Show the island.
 
 ---
 
@@ -107,10 +115,10 @@ Clicking the collapsed pill expands the island; clicking outside (or the collaps
 
 ### Prerequisites
 
-1. **Windows 10/11** (Build 19041 or newer, recommended Build 26100+)
+1. **Windows 10/11** (Build 19041 or newer, recommended Windows 11 Build 26100+)
 2. **.NET 9.0 SDK** ([Download .NET 9](https://dotnet.microsoft.com/download/dotnet/9.0))
 
-No Developer Mode or Windows App Runtime installation is required; the app ships as an unpackaged, self-contained executable.
+No Developer Mode or external Windows App Runtime installation is required; the application builds as an unpackaged, self-contained executable.
 
 ### Building & Running
 
@@ -121,23 +129,23 @@ Clone the repository and build using the .NET CLI:
 git clone https://github.com/sandrotonal/pulse.git
 cd pulse
 
-# Build the solution
-dotnet build Pulse.sln
+# Build the solution (Release)
+dotnet build Pulse.sln -c Release
 
-# Run unit tests
-dotnet test Pulse.sln
+# Run automated unit tests (172 tests)
+dotnet test tests\Pulse.Tests\Pulse.Tests.csproj -c Release --no-build
 
 # Run the app
 dotnet run --project src/Pulse/Pulse.csproj
 ```
 
-To launch the compiled binary directly:
+To launch the compiled Release binary directly:
 
 ```powershell
-.\src\Pulse\bin\x64\Debug\net9.0-windows10.0.26100.0\win-x64\Pulse.exe
+.\src\Pulse\bin\x64\Release\net9.0-windows10.0.26100.0\win-x64\Pulse.exe
 ```
 
-If the app was previously running, stop existing instances first:
+If an instance is already running, stop it cleanly before replacing binaries:
 
 ```powershell
 Stop-Process -Name Pulse -Force -ErrorAction SilentlyContinue
@@ -147,36 +155,43 @@ Stop-Process -Name Pulse -Force -ErrorAction SilentlyContinue
 
 ## Usage & Controls
 
-- **Mouse Wheel**: change pages (Media, Focus Timer, System Controls) while expanded.
+- **Mouse Wheel**: switch expanded pages (Media, Focus Timer, System & Control).
 - **Click Pill**: toggle the expanded dashboard.
-- **Hotkeys**: Win+Alt+I toggles the island, Win+Shift+F toggles the focus timer.
-- **Click Artwork**: open the app that is currently playing (deep link to Spotify/browser/VLC etc.).
-- **Click Alert Capsule**: open the related target (screenshot file, downloads folder, focus panel).
-- **Hover**: quick state (media wave animation, track details).
-- **Right Click / System Tray**: settings panel, focus timer shortcuts, notification simulator, taskbar flyout, hide island.
-- **Idle Settings**: toggle the idle clock, date and weather; use automatic IP location or verify a manual city. Weather refreshes every 15 minutes.
-- **Dynamic Tinting**: album art driven accent changes blended into the glass background and media accents; Focus and System controls stay monochrome.
-- **Slider (System Page)**: stepwise master volume; the mute glyph reflects the active state without a color accent.
+- **Hotkeys**: `Win+Alt+I` shows/hides the island; `Win+Shift+F` starts/pauses the focus timer.
+- **Click Artwork**: deep-link to the app currently owning GSMTC playback (Spotify, browser, VLC, etc.).
+- **Click Alert Capsule**: open the associated target (screenshot image, Downloads folder, focus panel).
+- **Hover**: quick preview with animated live equalizer bars and track details.
+- **Right Click / System Tray**: Expand/collapse the island, Settings window, Focus shortcuts, Notification test triggers, Hide/Exit.
+- **Theme & Glass**: configure Dark/Light/System theme, 0–100% Liquid Glass transparency, and 0–100% artwork tint strength live in Settings.
 
 ---
 
 ## Repository Structure
 
-```
+```text
 pulse/
 ├── src/
-│   └── Pulse/                      # Main WinUI 3 Application
-│       ├── Components/             # UI Views, Dynamic Island Controls
-│       ├── Views/                  # Island window and Settings window
-│       ├── Core/                   # Platform-neutral services & contracts
-│       ├── Services/               # Media Session, System Tray, Settings
-│       ├── ViewModels/             # MVVM ViewModels
-│       ├── Helpers/                # Win32 Interop, Windowing & Animation helpers
+│   └── Pulse/                      # Main WinUI 3 Application (.NET 9)
+│       ├── Controls/               # Custom UI controls (PulseSeekBar)
+│       ├── Core/                   # Platform-neutral Core library (Pulse.Core)
+│       │   ├── Animation/          # Spring presets, Surface layout & SetWindowRgn pixel math
+│       │   ├── Events/             # Pub/sub event models
+│       │   ├── Interfaces/         # Service & platform abstractions
+│       │   ├── Models/             # Settings, Media, Focus, System & Weather models
+│       │   └── Services/           # State machine, LiquidGlassEngine, Downloads, Weather & Settings
+│       ├── Services/               # Windows platform integrations
+│       │   ├── Artwork/            # Album art extraction & disk cache
+│       │   ├── Glass/              # DesktopFrostService behind-island blur sampling
+│       │   ├── Lyrics/             # lrclib synced lyrics client
+│       │   ├── Media/              # GSMTC media session & playback controller
+│       │   └── System/             # Toast listener, Bluetooth, Startup, Screenshot, Tray & WASAPI audio
+│       ├── ViewModels/             # MVVM ViewModels (Island, Settings, Media)
+│       ├── Views/                  # Island & Settings windows
 │       └── Assets/                 # App icons and graphics
 ├── tests/
-│   └── Pulse.Tests/                # xUnit Automated Tests
+│   └── Pulse.Tests/                # xUnit Automated Tests (172 tests)
 ├── docs/
-│   └── images/                     # README screenshots
+│   └── images/                     # Live WinUI 3 application screenshots
 ├── Pulse.sln                       # Visual Studio / .NET Solution
 └── README.md
 ```

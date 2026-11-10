@@ -69,4 +69,35 @@ public sealed class EventRouterTests
         router.Dismiss("notif_1");
         Assert.Equal("media_1", router.CurrentActiveEvent?.Id);
     }
+
+    [Fact]
+    public async Task LockedInteractionDoesNotExpireQueuedNotificationBeforeUnlock()
+    {
+        using var router = new EventRouter();
+        var mediaEvent = new MediaEvent("media_1", null, true, DateTimeOffset.UtcNow);
+        var shortNotification = new SystemNotificationEvent(
+            "toast_short",
+            EventCategory.SystemToast,
+            "Discord: Ali",
+            "Oyuna gel",
+            "\uE7E7",
+            EventPriority.Informational,
+            DisplayDuration: TimeSpan.FromMilliseconds(140));
+
+        router.Publish(mediaEvent);
+        router.LockUserInteraction();
+        router.Publish(shortNotification);
+
+        // Wait longer than the notification's own display duration while locked
+        await Task.Delay(260);
+        Assert.Equal("media_1", router.CurrentActiveEvent?.Id);
+
+        // Upon unlock, the queued notification must STILL appear instead of having expired unseen
+        router.UnlockUserInteraction();
+        Assert.Equal("toast_short", router.CurrentActiveEvent?.Id);
+
+        // After its display window elapses while actually visible, it dismisses back to media
+        await Task.Delay(320);
+        Assert.Equal("media_1", router.CurrentActiveEvent?.Id);
+    }
 }

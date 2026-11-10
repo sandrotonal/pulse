@@ -1,11 +1,19 @@
 namespace Pulse.Core.Interfaces;
 
+public sealed record AudioStateChangedEventArgs(int VolumePercent, bool IsMuted, bool IsSelfOriginated, bool IsDeviceSwitch = false);
+
 /// <summary>
 /// Real system-level controls: endpoint volume, mute, screen capture, battery.
 /// Platform implementations live in the app project; tests may stub it.
 /// </summary>
 public interface ISystemControlService
 {
+    event EventHandler<AudioStateChangedEventArgs>? AudioStateChanged
+    {
+        add { }
+        remove { }
+    }
+
     int GetMasterVolume();
 
     void SetMasterVolume(int percent);

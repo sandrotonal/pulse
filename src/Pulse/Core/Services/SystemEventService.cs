@@ -62,6 +62,11 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportBluetoothStatus(string deviceName, bool isConnected)
     {
+        if (_settings is not null && !_settings.Current.BluetoothNotifications)
+        {
+            return;
+        }
+
         var name = string.IsNullOrWhiteSpace(deviceName) ? "Bluetooth Cihazı" : deviceName;
         var evt = new SystemNotificationEvent(
             $"bt_{name}",
@@ -110,6 +115,35 @@ public sealed class SystemEventService : ISystemEventService
             TimeSpan.FromSeconds(3.0),
             LaunchTarget: filePath
         );
+
+        _eventRouter.Publish(evt);
+    }
+
+    public void ReportSystemToast(
+        string toastId,
+        string title,
+        string subtitle,
+        string iconGlyph,
+        bool isUrgent = false,
+        string? launchTarget = null)
+    {
+        if (_settings is not null && !_settings.Current.SystemToastNotifications)
+        {
+            return;
+        }
+
+        var id = string.IsNullOrWhiteSpace(toastId)
+            ? $"toast_{Guid.NewGuid():N}"
+            : $"toast_{toastId}";
+        var evt = new SystemNotificationEvent(
+            id,
+            EventCategory.SystemToast,
+            string.IsNullOrWhiteSpace(title) ? "Windows Bildirimi" : title,
+            subtitle ?? string.Empty,
+            string.IsNullOrWhiteSpace(iconGlyph) ? "\uE7E7" : iconGlyph,
+            isUrgent ? EventPriority.Warning : EventPriority.Informational,
+            TimeSpan.FromSeconds(isUrgent ? 4.2 : 3.2),
+            LaunchTarget: launchTarget);
 
         _eventRouter.Publish(evt);
     }

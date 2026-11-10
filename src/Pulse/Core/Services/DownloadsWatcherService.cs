@@ -20,14 +20,14 @@ public sealed class DownloadsWatcherService : IDisposable
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _pending = new();
     private bool _isDisposed;
 
-    public DownloadsWatcherService(IEventRouter eventRouter, ISettingsService? settings = null)
+    public DownloadsWatcherService(IEventRouter eventRouter, ISettingsService? settings = null, string? downloadsDirectory = null)
     {
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
         _settings = settings;
 
-        var downloads = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "Downloads");
+        var downloads = string.IsNullOrWhiteSpace(downloadsDirectory)
+            ? KnownFolderResolver.GetDownloadsDirectory()
+            : downloadsDirectory;
 
         if (!Directory.Exists(downloads))
         {
@@ -132,6 +132,20 @@ public sealed class DownloadsWatcherService : IDisposable
 
     private static bool IsCandidate(string path)
     {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return false;
+        }
+
+        var fileName = Path.GetFileName(path);
+        if (string.IsNullOrWhiteSpace(fileName) ||
+            fileName.StartsWith('.') ||
+            fileName.StartsWith('~') ||
+            fileName.EndsWith(":Zone.Identifier", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
         var extension = Path.GetExtension(path);
         return !TempExtensions.Any(temp => string.Equals(temp, extension, StringComparison.OrdinalIgnoreCase));
     }

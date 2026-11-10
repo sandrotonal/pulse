@@ -8,8 +8,11 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
+using Pulse.Core.Animation;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
+using Pulse.Core.Services.Weather;
+using Pulse.Services.Glass;
 using Pulse.ViewModels;
 using Windows.Graphics;
 
@@ -51,7 +54,12 @@ public sealed partial class IslandWindow : Window
     private readonly IslandViewModel _viewModel;
     private readonly IntPtr _hwnd;
     private readonly Visual _surfaceVisual;
+    private readonly Visual _pillMaskVisual;
+    private readonly Visual _frostSheenVisual;
     private CompositionRoundedRectangleGeometry? _surfaceClipGeometry;
+    private CompositionRoundedRectangleGeometry? _frostRimGeometry;
+    private CompositionSpriteShape? _frostRimShape;
+    private ShapeVisual? _frostRimVisual;
     private readonly Visual _compactVisual;
     private Visual _expandedVisual;
     private readonly Visual _wave1Visual;
@@ -62,27 +70,73 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _systemPanelVisual;
     private readonly Visual _detachedVisual;
     private readonly Visual _batteryChargeHaloVisual;
-    private readonly Pulse.Core.Animation.DampedSpringOscillator _springOscillator = new(dampingRatio: 0.82, responseSeconds: 0.34);
-    private readonly Pulse.Core.Animation.DampedSpringOscillator _pageSpring = new(dampingRatio: 0.9, responseSeconds: 0.3);
+    private readonly Border[] _dotVisualElements;
+    private readonly Visual[] _dotVisuals = new Visual[3];
+    private readonly CompositionRoundedRectangleGeometry[] _dotClipGeometries = new CompositionRoundedRectangleGeometry[3];
+    private readonly Button[] _dotButtons;
+    private readonly DampedSpringOscillator _springMinimal = new(dampingRatio: 0.95, responseSeconds: 0.25);
+    private readonly DampedSpringOscillator _springNormal = new(dampingRatio: 0.82, responseSeconds: 0.34);
+    private readonly DampedSpringOscillator _springDynamic = new(dampingRatio: 0.60, responseSeconds: 0.40);
+    private readonly DampedSpringOscillator _pageSpringMinimal = new(dampingRatio: 0.95, responseSeconds: 0.22);
+    private readonly DampedSpringOscillator _pageSpringNormal = new(dampingRatio: 0.90, responseSeconds: 0.30);
+    private readonly DampedSpringOscillator _pageSpringDynamic = new(dampingRatio: 0.72, responseSeconds: 0.34);
+    private readonly DampedSpringOscillator _dotSpringMinimal = new(dampingRatio: 0.95, responseSeconds: 0.18);
+    private readonly DampedSpringOscillator _dotSpringNormal = new(dampingRatio: 0.86, responseSeconds: 0.24);
+    private readonly DampedSpringOscillator _dotSpringDynamic = new(dampingRatio: 0.68, responseSeconds: 0.28);
+    private DampedSpringOscillator _activeDimensionSpring;
     private readonly SubclassProc _subclassProc;
+
+    private bool _isRenderLoopSubscribed;
+    private long _lastRenderTicks;
 
     private long _lastWheelNavTicks;
     private const long WheelDebounceTicks = 200 * TimeSpan.TicksPerMillisecond;
     private const float PageSlideDistance = 24f;
     private int _targetPageIndex;
     private bool _isPageAnimating;
-    private long _pageAnimStartTicks;
+    private double _pageAnimElapsedSec;
     private int _pageAnimFromIndex;
     private int _pageAnimToIndex;
     private readonly double[] _pageFromX = new double[3];
     private readonly double[] _pageToX = new double[3];
     private readonly double[] _pageVelX = new double[3];
+    private readonly double[] _pageCurrX = new double[3];
+    private readonly double[] _pageCurrVelX = new double[3];
     private readonly double[] _pageFromOpacity = new double[3];
     private readonly double[] _pageToOpacity = new double[3];
+    private readonly double[] _pageVelOpacity = new double[3];
+    private readonly double[] _pageCurrOpacity = new double[3];
+    private readonly double[] _pageCurrVelOpacity = new double[3];
     private readonly double[] _pageFromScale = new double[3];
     private readonly double[] _pageToScale = new double[3];
+    private readonly double[] _pageVelScale = new double[3];
+    private readonly double[] _pageCurrScale = new double[3];
+    private readonly double[] _pageCurrVelScale = new double[3];
+
+    private bool _isDotAnimating;
+    private double _dotAnimElapsedSec;
+    private readonly double[] _dotStartWidth = [18.0, 6.0, 6.0];
+    private readonly double[] _dotTargetWidth = [18.0, 6.0, 6.0];
+    private readonly double[] _dotVelWidth = new double[3];
+    private readonly double[] _dotCurrWidth = [18.0, 6.0, 6.0];
+    private readonly double[] _dotCurrVelWidth = new double[3];
+    private readonly double[] _dotStartOpacity = [1.0, 0.35, 0.35];
+    private readonly double[] _dotTargetOpacity = [1.0, 0.35, 0.35];
+    private readonly double[] _dotVelOpacity = new double[3];
+    private readonly double[] _dotCurrOpacity = [1.0, 0.35, 0.35];
+    private readonly double[] _dotCurrVelOpacity = new double[3];
+
     private DispatcherQueueTimer? _hideAnimationTimer;
     private DispatcherQueueTimer? _topmostGuardTimer;
+    private DispatcherQueueTimer? _displaySettleTimer;
+    private DispatcherQueueTimer? _unhideRecoveryTimer;
+    private DispatcherQueueTimer? _frostRefreshTimer;
+    private int _displaySettlePassesRemaining;
+    private long _hideShowGeneration;
+    private long _frostGeneration;
+    private bool _hasFrostBitmap;
+    private readonly FullscreenStabilityTracker _fullscreenTracker = new(exitConfirmationThreshold: 2);
+    private const int DwmwaCloaked = 14;
     private string? _lastPulseTrackKey;
 
     private double _dpiScale = 1.0;
@@ -90,6 +144,18 @@ public sealed partial class IslandWindow : Window
     private bool _glassEnabled;
     private double _currentPillWidth = 216;
     private double _currentPillHeight = 40;
+    private double _currentCornerRadius = 20;
+    private double _currentLeadingX;
+    private double _currentTrailingX = 66;
+    private double _currentDetachedOpacity;
+    private double _currentExpandedScale = 1.0;
+    private double _velPillWidth;
+    private double _velPillHeight;
+    private double _velCornerRadius;
+    private double _velLeadingX;
+    private double _velTrailingX;
+    private double _velDetachedOpacity;
+    private double _velExpandedScale;
     private bool _regionCommitted;
     private (int L1, int T1, int R1, int B1, int C1, int L2, int T2, int R2, int B2, int C2)? _lastWindowRegion;
 
@@ -121,7 +187,16 @@ public sealed partial class IslandWindow : Window
     private double _animTargetTrailingX;
     private double _animStartDetachedOpacity;
     private double _animTargetDetachedOpacity;
-    private long _animStartTimeTicks;
+    private double _animStartExpandedScale = 1.0;
+    private double _animTargetExpandedScale = 1.0;
+    private double _animVelWidth;
+    private double _animVelHeight;
+    private double _animVelCornerRadius;
+    private double _animVelLeadingX;
+    private double _animVelTrailingX;
+    private double _animVelDetachedOpacity;
+    private double _animVelExpandedScale;
+    private double _dimensionAnimElapsedSec;
     private double _animDurationMs;
     private bool _isDimensionAnimating;
     private Action? _onAnimationCompleted;
@@ -129,9 +204,9 @@ public sealed partial class IslandWindow : Window
     private bool _lastFocusTimerActive;
     private bool _lastNotificationActive;
     private bool _lastFileOpActive;
+    private double _appliedCompactScale = double.NaN;
 
     public event EventHandler? SettingsRequested;
-    public event EventHandler? TaskbarFlyoutRequested;
 
     public IslandWindow(IslandViewModel viewModel)
     {
@@ -159,7 +234,10 @@ public sealed partial class IslandWindow : Window
         _fullscreenPollTimer.Tick += (_, _) => PollFullscreenState();
         _fullscreenPollTimer.Start();
 
+        _activeDimensionSpring = _springNormal;
         _surfaceVisual = ElementCompositionPreview.GetElementVisual(Surface);
+        _pillMaskVisual = ElementCompositionPreview.GetElementVisual(PillMaskHost);
+        _frostSheenVisual = ElementCompositionPreview.GetElementVisual(FrostSheen);
         _compactVisual = ElementCompositionPreview.GetElementVisual(CompactView);
         _expandedVisual = ElementCompositionPreview.GetElementVisual(ExpandedView);
         _wave1Visual = ElementCompositionPreview.GetElementVisual(WaveBar1);
@@ -171,7 +249,21 @@ public sealed partial class IslandWindow : Window
         _detachedVisual = ElementCompositionPreview.GetElementVisual(DetachedPill);
         _batteryChargeHaloVisual = ElementCompositionPreview.GetElementVisual(BatteryChargeHalo);
 
+        _dotVisualElements = [PageDotVisual0, PageDotVisual1, PageDotVisual2];
+        _dotButtons = [PageDot0, PageDot1, PageDot2];
+        for (int i = 0; i < 3; i++)
+        {
+            ElementCompositionPreview.SetIsTranslationEnabled(_dotVisualElements[i], true);
+            ElementCompositionPreview.SetIsTranslationEnabled(_dotButtons[i], true);
+            _dotVisuals[i] = ElementCompositionPreview.GetElementVisual(_dotVisualElements[i]);
+            var dotClip = _dotVisuals[i].Compositor.CreateRoundedRectangleGeometry();
+            dotClip.CornerRadius = new Vector2(2.5f, 2.5f);
+            _dotClipGeometries[i] = dotClip;
+            _dotVisuals[i].Clip = _dotVisuals[i].Compositor.CreateGeometricClip(dotClip);
+        }
+
         ElementCompositionPreview.SetIsTranslationEnabled(Surface, true);
+        ElementCompositionPreview.SetIsTranslationEnabled(PillMaskHost, true);
         ElementCompositionPreview.SetIsTranslationEnabled(CompactView, true);
         ElementCompositionPreview.SetIsTranslationEnabled(ExpandedView, true);
         ElementCompositionPreview.SetIsTranslationEnabled(MediaExpandedPanel, true);
@@ -199,10 +291,14 @@ public sealed partial class IslandWindow : Window
 
         PositionHostWindow();
         ApplyWindowStyles();
+        EnsureSurfaceClipAndRim();
         ApplyGlass();
         ApplyTheme(_viewModel.Theme);
+        ApplyCompactScale(_viewModel.IslandScale);
+        UpdateIdleWeatherIcon(_viewModel.IdleWeatherIconKind);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        WindowRoot.ActualThemeChanged += OnWindowRootActualThemeChanged;
         Closed += OnWindowClosed;
         UpdateBatteryChargingAnimation();
 
@@ -220,7 +316,7 @@ public sealed partial class IslandWindow : Window
         _topmostGuardTimer.Tick += (_, _) => ReassertTopmost();
         _topmostGuardTimer.Start();
 
-        if (_viewModel.IsPlaying)
+        if (_viewModel.IsPlaying && _viewModel.ShowEqualizer)
         {
             StartEqualizerWave();
         }
@@ -232,7 +328,7 @@ public sealed partial class IslandWindow : Window
     /// <summary>Keeps the island above everything, even if another app demoted its z-order.</summary>
     public void ReassertTopmost()
     {
-        if (_hwnd == IntPtr.Zero)
+        if (_hwnd == IntPtr.Zero || (_isIslandHidden && !_hideAnchorVisible))
         {
             return;
         }
@@ -249,10 +345,29 @@ public sealed partial class IslandWindow : Window
             _userOverrodeFullscreenHide = true;
         }
 
-        if (_isIslandHidden) UnhideIslandAnimated();
+        // Make the native HWND visible first so Composition keyframe/scoped batches advance on a live window.
         ShowWindow(_hwnd, 4); // SW_SHOWNOACTIVATE
+        if (_isIslandHidden)
+        {
+            UnhideIslandAnimated();
+        }
+        else
+        {
+            _pillMaskVisual.StopAnimation("Opacity");
+            _pillMaskVisual.StopAnimation("Scale");
+            _pillMaskVisual.StopAnimation("Translation");
+            _pillMaskVisual.Opacity = 1f;
+            _pillMaskVisual.Scale = Vector3.One;
+            PillMaskHost.Translation = Vector3.Zero;
+            Surface.Visibility = Visibility.Visible;
+            HiddenAnchor.Visibility = Visibility.Collapsed;
+        }
+
         ApplyWindowStyles();
         PositionHostWindow();
+        _lastWindowRegion = null;
+        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius > 0 ? _currentCornerRadius : 20.0, forceRedraw: true);
+        ReassertTopmost();
     }
 
     public void HideIslandAnimated(bool showAnchor = true)
@@ -260,30 +375,50 @@ public sealed partial class IslandWindow : Window
         if (_isIslandHidden) return;
         _isIslandHidden = true;
         _hideAnchorVisible = showAnchor;
+        var gen = ++_hideShowGeneration;
+        _hideAnimationTimer?.Stop();
+        _unhideRecoveryTimer?.Stop();
 
+        _hoverExpandTimer?.Stop();
+        _longPressTimer?.Stop();
+        _collapseDelayTimer.Stop();
+        _isPointerOverSurface = false;
+        _isInteractingWithControl = false;
+        _longPressTriggered = false;
+
+        if (!showAnchor)
+        {
+            StopAmbientAnimations();
+        }
+
+        var hideDuration = ScaledDuration(180);
         try
         {
-            var compositor = _surfaceVisual.Compositor;
-            var duration = TimeSpan.FromMilliseconds(180);
+            var compositor = _pillMaskVisual.Compositor;
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(1f, 1f));
 
-            _surfaceVisual.CenterPoint = new Vector3((float)(_currentPillWidth / 2), 0, 0);
+            _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), 0f, 0f);
 
             var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
-            scaleAnim.Duration = duration;
+            scaleAnim.Duration = hideDuration;
             scaleAnim.InsertKeyFrame(1f, new Vector3(0.6f, 0.4f, 1f), easing);
 
             var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
-            opacityAnim.Duration = duration;
+            opacityAnim.Duration = hideDuration;
             opacityAnim.InsertKeyFrame(1f, 0f, easing);
 
             var translateAnim = compositor.CreateVector3KeyFrameAnimation();
-            translateAnim.Duration = duration;
-            translateAnim.InsertKeyFrame(1f, new Vector3(0, -18, 0), easing);
+            translateAnim.Duration = hideDuration;
+            translateAnim.InsertKeyFrame(1f, new Vector3(0f, -18f, 0f), easing);
 
-            _surfaceVisual.StartAnimation("Scale", scaleAnim);
-            _surfaceVisual.StartAnimation("Opacity", opacityAnim);
-            _surfaceVisual.StartAnimation("Translation", translateAnim);
+            _pillMaskVisual.StartAnimation("Scale", scaleAnim);
+            _pillMaskVisual.StartAnimation("Opacity", opacityAnim);
+            _pillMaskVisual.StartAnimation("Translation", translateAnim);
+
+            if (DetachedPill is not null && DetachedPill.Visibility == Visibility.Visible)
+            {
+                _detachedVisual.StartAnimation("Opacity", opacityAnim);
+            }
         }
         catch { }
 
@@ -291,41 +426,81 @@ public sealed partial class IslandWindow : Window
         if (timer is null)
         {
             timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-            timer.Interval = TimeSpan.FromMilliseconds(190);
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
                 if (_isIslandHidden)
                 {
                     Surface.Visibility = Visibility.Collapsed;
+                    if (DetachedPill is not null)
+                    {
+                        DetachedPill.Visibility = Visibility.Collapsed;
+                    }
                     HiddenAnchor.Visibility = _hideAnchorVisible ? Visibility.Visible : Visibility.Collapsed;
                     if (!_hideAnchorVisible)
                     {
+                        _lastWindowRegion = null;
+                        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius);
                         ShowWindow(_hwnd, 0); // SW_HIDE: leave no artifact over fullscreen content
+                    }
+                    else
+                    {
+                        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
                     }
                 }
             };
             _hideAnimationTimer = timer;
         }
+        timer.Interval = hideDuration + TimeSpan.FromMilliseconds(15);
         timer.Start();
     }
 
     public void UnhideIslandAnimated()
     {
         if (!_isIslandHidden) return;
+        _hideAnimationTimer?.Stop();
+        _unhideRecoveryTimer?.Stop();
         _isIslandHidden = false;
+        var gen = ++_hideShowGeneration;
 
+        ShowWindow(_hwnd, 4); // SW_SHOWNOACTIVATE
+        ApplyWindowStyles();
+        PositionHostWindow();
         ReassertTopmost();
+
         HiddenAnchor.Visibility = Visibility.Collapsed;
         Surface.Visibility = Visibility.Visible;
 
+        // Re-sync layout bounds & visibility cleanly before reveal so returning from fullscreen never shows stale widths.
+        UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
+        RestoreAmbientAnimations();
+
+        _pillMaskVisual.StopAnimation("Scale");
+        _pillMaskVisual.StopAnimation("Opacity");
+        _pillMaskVisual.StopAnimation("Translation");
+
+        _lastWindowRegion = null;
+        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
+
+        if (ReducedMotion)
+        {
+            _pillMaskVisual.Opacity = 1f;
+            _pillMaskVisual.Scale = Vector3.One;
+            PillMaskHost.Translation = Vector3.Zero;
+            if (_glassEnabled)
+            {
+                _ = RefreshFrostAsync(force: true);
+            }
+            return;
+        }
+
         try
         {
-            var compositor = _surfaceVisual.Compositor;
-            var duration = TimeSpan.FromMilliseconds(320);
+            var compositor = _pillMaskVisual.Compositor;
+            var duration = ScaledDuration(320);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
 
-            _surfaceVisual.CenterPoint = new Vector3((float)(_currentPillWidth / 2), 0, 0);
+            _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), 0f, 0f);
 
             var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
             scaleAnim.Duration = duration;
@@ -334,24 +509,88 @@ public sealed partial class IslandWindow : Window
             scaleAnim.InsertKeyFrame(1f, Vector3.One, easing);
 
             var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
-            opacityAnim.Duration = TimeSpan.FromMilliseconds(160);
+            opacityAnim.Duration = ScaledDuration(160);
             opacityAnim.InsertKeyFrame(0f, 0f);
             opacityAnim.InsertKeyFrame(1f, 1f, easing);
 
             var translateAnim = compositor.CreateVector3KeyFrameAnimation();
             translateAnim.Duration = duration;
-            translateAnim.InsertKeyFrame(0f, new Vector3(0, -18, 0));
+            translateAnim.InsertKeyFrame(0f, new Vector3(0f, -18f, 0f));
             translateAnim.InsertKeyFrame(1f, Vector3.Zero, easing);
 
-            _surfaceVisual.StartAnimation("Scale", scaleAnim);
-            _surfaceVisual.StartAnimation("Opacity", opacityAnim);
-            _surfaceVisual.StartAnimation("Translation", translateAnim);
+            var batch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
+            _pillMaskVisual.StartAnimation("Scale", scaleAnim);
+            _pillMaskVisual.StartAnimation("Opacity", opacityAnim);
+            _pillMaskVisual.StartAnimation("Translation", translateAnim);
+            batch.End();
+            batch.Completed += (_, _) =>
+            {
+                _ = DispatcherQueue.TryEnqueue(() => FinalizeUnhideSurface(gen));
+            };
+
+            // Fallback timer ensures surface never stays hidden if DWM drops a composition batch on mode switch.
+            if (_unhideRecoveryTimer is null)
+            {
+                _unhideRecoveryTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+                _unhideRecoveryTimer.IsRepeating = false;
+                _unhideRecoveryTimer.Tick += (_, _) => FinalizeUnhideSurface(_hideShowGeneration);
+            }
+            _unhideRecoveryTimer.Interval = duration + TimeSpan.FromMilliseconds(70);
+            _unhideRecoveryTimer.Stop();
+            _unhideRecoveryTimer.Start();
         }
         catch
         {
-            _surfaceVisual.Opacity = 1;
-            _surfaceVisual.Scale = Vector3.One;
+            FinalizeUnhideSurface(gen);
         }
+    }
+
+    private void FinalizeUnhideSurface(long generation)
+    {
+        if (_isIslandHidden || generation != _hideShowGeneration)
+        {
+            return;
+        }
+
+        _unhideRecoveryTimer?.Stop();
+        _pillMaskVisual.StopAnimation("Scale");
+        _pillMaskVisual.StopAnimation("Opacity");
+        _pillMaskVisual.StopAnimation("Translation");
+        _pillMaskVisual.Opacity = 1f;
+        _pillMaskVisual.Scale = Vector3.One;
+        PillMaskHost.Translation = Vector3.Zero;
+        ApplySurfaceShape(_currentCornerRadius, _currentPillWidth, _currentPillHeight);
+        _lastWindowRegion = null;
+        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
+
+        if (_glassEnabled)
+        {
+            _ = RefreshFrostAsync(force: true);
+        }
+    }
+
+    private void StopAmbientAnimations()
+    {
+        StopEqualizerWave();
+        if (_batteryChargeAnimating)
+        {
+            _batteryChargeAnimating = false;
+            try
+            {
+                _batteryChargeHaloVisual.StopAnimation("Opacity");
+                _batteryChargeHaloVisual.StopAnimation("Scale");
+            }
+            catch { }
+        }
+    }
+
+    private void RestoreAmbientAnimations()
+    {
+        if (_viewModel.IsPlaying && _viewModel.ShowEqualizer)
+        {
+            StartEqualizerWave();
+        }
+        UpdateBatteryChargingAnimation();
     }
 
     public void ToggleHideIsland()
@@ -376,63 +615,85 @@ public sealed partial class IslandWindow : Window
     /// </summary>
     /// <summary>
     /// Detects borderless/windowed fullscreen (most modern games): the foreground window
-    /// covers the whole monitor, including the space the taskbar would occupy.
+    /// covers the whole monitor on the island's monitor, excluding cloaked UWP hosts,
+    /// transparent/no-activate overlays (NVIDIA, Game Bar, Vanguard), and desktop shells.
     /// </summary>
     private bool IsBorderlessFullscreenForeground()
     {
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero || foreground == _hwnd) return false;
-        if (!IsWindowVisible(foreground) || IsIconic(foreground)) return false;
 
-        // A maximized window also covers the monitor when the taskbar auto-hides,
-        // so it must be excluded explicitly - otherwise every maximized app reads as a game.
-        if (IsZoomed(foreground)) return false;
+        var isVisible = IsWindowVisible(foreground);
+        var isMinimized = IsIconic(foreground);
+        var isMaximized = IsZoomed(foreground);
 
-        // The desktop and its wallpaper hosts cover the monitor but are never a game.
-        var className = new char[64];
-        var length = GetClassName(foreground, className, className.Length);
+        var cloaked = 0;
+        var cloakedResult = DwmGetWindowAttribute(foreground, DwmwaCloaked, ref cloaked, sizeof(int));
+        var isCloaked = cloakedResult == 0 && cloaked != 0;
+
+        var exStyle = GetWindowLongPtr(foreground, GwlExStyle).ToInt64();
+
+        string? className = null;
+        var classBuffer = new char[64];
+        var length = GetClassName(foreground, classBuffer, classBuffer.Length);
         if (length > 0)
         {
-            var name = new string(className, 0, length);
-            if (name is "Progman" or "WorkerW" or "Shell_TrayWnd") return false;
+            className = new string(classBuffer, 0, length);
         }
 
         if (!GetWindowRect(foreground, out var windowRect)) return false;
 
-        var monitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
-        if (monitor == IntPtr.Zero) return false;
+        var fgMonitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
+        if (fgMonitor == IntPtr.Zero) return false;
 
         var info = new MonitorInfo { Size = Marshal.SizeOf<MonitorInfo>() };
-        if (!GetMonitorInfo(monitor, ref info)) return false;
+        if (!GetMonitorInfo(fgMonitor, ref info)) return false;
 
-        // A maximized window stops at the work area, so it never matches the target rect.
-        const int tolerance = 2;
-        var bounds = info.Monitor;
-        return windowRect.Left <= bounds.Left + tolerance
-            && windowRect.Top <= bounds.Top + tolerance
-            && windowRect.Right >= bounds.Right - tolerance
-            && windowRect.Bottom >= bounds.Bottom - tolerance;
+        var islandMonitor = MonitorFromWindow(_hwnd, MonitorDefaultToNearest);
+        var isSameMonitor = islandMonitor == IntPtr.Zero || fgMonitor == islandMonitor;
+
+        var candidate = new FullscreenWindowCandidate(
+            Handle: foreground,
+            OwnHandle: _hwnd,
+            ClassName: className,
+            IsVisible: isVisible,
+            IsMinimized: isMinimized,
+            IsMaximized: isMaximized,
+            IsCloaked: isCloaked,
+            ExStyle: exStyle,
+            Left: windowRect.Left,
+            Top: windowRect.Top,
+            Right: windowRect.Right,
+            Bottom: windowRect.Bottom,
+            MonitorLeft: info.Monitor.Left,
+            MonitorTop: info.Monitor.Top,
+            MonitorRight: info.Monitor.Right,
+            MonitorBottom: info.Monitor.Bottom,
+            IsSameMonitorAsIsland: isSameMonitor);
+
+        return FullscreenWindowEvaluator.IsBorderlessFullscreen(candidate);
     }
 
     private void PollFullscreenState()
     {
-        var isFullscreen = false;
+        var rawIsFullscreen = false;
         try
         {
             if (SHQueryUserNotificationState(out var state) == 0)
             {
-                isFullscreen = FullscreenNotificationState.IsFullscreen(state);
+                rawIsFullscreen = FullscreenNotificationState.IsFullscreen(state);
             }
 
             // Exclusive fullscreen is not the only case: borderless/windowed fullscreen
             // games report QUNS_ACCEPTS_NOTIFICATIONS, so check the foreground window too.
-            isFullscreen = isFullscreen || IsBorderlessFullscreenForeground();
+            rawIsFullscreen = rawIsFullscreen || IsBorderlessFullscreenForeground();
         }
         catch
         {
             // Shell API is best-effort; a failure must never break the island.
         }
 
+        var isFullscreen = _fullscreenTracker.Update(rawIsFullscreen);
         var wasFullscreen = _fullscreenActive;
         _fullscreenActive = isFullscreen;
 
@@ -443,6 +704,8 @@ public sealed partial class IslandWindow : Window
 
         if (!_viewModel.AutoHideOnFullscreen)
         {
+            _fullscreenTracker.Reset();
+            _fullscreenActive = false;
             if (_autoHiddenForFullscreen)
             {
                 _autoHiddenForFullscreen = false;
@@ -450,6 +713,8 @@ public sealed partial class IslandWindow : Window
                 {
                     ShowIsland();
                 }
+                ScheduleDisplaySettle();
+                _ = _viewModel.RefreshExternalStatesAsync();
             }
             return;
         }
@@ -459,23 +724,93 @@ public sealed partial class IslandWindow : Window
             _autoHiddenForFullscreen = true;
             HideIslandAnimated(showAnchor: false);
         }
-        else if (!isFullscreen && _autoHiddenForFullscreen)
+        else if (!isFullscreen && (_autoHiddenForFullscreen || (wasFullscreen && _isIslandHidden)))
         {
             _autoHiddenForFullscreen = false;
             if (_isIslandHidden)
             {
                 ShowIsland();
             }
+            ScheduleDisplaySettle();
+            _ = _viewModel.RefreshExternalStatesAsync();
         }
+    }
+
+    private void ScheduleDisplaySettle()
+    {
+        if (_hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        if (_displaySettleTimer is null)
+        {
+            _displaySettleTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _displaySettleTimer.IsRepeating = false;
+            _displaySettleTimer.Tick += (_, _) =>
+            {
+                _displaySettleTimer?.Stop();
+                if (_isIslandHidden && _autoHiddenForFullscreen)
+                {
+                    return;
+                }
+
+                PositionHostWindow();
+                ApplyWindowStyles();
+                _lastWindowRegion = null;
+                UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius > 0 ? _currentCornerRadius : 20.0, forceRedraw: true);
+                ReassertTopmost();
+
+                if (_displaySettlePassesRemaining > 1)
+                {
+                    _displaySettlePassesRemaining--;
+                    if (_displaySettleTimer is not null)
+                    {
+                        _displaySettleTimer.Interval = TimeSpan.FromMilliseconds(600);
+                        _displaySettleTimer.Start();
+                    }
+                }
+                else
+                {
+                    _displaySettlePassesRemaining = 0;
+                    if (_glassEnabled && !_isIslandHidden)
+                    {
+                        _ = RefreshFrostAsync(force: true);
+                    }
+                }
+            };
+        }
+
+        _displaySettlePassesRemaining = 2;
+        _displaySettleTimer.Stop();
+        _displaySettleTimer.Interval = TimeSpan.FromMilliseconds(350);
+        _displaySettleTimer.Start();
     }
 
     private void OnWindowClosed(object sender, WindowEventArgs args)
     {
+        _topmostGuardTimer?.Stop();
+        _hideAnimationTimer?.Stop();
+        _unhideRecoveryTimer?.Stop();
+        _displaySettleTimer?.Stop();
+        _frostRefreshTimer?.Stop();
+        _collapseDelayTimer.Stop();
         _fullscreenPollTimer?.Stop();
         _hoverExpandTimer?.Stop();
         _longPressTimer?.Stop();
-        CancelPageTransition();
+        _isDimensionAnimating = false;
+        _isPageAnimating = false;
+        _isDotAnimating = false;
+        StopRenderLoop();
+        WindowRoot.ActualThemeChanged -= OnWindowRootActualThemeChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
+
+        if (_hwnd != IntPtr.Zero)
+        {
+            _ = UnregisterHotKey(_hwnd, HotkeyToggleIsland);
+            _ = UnregisterHotKey(_hwnd, HotkeyToggleFocus);
+            _ = RemoveWindowSubclass(_hwnd, _subclassProc, UIntPtr.Zero);
+        }
     }
 
     private const double BaseWindowTopGap = 14.0;
@@ -483,23 +818,17 @@ public sealed partial class IslandWindow : Window
     private void PositionHostWindow()
     {
         ApplyHostWindowSize(_currentPillWidth, _currentPillHeight);
-        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, Surface.CornerRadius.TopLeft > 0 ? Surface.CornerRadius.TopLeft : 20);
+        UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius > 0 ? _currentCornerRadius : 20.0);
     }
 
     private double _hostPillWidth = 216;
     private double _hostPillHeight = 40;
 
     /// <summary>
-    /// Sizes/moves the host window to hug the current pill. A big fixed host window would
-    /// swallow clicks in its transparent margins (WinUI never calls WM_NCHITTEST for
-    /// pointer input), so the window must track the pill dimensions.
+    /// Fixed transparent host footprint (560x306 DIP): includes a 3 DIP perimeter antialiasing
+    /// margin around the 560x300 pill surface so GDI SetWindowRgn never slices DirectComposition's
+    /// curved subpixel edges or top specular rim.
     /// </summary>
-    // Fixed host footprint: big enough for the expanded card at every pill scale.
-    // The window never resizes during transitions; a window region crops input/visual
-    // to the current pill so clicks outside it fall through to the window below.
-    private const double HostWidthDip = 424.0;
-    private const double HostHeightDip = 260.0;
-
     private void ApplyHostWindowSize(double pillWidth, double pillHeight)
     {
         if (_hwnd == IntPtr.Zero) return;
@@ -519,79 +848,157 @@ public sealed partial class IslandWindow : Window
         _hostPillWidth = Math.Max(120.0, pillWidth);
         _hostPillHeight = Math.Max(36.0, pillHeight);
 
-        var winWidth = (int)Math.Round(HostWidthDip * _dpiScale);
-        var winHeight = (int)Math.Round(HostHeightDip * _dpiScale);
+        var winWidth = (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * _dpiScale);
+        var winHeight = (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * _dpiScale);
 
         var x = workArea.Left + Math.Max(0, (workArea.Right - workArea.Left - winWidth) / 2);
-        var effectiveTopOffset = Math.Max(BaseWindowTopGap, _viewModel.TopOffset + BaseWindowTopGap);
+        var effectiveTopOffset = Math.Max(0.0, _viewModel.TopOffset + BaseWindowTopGap - IslandSurfaceLayout.SurfaceTopInsetDip);
         var y = workArea.Top + (int)Math.Round(effectiveTopOffset * _dpiScale);
 
-        // Startup / setting changes only; transitions never resize the native window.
-        QueueHostWindowResize(x, y, winWidth, winHeight);
+        // Startup / DPI / display / settings changes only; transitions never resize the native window.
+        // Always invoke SetWindowPos directly on the UI owner thread so DWM mode-switches never race.
+        _ = SetWindowPos(_hwnd, HwndTopmost, x, y, winWidth, winHeight, SwpNoActivate);
 
         // Window moves under the cursor can synthesize pointer exit/enter pairs in WinUI;
         // suppress them briefly so hover state cannot oscillate with the resize itself.
         _hostResizeGuardTicks = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
+    private static IntPtr CreatePaddedRoundRectRgn(IslandSurfaceLayout.PixelRgnRect r)
+        => CreateRoundRectRgn(r.Left, r.Top, r.Right, r.Bottom, r.CornerDiameter, r.CornerDiameter);
+
     /// <summary>
-    /// Crops the native window to the current pill with a Win32 region. Areas outside the
-    /// region are not part of the window, so clicks pass through to whatever is below -
-    /// while the window itself keeps a fixed size and never causes resize hitches.
+    /// Crops the native window around the current pill with an outward-padded Win32 region.
+    /// Areas outside the region remain click-through, while DirectComposition owns the visible
+    /// rounded edge with full hardware subpixel antialiasing inside the 3 DIP region margin.
     /// </summary>
-    private void UpdateWindowRegion(double pillWidth, double pillHeight, double cornerRadius)
+    private void UpdateWindowRegion(double pillWidth, double pillHeight, double cornerRadius, bool includeOvershootPadding = false, bool forceRedraw = false)
     {
         if (_hwnd == IntPtr.Zero) return;
 
         var dpi = _dpiScale > 0 ? _dpiScale : 1.0;
+        int hostPixelW = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * dpi));
+        int hostPixelH = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * dpi));
+
+        if (_isIslandHidden)
+        {
+            if (!_hideAnchorVisible)
+            {
+                _lastWindowRegion = null;
+                var emptyRgn = CreateRectRgn(0, 0, 0, 0);
+                if (emptyRgn != IntPtr.Zero)
+                {
+                    _ = SetWindowRgn(_hwnd, emptyRgn, false);
+                }
+                return;
+            }
+
+            var anchorBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(
+                IslandSurfaceLayout.DefaultHostWidthDip,
+                IslandSurfaceLayout.HiddenAnchorWidthDip,
+                IslandSurfaceLayout.HiddenAnchorHeightDip);
+            var anchorRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                anchorBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                cornerRadiusDip: 6.0,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
+
+            var anchorKey = (anchorRgnRect.Left, anchorRgnRect.Top, anchorRgnRect.Right, anchorRgnRect.Bottom, anchorRgnRect.CornerDiameter, 0, 0, 0, 0, 0);
+            if (_lastWindowRegion == anchorKey) return;
+            _lastWindowRegion = anchorKey;
+
+            var anchorRgn = CreatePaddedRoundRectRgn(anchorRgnRect);
+            if (anchorRgn != IntPtr.Zero)
+            {
+                _ = SetWindowRgn(_hwnd, anchorRgn, forceRedraw);
+            }
+            return;
+        }
+
+        double effectiveWidth = includeOvershootPadding
+            ? IslandSurfaceLayout.ComputeExpansionRegionWidth(pillWidth, pillWidth)
+            : pillWidth;
+        double effectiveHeight = includeOvershootPadding
+            ? IslandSurfaceLayout.ComputeExpansionRegionHeight(pillHeight, pillHeight)
+            : pillHeight;
+
         var isSplit = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
-        bool isDetachedActive = DetachedPill is not null && (DetachedPill.Visibility == Visibility.Visible || DetachedPill.Opacity > 0.01);
+        bool isDetachedActive = DetachedPill is not null && (DetachedPill.Visibility == Visibility.Visible || _currentDetachedOpacity > 0.01);
+        double detachedW = (DetachedPill is not null && DetachedPill.Width > 0)
+            ? DetachedPill.Width
+            : IslandSurfaceLayout.DetachedPillWidthDip;
+        double detachedH = (DetachedPill is not null && DetachedPill.Height > 0)
+            ? DetachedPill.Height
+            : IslandSurfaceLayout.DetachedPillHeightDip;
+
+        var metrics = IslandSurfaceLayout.ComputeCompactMetrics(_viewModel.IslandScale);
+        double splitGap = metrics.SplitGap;
 
         if (_isDimensionAnimating && (isSplit || isDetachedActive))
         {
-            // Morphing into or out of split mode merges the two capsules into one surface.
-            // Cover the larger of the resting split span (272 dip) and the requested pill,
-            // otherwise the growing card is sliced by the old split region.
-            var regionWidth = Math.Max(pillWidth, 272.0);
-            var regionHeight = Math.Max(pillHeight, 40.0);
-            var spanLeft = (int)Math.Round((HostWidthDip - regionWidth) / 2.0 * dpi);
-            var spanRight = (int)Math.Round((HostWidthDip + regionWidth) / 2.0 * dpi);
-            var spanBottom = (int)Math.Round(regionHeight * dpi);
-            var cornerD = (int)Math.Round(40.0 * dpi);
+            double splitTotalSpan = (196.0 * metrics.Scale)
+                + splitGap
+                + detachedW;
+            var regionWidth = Math.Min(IslandSurfaceLayout.DefaultHostWidthDip, Math.Max(effectiveWidth, splitTotalSpan + (includeOvershootPadding ? 16.0 : 0.0)));
+            var regionHeight = Math.Min(IslandSurfaceLayout.DefaultHostHeightDip, Math.Max(effectiveHeight, detachedH));
+            var spanBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, regionWidth, regionHeight);
+            var spanRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                spanBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                cornerRadius,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
 
-            var spanKey = (spanLeft, 0, spanRight + 1, spanBottom + 1, cornerD, 0, 0, 0, 0, 0);
+            var spanKey = (spanRgnRect.Left, spanRgnRect.Top, spanRgnRect.Right, spanRgnRect.Bottom, spanRgnRect.CornerDiameter, 0, 0, 0, 0, 0);
             if (_lastWindowRegion == spanKey) return;
             _lastWindowRegion = spanKey;
 
-            var spanRgn = CreateRoundRectRgn(spanLeft, 0, spanRight + 1, spanBottom + 1, cornerD, cornerD);
+            var spanRgn = CreatePaddedRoundRectRgn(spanRgnRect);
             if (spanRgn != IntPtr.Zero)
             {
-                _ = SetWindowRgn(_hwnd, spanRgn, false);
+                _ = SetWindowRgn(_hwnd, spanRgn, forceRedraw);
             }
             return;
         }
 
         if (isSplit)
         {
-            // Apple Split Island resting state: Leading pill (196px) + Gap (10px) + Trailing pill (66px) = Total 272px centered in HostWidthDip (424px).
-            // Left margin = (424 - 272)/2 = 76px.
-            // Surface bounds: [76, 272], DetachedPill bounds: [282, 348].
-            var surfaceLeft = (int)Math.Round(76.0 * dpi);
-            var surfaceRight = (int)Math.Round(272.0 * dpi);
-            var surfaceHeight = (int)Math.Round(40.0 * dpi);
-            var cornerDiameter = (int)Math.Round(40.0 * dpi);
+            double leadingW = Math.Max(1.0, pillWidth);
+            double leadingH = Math.Max(1.0, pillHeight);
+            var (leadOffX, trailOffX) = IslandSurfaceLayout.ComputeSplitOffsets(leadingW, detachedW, splitGap);
+            var leadBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, leadingW, leadingH, leadOffX);
+            var detachBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, detachedW, detachedH, trailOffX);
 
-            var detachedLeft = (int)Math.Round(282.0 * dpi);
-            var detachedRight = (int)Math.Round(348.0 * dpi);
+            var leadRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                leadBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                cornerRadius,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
+            var detachRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                detachBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                detachedH * 0.5,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
 
-            var splitKey = (surfaceLeft, 0, surfaceRight + 1, surfaceHeight + 1, cornerDiameter,
-                            detachedLeft, 0, detachedRight + 1, surfaceHeight + 1, cornerDiameter);
+            var splitKey = (
+                leadRgnRect.Left, leadRgnRect.Top, leadRgnRect.Right, leadRgnRect.Bottom, leadRgnRect.CornerDiameter,
+                detachRgnRect.Left, detachRgnRect.Top, detachRgnRect.Right, detachRgnRect.Bottom, detachRgnRect.CornerDiameter);
             if (_lastWindowRegion == splitKey) return;
             _lastWindowRegion = splitKey;
 
-            var rgn = CreateRoundRectRgn(surfaceLeft, 0, surfaceRight + 1, surfaceHeight + 1, cornerDiameter, cornerDiameter);
-
-            var detachedRgn = CreateRoundRectRgn(detachedLeft, 0, detachedRight + 1, surfaceHeight + 1, cornerDiameter, cornerDiameter);
+            var rgn = CreatePaddedRoundRectRgn(leadRgnRect);
+            var detachedRgn = CreatePaddedRoundRectRgn(detachRgnRect);
 
             if (rgn != IntPtr.Zero && detachedRgn != IntPtr.Zero)
             {
@@ -604,75 +1011,34 @@ public sealed partial class IslandWindow : Window
 
             if (rgn != IntPtr.Zero)
             {
-                _ = SetWindowRgn(_hwnd, rgn, false);
+                _ = SetWindowRgn(_hwnd, rgn, forceRedraw);
             }
             return;
         }
 
-        var surfaceOffset = Surface.Translation.X;
-        var left = (int)Math.Round((((HostWidthDip - pillWidth) / 2.0) + surfaceOffset) * dpi);
-        var top = 0;
-        var width = (int)Math.Round(pillWidth * dpi);
-        var height = (int)Math.Round(pillHeight * dpi);
-        var cornerDiam = (int)Math.Round(Math.Max(2.0, cornerRadius * 2.0) * dpi);
+        double surfaceOffset = _isDimensionAnimating ? _currentLeadingX : 0.0;
+        var normalBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(
+            IslandSurfaceLayout.DefaultHostWidthDip,
+            effectiveWidth,
+            effectiveHeight,
+            surfaceOffset);
+        var normalRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+            normalBounds,
+            IslandSurfaceLayout.SurfaceTopInsetDip,
+            cornerRadius,
+            IslandSurfaceLayout.RegionAntialiasMarginDip,
+            dpi,
+            hostPixelW,
+            hostPixelH);
 
-        var normalKey = (left, top, left + width + 1, top + height + 1, cornerDiam, 0, 0, 0, 0, 0);
+        var normalKey = (normalRgnRect.Left, normalRgnRect.Top, normalRgnRect.Right, normalRgnRect.Bottom, normalRgnRect.CornerDiameter, 0, 0, 0, 0, 0);
         if (_lastWindowRegion == normalKey) return;
         _lastWindowRegion = normalKey;
 
-        var normalRgn = CreateRoundRectRgn(left, top, left + width + 1, top + height + 1, cornerDiam, cornerDiam);
+        var normalRgn = CreatePaddedRoundRectRgn(normalRgnRect);
         if (normalRgn != IntPtr.Zero)
         {
-            _ = SetWindowRgn(_hwnd, normalRgn, false);
-        }
-    }
-
-    private readonly object _hostResizeLock = new();
-    private (int X, int Y, int W, int H, long Version)? _pendingHostResize;
-    private long _hostResizeVersion;
-    private bool _hostResizeWorkerRunning;
-
-    private void QueueHostWindowResize(int x, int y, int width, int height)
-    {
-        lock (_hostResizeLock)
-        {
-            _hostResizeVersion++;
-            _pendingHostResize = (x, y, width, height, _hostResizeVersion);
-            if (_hostResizeWorkerRunning)
-            {
-                return;
-            }
-
-            _hostResizeWorkerRunning = true;
-        }
-
-        _ = Task.Run(ProcessHostResizes);
-    }
-
-    private async Task ProcessHostResizes()
-    {
-        while (true)
-        {
-            (int X, int Y, int W, int H, long Version) job;
-            lock (_hostResizeLock)
-            {
-                if (_pendingHostResize is null)
-                {
-                    _hostResizeWorkerRunning = false;
-                    return;
-                }
-
-                job = _pendingHostResize.Value;
-                _pendingHostResize = null;
-            }
-
-            if (_hwnd != IntPtr.Zero)
-            {
-                _ = SetWindowPos(_hwnd, HwndTopmost, job.X, job.Y, job.W, job.H, SwpNoActivate);
-            }
-
-            // Let the owner thread breathe so bursts of resize requests coalesce.
-            await Task.Delay(12).ConfigureAwait(false);
+            _ = SetWindowRgn(_hwnd, normalRgn, forceRedraw);
         }
     }
 
@@ -680,15 +1046,18 @@ public sealed partial class IslandWindow : Window
     {
         if (e.PropertyName == nameof(IslandViewModel.BatteryIsCharging))
         {
-            UpdateBatteryChargingAnimation();
+            if (!_isIslandHidden || _hideAnchorVisible)
+            {
+                UpdateBatteryChargingAnimation();
+            }
         }
         else if (e.PropertyName == nameof(MediaViewModel.CurrentIslandState))
         {
-            UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+            UpdateStateLayout(_viewModel.CurrentIslandState, animated: !_isIslandHidden);
         }
         else if (e.PropertyName is nameof(MediaViewModel.CurrentTrack) or nameof(MediaViewModel.IsPlaying))
         {
-            if (_viewModel.IsPlaying)
+            if (_viewModel.IsPlaying && _viewModel.ShowEqualizer && (!_isIslandHidden || _hideAnchorVisible))
             {
                 StartEqualizerWave();
             }
@@ -728,8 +1097,32 @@ public sealed partial class IslandWindow : Window
         }
         else if (e.PropertyName is nameof(MediaViewModel.TopOffset) or nameof(MediaViewModel.IslandScale))
         {
+            if (e.PropertyName == nameof(MediaViewModel.IslandScale))
+            {
+                ApplyCompactScale(_viewModel.IslandScale);
+            }
+
             PositionHostWindow();
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
+            if (_glassEnabled && !_isIslandHidden)
+            {
+                ScheduleFrostRefresh(delayMs: 240);
+            }
+        }
+        else if (e.PropertyName is nameof(IslandViewModel.IdleWeatherIconKind) or nameof(IslandViewModel.IdleWeatherVisibility))
+        {
+            UpdateIdleWeatherIcon(_viewModel.IdleWeatherIconKind);
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.EnableHoverExpand))
+        {
+            if (!_viewModel.EnableHoverExpand)
+            {
+                _hoverExpandTimer?.Stop();
+                if (_viewModel.CurrentIslandState == IslandState.Hover)
+                {
+                    _viewModel.OnPointerExited();
+                }
+            }
         }
         else if (e.PropertyName == nameof(MediaViewModel.HoverExpandDelayMs))
         {
@@ -748,6 +1141,14 @@ public sealed partial class IslandWindow : Window
             if (CompactWaveBars is not null)
             {
                 CompactWaveBars.Opacity = (_viewModel.CurrentIslandState == IslandState.Hover && _viewModel.ShowEqualizer) ? 1.0 : 0.0;
+            }
+            if (_viewModel.ShowEqualizer && _viewModel.IsPlaying && (!_isIslandHidden || _hideAnchorVisible))
+            {
+                StartEqualizerWave();
+            }
+            else
+            {
+                StopEqualizerWave();
             }
         }
         else if (e.PropertyName == nameof(IslandViewModel.IsSplitModeActive))
@@ -799,6 +1200,139 @@ public sealed partial class IslandWindow : Window
         }
     }
 
+    private void ApplyCompactScale(double scale)
+    {
+        var m = IslandSurfaceLayout.ComputeCompactMetrics(scale);
+        if (Math.Abs(_appliedCompactScale - m.Scale) < 0.001)
+        {
+            return;
+        }
+
+        _appliedCompactScale = m.Scale;
+
+        CompactView.Padding = new Thickness(m.CompactHorizontalPadding, 0, m.CompactHorizontalPadding, 0);
+
+        IdleContent.Margin = new Thickness(m.IdleInnerMarginH, 0, m.IdleInnerMarginH, 0);
+        IdleSmartPanel.Spacing = m.IdleItemSpacing;
+        IdleClockStack.MinWidth = m.IdleBlockMinWidth;
+        IdleClockBlock.FontSize = m.IdleClockFontSize;
+        IdleClockBlock.LineHeight = m.IdleClockLineHeight;
+        IdleDateBlock.FontSize = m.IdleDateFontSize;
+        IdleDateBlock.LineHeight = m.IdleDateLineHeight;
+        IdleDivider.Width = m.IdleDividerWidth;
+        IdleDivider.Height = m.IdleDividerHeight;
+        IdleWeatherStack.MinWidth = m.IdleBlockMinWidth;
+        IdleWeatherHeader.Height = m.IdleWeatherRowHeight;
+        IdleWeatherHeader.Spacing = m.IdleWeatherHeaderSpacing;
+        IdleWeatherIconBox.Width = m.IdleWeatherIconSize;
+        IdleWeatherIconBox.Height = m.IdleWeatherIconSize;
+        IdleWeatherTempBlock.FontSize = m.IdleWeatherTempFontSize;
+        IdleWeatherTempBlock.LineHeight = m.IdleWeatherTempLineHeight;
+        IdleWeatherCityBlock.FontSize = m.IdleWeatherCityFontSize;
+        IdleWeatherCityBlock.LineHeight = m.IdleWeatherCityLineHeight;
+        IdleWeatherCityBlock.MaxWidth = m.IdleWeatherCityMaxWidth;
+        IdleBrandPanel.Spacing = m.IdleBrandSpacing;
+        IdleBrandIconBorder.Width = m.IdleBrandIconSize;
+        IdleBrandIconBorder.Height = m.IdleBrandIconSize;
+        IdleBrandIconBorder.CornerRadius = new CornerRadius(m.IdleBrandIconCornerRadius);
+        IdleBrandIconImage.Width = m.IdleBrandIconSize;
+        IdleBrandIconImage.Height = m.IdleBrandIconSize;
+        IdleBrandText.FontSize = m.IdleBrandFontSize;
+
+        NotificationGlyphIcon.FontSize = m.EventGlyphSize;
+        NotificationGlyphIcon.Margin = new Thickness(m.EventGlyphMarginLeft, 0, m.EventGlyphMarginRight, 0);
+        NotificationTitleBlock.FontSize = m.EventTitleFontSize;
+        NotificationSubtitleBlock.FontSize = m.EventSubtitleFontSize;
+        NotificationDismissButton.Width = m.EventDismissButtonSize;
+        NotificationDismissButton.Height = m.EventDismissButtonSize;
+        NotificationDismissButton.CornerRadius = new CornerRadius(m.EventDismissButtonRadius);
+        NotificationDismissButton.Margin = new Thickness(m.EventDismissButtonMarginLeft, 0, 0, 0);
+        NotificationDismissGlyph.FontSize = m.EventDismissGlyphSize;
+
+        FocusCompactGlyphIcon.FontSize = m.EventGlyphSize;
+        FocusCompactGlyphIcon.Margin = new Thickness(m.EventGlyphMarginLeft, 0, m.EventGlyphMarginRight, 0);
+        FocusCompactTimerBlock.FontSize = m.EventTitleFontSize;
+        FocusCompactModeBlock.FontSize = m.EventSubtitleFontSize;
+        FocusCompactToggleButton.Width = m.CompactActionButtonSize;
+        FocusCompactToggleButton.Height = m.CompactActionButtonSize;
+        FocusCompactToggleButton.CornerRadius = new CornerRadius(m.CompactActionButtonRadius);
+        FocusCompactToggleButton.Margin = new Thickness(m.EventDismissButtonMarginLeft, 0, 0, 0);
+        FocusCompactToggleGlyph.FontSize = m.FocusToggleGlyphSize;
+
+        FileOpCompactGlyphIcon.FontSize = m.EventGlyphSize;
+        FileOpCompactGlyphIcon.Margin = new Thickness(m.EventGlyphMarginLeft, 0, m.EventGlyphMarginRight, 0);
+        FileOpCompactNameBlock.FontSize = m.FileOpNameFontSize;
+        FileOpCompactProgressBar.Height = m.FileOpProgressHeight;
+        FileOpCompactProgressBar.CornerRadius = new CornerRadius(m.FileOpProgressRadius);
+        FileOpCompactStatusBlock.FontSize = m.FileOpStatusFontSize;
+        FileOpCompactStatusBlock.Margin = new Thickness(m.FileOpStatusMarginLeft, 0, 0, 0);
+
+        CompactArtBorder.Width = m.CompactArtSize;
+        CompactArtBorder.Height = m.CompactArtSize;
+        CompactArtBorder.CornerRadius = new CornerRadius(m.CompactArtCornerRadius);
+        CompactArtBorder.Margin = new Thickness(0, 0, m.CompactArtMarginRight, 0);
+        CompactArtInnerGrid.CornerRadius = new CornerRadius(m.CompactArtCornerRadius);
+        CompactArtFallbackGlyph.FontSize = m.CompactArtFallbackGlyphSize;
+        CompactTrackTitleBlock.FontSize = m.CompactTrackTitleFontSize;
+        CompactTrackArtistBlock.FontSize = m.CompactTrackArtistFontSize;
+        CompactTrackRightStack.Spacing = m.CompactTrackRightSpacing;
+        CompactTrackRightStack.Margin = new Thickness(m.CompactTrackRightMarginLeft, 0, 0, 0);
+        CompactWaveBars.Spacing = m.CompactWaveSpacing;
+
+        var barRadius = new CornerRadius(m.CompactWaveBarCornerRadius);
+        WaveBar1.Width = m.CompactWaveBarWidth;
+        WaveBar1.Height = m.CompactWaveBarHeight;
+        WaveBar1.CornerRadius = barRadius;
+        WaveBar2.Width = m.CompactWaveBarWidth;
+        WaveBar2.Height = m.CompactWaveBarHeight;
+        WaveBar2.CornerRadius = barRadius;
+        WaveBar3.Width = m.CompactWaveBarWidth;
+        WaveBar3.Height = m.CompactWaveBarHeight;
+        WaveBar3.CornerRadius = barRadius;
+
+        if (_waveAnimating)
+        {
+            StopEqualizerWave();
+            StartEqualizerWave();
+        }
+
+        CompactPlayPauseButton.Width = m.CompactActionButtonSize;
+        CompactPlayPauseButton.Height = m.CompactActionButtonSize;
+        CompactPlayPauseButton.CornerRadius = new CornerRadius(m.CompactActionButtonRadius);
+        CompactPlayPauseGlyph.FontSize = m.CompactActionGlyphSize;
+
+        if (DetachedPill is not null)
+        {
+            DetachedPill.Width = m.DetachedPillWidth;
+            DetachedPill.Height = m.DetachedPillHeight;
+            DetachedPill.CornerRadius = new CornerRadius(m.DetachedPillCornerRadius);
+        }
+
+        if (DetachedFrostSheen is not null)
+        {
+            DetachedFrostSheen.Height = m.DetachedFrostSheenHeight;
+        }
+
+        DetachedInnerStack.Spacing = m.DetachedStackSpacing;
+        DetachedInnerStack.Padding = new Thickness(m.DetachedPaddingH, 0, m.DetachedPaddingH, 0);
+        DetachedGlyphIcon.FontSize = m.DetachedGlyphSize;
+        DetachedBadgeTextBlock.FontSize = m.DetachedBadgeFontSize;
+    }
+
+    private void UpdateIdleWeatherIcon(WeatherIconKind iconKind)
+    {
+        WeatherIconClearDay.Visibility = iconKind == WeatherIconKind.ClearDay ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconClearNight.Visibility = iconKind == WeatherIconKind.ClearNight ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconPartlyCloudyDay.Visibility = iconKind == WeatherIconKind.PartlyCloudyDay ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconPartlyCloudyNight.Visibility = iconKind == WeatherIconKind.PartlyCloudyNight ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconCloudy.Visibility = iconKind == WeatherIconKind.Cloudy ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconFog.Visibility = iconKind == WeatherIconKind.Fog ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconRain.Visibility = iconKind == WeatherIconKind.Rain ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconHeavyRain.Visibility = iconKind == WeatherIconKind.HeavyRain ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconSnow.Visibility = iconKind == WeatherIconKind.Snow ? Visibility.Visible : Visibility.Collapsed;
+        WeatherIconThunderstorm.Visibility = iconKind == WeatherIconKind.Thunderstorm ? Visibility.Visible : Visibility.Collapsed;
+    }
+
     private void UpdateFocusProgressFill()
     {
         if (FocusProgressTrack is null || FocusProgressFill is null) return;
@@ -829,6 +1363,23 @@ public sealed partial class IslandWindow : Window
     /// <summary>70-140% user speed; higher values compress both durations and spring time.</summary>
     private double MotionSpeedScale => Math.Clamp(_viewModel.MotionSpeed, 70, 140) / 100.0;
 
+    private TimeSpan ScaledDuration(double baseMs, double minMs = 30.0)
+        => TimeSpan.FromMilliseconds(Math.Max(minMs, baseMs * AnimationProfile.DurationScale));
+
+    private DampedSpringOscillator SelectPageSpring() => _viewModel.AnimationIntensity switch
+    {
+        "Minimal" => _pageSpringMinimal,
+        "Dynamic" => _pageSpringDynamic,
+        _ => _pageSpringNormal
+    };
+
+    private DampedSpringOscillator SelectDotSpring() => _viewModel.AnimationIntensity switch
+    {
+        "Minimal" => _dotSpringMinimal,
+        "Dynamic" => _dotSpringDynamic,
+        _ => _dotSpringNormal
+    };
+
     private static readonly Windows.UI.ViewManagement.UISettings SystemUiSettings = new();
 
     /// <summary>Respects the Windows "animation effects" accessibility setting.</summary>
@@ -856,50 +1407,141 @@ public sealed partial class IslandWindow : Window
         }
     }
 
+    private const float RimStrokeThicknessDip = 1.0f;
+    private const float RimCenterInsetDip = RimStrokeThicknessDip * 0.5f;
+
+    private void EnsureSurfaceClipAndRim()
+    {
+        var compositor = _pillMaskVisual.Compositor;
+        if (_surfaceClipGeometry is null)
+        {
+            _surfaceClipGeometry = compositor.CreateRoundedRectangleGeometry();
+            _pillMaskVisual.Clip = compositor.CreateGeometricClip(_surfaceClipGeometry);
+        }
+
+        if (_frostRimVisual is null && FrostRimHost is not null)
+        {
+            _frostRimGeometry = compositor.CreateRoundedRectangleGeometry();
+            _frostRimShape = compositor.CreateSpriteShape(_frostRimGeometry);
+            _frostRimShape.StrokeThickness = RimStrokeThicknessDip;
+            _frostRimShape.StrokeBrush = DesktopFrostService.CreateCompositionVerticalGradient(
+                compositor,
+                0x46FFFFFFu,
+                0x14FFFFFFu);
+
+            _frostRimVisual = compositor.CreateShapeVisual();
+            _frostRimVisual.Size = new Vector2(
+                (float)IslandSurfaceLayout.DefaultHostWidthDip,
+                (float)IslandSurfaceLayout.DefaultHostHeightDip);
+            _frostRimVisual.Shapes.Add(_frostRimShape);
+            ElementCompositionPreview.SetElementChildVisual(FrostRimHost, _frostRimVisual);
+        }
+    }
+
     /// <summary>
-    /// Applies the surface corner radius to every layer that shapes the pill. WinUI's
-    /// Border.CornerRadius does not clip children, so the frost rectangle and its sheen
-    /// must carry the same radius or their corners poke through the border during a morph.
-    /// Concentric corners are what Apple's Live Activity guidance calls for.
+    /// Shapes the fixed 560x300 pill surface purely on the GPU using CompositionRoundedRectangleGeometry
+    /// and frost sheen scaling, avoiding any per-frame XAML layout invalidation or Measure/Arrange pass.
     /// </summary>
     private void ApplySurfaceShape(double cornerRadius, double width, double height)
     {
-        Surface.CornerRadius = new CornerRadius(cornerRadius);
-
-        // A Border does not clip its children. While the card shrinks, the expanded
-        // layout can overflow the capsule and draw outside it (badges, icons), so clip
-        // the surface to the same rounded shape. This also keeps the corners continuous.
         if (width > 0 && height > 0)
         {
-            if (_surfaceClipGeometry is null)
+            EnsureSurfaceClipAndRim();
+
+            double clampedWidth = Math.Min(IslandSurfaceLayout.DefaultHostWidthDip, Math.Max(1.0, width));
+            double clampedHeight = Math.Min(IslandSurfaceLayout.DefaultHostHeightDip, Math.Max(1.0, height));
+            float offsetX = (float)((IslandSurfaceLayout.DefaultHostWidthDip - clampedWidth) / 2.0);
+            float clampedRadius = (float)Math.Max(0.0, cornerRadius);
+
+            _surfaceClipGeometry!.Offset = new Vector2(offsetX, 0f);
+            _surfaceClipGeometry.Size = new Vector2((float)clampedWidth, (float)clampedHeight);
+            _surfaceClipGeometry.CornerRadius = new Vector2(clampedRadius, clampedRadius);
+
+            // Center the 1 DIP stroke half inside the geometric clip so outer antialiasing never gets cropped.
+            if (_frostRimGeometry is not null)
             {
-                _surfaceClipGeometry = _surfaceVisual.Compositor.CreateRoundedRectangleGeometry();
-                _surfaceVisual.Clip = _surfaceVisual.Compositor.CreateGeometricClip(_surfaceClipGeometry);
+                float rimWidth = Math.Max(1f, (float)clampedWidth - (RimCenterInsetDip * 2f));
+                float rimHeight = Math.Max(1f, (float)clampedHeight - (RimCenterInsetDip * 2f));
+                float rimRadius = Math.Max(0f, clampedRadius - RimCenterInsetDip);
+                _frostRimGeometry.Offset = new Vector2(offsetX + RimCenterInsetDip, RimCenterInsetDip);
+                _frostRimGeometry.Size = new Vector2(rimWidth, rimHeight);
+                _frostRimGeometry.CornerRadius = new Vector2(rimRadius, rimRadius);
             }
-
-            _surfaceClipGeometry.Size = new Vector2((float)width, (float)height);
-            _surfaceClipGeometry.CornerRadius = new Vector2((float)cornerRadius, (float)cornerRadius);
         }
 
-        if (FrostLayer is not null)
+        if (_frostSheenVisual is not null && height > 0)
         {
-            FrostLayer.RadiusX = cornerRadius;
-            FrostLayer.RadiusY = cornerRadius;
-        }
-
-        if (FrostTintLayer is not null)
-        {
-            FrostTintLayer.RadiusX = cornerRadius;
-            FrostTintLayer.RadiusY = cornerRadius;
-        }
-
-        if (FrostSheen is not null)
-        {
-            FrostSheen.RadiusX = cornerRadius;
-            FrostSheen.RadiusY = cornerRadius;
-            FrostSheen.Height = Math.Max(10.0, height * 0.45);
+            float sheenScaleY = (float)Math.Max(10.0 / 18.0, (height * 0.45) / 18.0);
+            _frostSheenVisual.Scale = new Vector3(1f, sheenScaleY, 1f);
         }
     }
+
+    private void EnsureRenderLoopRunning()
+    {
+        if (_isRenderLoopSubscribed)
+        {
+            return;
+        }
+
+        _lastRenderTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        _isRenderLoopSubscribed = true;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnFrameRender;
+    }
+
+    private void StopRenderLoopIfIdle()
+    {
+        if (!_isRenderLoopSubscribed || _isDimensionAnimating || _isPageAnimating || _isDotAnimating)
+        {
+            return;
+        }
+
+        StopRenderLoop();
+    }
+
+    private void StopRenderLoop()
+    {
+        if (!_isRenderLoopSubscribed)
+        {
+            return;
+        }
+
+        _isRenderLoopSubscribed = false;
+        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnFrameRender;
+    }
+
+    private void OnFrameRender(object? sender, object e)
+    {
+        long now = System.Diagnostics.Stopwatch.GetTimestamp();
+        double rawDt = (now - _lastRenderTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
+        _lastRenderTicks = now;
+
+        // Clamp dt to [0.5 ms .. 33 ms] so high-refresh (144Hz-360Hz) and transient stalls remain silky and deterministic.
+        double dt = DampedSpringOscillator.ClampFrameDeltaSeconds(rawDt);
+
+        if (_isDimensionAnimating)
+        {
+            StepDimensionAnimation(dt);
+        }
+
+        if (_isPageAnimating)
+        {
+            StepPageTransition(dt);
+        }
+
+        if (_isDotAnimating)
+        {
+            StepDotAnimation(dt);
+        }
+
+        StopRenderLoopIfIdle();
+    }
+
+    private DampedSpringOscillator SelectDimensionSpring() => _viewModel.AnimationIntensity switch
+    {
+        "Minimal" => _springMinimal,
+        "Dynamic" => _springDynamic,
+        _ => _springNormal
+    };
 
     private void AnimateSurfaceDimensions(
         double toWidth,
@@ -908,18 +1550,32 @@ public sealed partial class IslandWindow : Window
         double toLeadingX,
         double toTrailingX,
         double toDetachedOpacity,
+        double toExpandedScale,
         double durationMs,
         Action? onCompleted = null)
     {
         if (ReducedMotion)
         {
             _isDimensionAnimating = false;
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDimensionRendering;
-            Surface.Width = toWidth;
-            Surface.Height = toHeight;
-            ApplySurfaceShape(toCornerRadius, toWidth, toHeight);
+            _velPillWidth = 0;
+            _velPillHeight = 0;
+            _velCornerRadius = 0;
+            _velLeadingX = 0;
+            _velTrailingX = 0;
+            _velDetachedOpacity = 0;
+            _velExpandedScale = 0;
+
             _currentPillWidth = toWidth;
             _currentPillHeight = toHeight;
+            _currentCornerRadius = toCornerRadius;
+            _currentLeadingX = toLeadingX;
+            _currentTrailingX = toTrailingX;
+            _currentDetachedOpacity = toDetachedOpacity;
+            _currentExpandedScale = toExpandedScale;
+
+            ApplySurfaceShape(toCornerRadius, toWidth, toHeight);
+            _expandedVisual.CenterPoint = new Vector3(192f, 20f, 0f);
+            _expandedVisual.Scale = new Vector3((float)toExpandedScale, (float)toExpandedScale, 1f);
             _regionCommitted = true;
             SetSplitPositions(toLeadingX, toTrailingX);
             if (DetachedPill is not null)
@@ -927,28 +1583,39 @@ public sealed partial class IslandWindow : Window
                 DetachedPill.Opacity = toDetachedOpacity;
                 DetachedPill.Visibility = toDetachedOpacity > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
+            UpdateWindowRegion(toWidth, toHeight, toCornerRadius);
+            StopRenderLoopIfIdle();
             onCompleted?.Invoke();
             return;
         }
 
-        _animStartWidth = Surface.Width > 0 ? Surface.Width : Surface.ActualWidth;
-        if (_animStartWidth <= 0) _animStartWidth = 216.0;
+        bool wasAnimating = _isDimensionAnimating;
+        _activeDimensionSpring = SelectDimensionSpring();
 
-        _animStartHeight = Surface.Height > 0 ? Surface.Height : Surface.ActualHeight;
-        if (_animStartHeight <= 0) _animStartHeight = 40.0;
+        _animStartWidth = _currentPillWidth > 0 ? _currentPillWidth : 216.0;
+        _animStartHeight = _currentPillHeight > 0 ? _currentPillHeight : 40.0;
+        _animStartCornerRadius = _currentCornerRadius > 0 ? _currentCornerRadius : 20.0;
+        _animStartLeadingX = _currentLeadingX;
+        _animStartTrailingX = _currentTrailingX;
+        _animStartDetachedOpacity = _currentDetachedOpacity;
+        _animStartExpandedScale = _currentExpandedScale;
 
-        _animStartCornerRadius = Surface.CornerRadius.TopLeft > 0 ? Surface.CornerRadius.TopLeft : 20.0;
-
-        _animStartLeadingX = Surface.Translation.X;
-        _animStartTrailingX = DetachedPill is not null ? DetachedPill.Translation.X : toTrailingX;
-        _animStartDetachedOpacity = DetachedPill?.Opacity ?? 0.0;
+        _animVelWidth = wasAnimating ? _velPillWidth : 0.0;
+        _animVelHeight = wasAnimating ? _velPillHeight : 0.0;
+        _animVelCornerRadius = wasAnimating ? _velCornerRadius : 0.0;
+        _animVelLeadingX = wasAnimating ? _velLeadingX : 0.0;
+        _animVelTrailingX = wasAnimating ? _velTrailingX : 0.0;
+        _animVelDetachedOpacity = wasAnimating ? _velDetachedOpacity : 0.0;
+        _animVelExpandedScale = wasAnimating ? _velExpandedScale : 0.0;
 
         if (toDetachedOpacity > 0 && DetachedPill is not null)
         {
             DetachedPill.Visibility = Visibility.Visible;
-            if (_animStartDetachedOpacity <= 0.05)
+            if (!wasAnimating && _animStartDetachedOpacity <= 0.05)
             {
-                _animStartTrailingX = 66.0;
+                double restTrailingX = DetachedPill.Width > 0 ? DetachedPill.Width : IslandSurfaceLayout.DetachedPillWidthDip;
+                _animStartTrailingX = restTrailingX;
+                _currentTrailingX = restTrailingX;
                 SetSplitPositions(_animStartLeadingX, _animStartTrailingX);
             }
         }
@@ -959,6 +1626,7 @@ public sealed partial class IslandWindow : Window
         _animTargetLeadingX = toLeadingX;
         _animTargetTrailingX = toTrailingX;
         _animTargetDetachedOpacity = toDetachedOpacity;
+        _animTargetExpandedScale = toExpandedScale;
 
         // Expanding out of split: let the trailing capsule fade where it stands instead of
         // drifting underneath the card that is growing under it.
@@ -968,86 +1636,140 @@ public sealed partial class IslandWindow : Window
         }
 
         _animDurationMs = Math.Max(1.0, durationMs * AnimationProfile.DurationScale);
-        _animStartTimeTicks = System.Diagnostics.Stopwatch.GetTimestamp();
+        _dimensionAnimElapsedSec = 0.0;
         _onAnimationCompleted = onCompleted;
         _regionCommitted = false;
 
-        if (!_isDimensionAnimating)
-        {
-            _isDimensionAnimating = true;
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnDimensionRendering;
-        }
+        _expandedVisual.CenterPoint = new Vector3(192f, 20f, 0f);
+        _isDimensionAnimating = true;
+        EnsureRenderLoopRunning();
     }
 
-    private void OnDimensionRendering(object? sender, object e)
+    private void StepDimensionAnimation(double dt)
     {
-        long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        double elapsedSec = (now - _animStartTimeTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
-        double springElapsedSec = elapsedSec * MotionSpeedScale;
+        _dimensionAnimElapsedSec += dt;
+        double springElapsedSec = _dimensionAnimElapsedSec * MotionSpeedScale;
 
-        var stateW = _springOscillator.Evaluate(springElapsedSec, _animStartWidth, _animTargetWidth);
-        var stateH = _springOscillator.Evaluate(springElapsedSec, _animStartHeight, _animTargetHeight);
-        var stateR = _springOscillator.Evaluate(springElapsedSec, _animStartCornerRadius, _animTargetCornerRadius);
-        var stateLX = _springOscillator.Evaluate(springElapsedSec, _animStartLeadingX, _animTargetLeadingX);
-        var stateTX = _springOscillator.Evaluate(springElapsedSec, _animStartTrailingX, _animTargetTrailingX);
+        var stateW = _activeDimensionSpring.Evaluate(springElapsedSec, _animStartWidth, _animTargetWidth, _animVelWidth);
+        var stateH = _activeDimensionSpring.Evaluate(springElapsedSec, _animStartHeight, _animTargetHeight, _animVelHeight);
+        var stateR = _activeDimensionSpring.Evaluate(springElapsedSec, _animStartCornerRadius, _animTargetCornerRadius, _animVelCornerRadius);
+        var stateLX = _activeDimensionSpring.Evaluate(springElapsedSec, _animStartLeadingX, _animTargetLeadingX, _animVelLeadingX);
+        var stateTX = _activeDimensionSpring.Evaluate(springElapsedSec, _animStartTrailingX, _animTargetTrailingX, _animVelTrailingX);
 
-        // A damped spring crosses its target and settles back. That soft overshoot is
-        // desirable while expanding, but while shrinking it reads as a tiny tremor at
-        // the end of the collapse. Clamp only shrinking dimensions so the expansion
-        // keeps its elastic character.
+        double detachedElapsedSec = _animTargetDetachedOpacity < _animStartDetachedOpacity
+            ? springElapsedSec * 2.2
+            : springElapsedSec;
+        var stateDO = _activeDimensionSpring.Evaluate(
+            detachedElapsedSec,
+            _animStartDetachedOpacity,
+            _animTargetDetachedOpacity,
+            _animVelDetachedOpacity,
+            DampedSpringOscillator.NormalizedPositionTolerance,
+            DampedSpringOscillator.NormalizedVelocityTolerance);
+        var stateES = _activeDimensionSpring.Evaluate(
+            springElapsedSec,
+            _animStartExpandedScale,
+            _animTargetExpandedScale,
+            _animVelExpandedScale,
+            DampedSpringOscillator.NormalizedPositionTolerance,
+            DampedSpringOscillator.NormalizedVelocityTolerance);
+
+        // Clamp only shrinking dimensions so collapse stops crisply without a post-target tremor,
+        // while growing dimensions keep full elastic spring overshoot.
         double width = stateW.Position;
-        double height = stateH.Position;
-        double cornerRadius = stateR.Position;
-        if (_animTargetWidth < _animStartWidth) width = Math.Max(width, _animTargetWidth);
-        if (_animTargetHeight < _animStartHeight) height = Math.Max(height, _animTargetHeight);
-        if (_animTargetCornerRadius < _animStartCornerRadius) cornerRadius = Math.Max(cornerRadius, _animTargetCornerRadius);
+        double velWidth = stateW.Velocity;
+        if (_animTargetWidth < _animStartWidth && width <= _animTargetWidth)
+        {
+            width = _animTargetWidth;
+            velWidth = 0.0;
+        }
 
-        Surface.Width = width;
-        Surface.Height = height;
-        ApplySurfaceShape(cornerRadius, width, height);
+        double height = stateH.Position;
+        double velHeight = stateH.Velocity;
+        if (_animTargetHeight < _animStartHeight && height <= _animTargetHeight)
+        {
+            height = _animTargetHeight;
+            velHeight = 0.0;
+        }
+
+        double cornerRadius = stateR.Position;
+        double velCornerRadius = stateR.Velocity;
+        if (_animTargetCornerRadius < _animStartCornerRadius && cornerRadius <= _animTargetCornerRadius)
+        {
+            cornerRadius = _animTargetCornerRadius;
+            velCornerRadius = 0.0;
+        }
+
+        width = Math.Clamp(width, 1.0, IslandSurfaceLayout.DefaultHostWidthDip);
+        height = Math.Clamp(height, 1.0, IslandSurfaceLayout.DefaultHostHeightDip);
+        cornerRadius = Math.Max(0.0, cornerRadius);
+
+        double detachedOpacity = Math.Clamp(stateDO.Position, 0.0, 1.0);
+        double expandedScale = Math.Clamp(stateES.Position, 0.85, 1.15);
 
         _currentPillWidth = width;
         _currentPillHeight = height;
+        _currentCornerRadius = cornerRadius;
+        _currentLeadingX = stateLX.Position;
+        _currentTrailingX = stateTX.Position;
+        _currentDetachedOpacity = detachedOpacity;
+        _currentExpandedScale = expandedScale;
 
-        // Commit the final hit-test region while the spring is still moving, so the
-        // single DWM region swap lands under motion instead of as a visible snap.
-        // When shrinking, wait until the clamped surface actually reaches the target:
-        // cropping a still-larger pill during the last spring frame reads as a tremor.
-        var regionTolerance = _animTargetWidth < _animStartWidth ? 0.1 : 2.0;
-        if (!_regionCommitted &&
-            Math.Abs(width - _animTargetWidth) <= regionTolerance &&
-            Math.Abs(height - _animTargetHeight) <= regionTolerance)
+        _velPillWidth = velWidth;
+        _velPillHeight = velHeight;
+        _velCornerRadius = velCornerRadius;
+        _velLeadingX = stateLX.Velocity;
+        _velTrailingX = stateTX.Velocity;
+        _velDetachedOpacity = stateDO.Velocity;
+        _velExpandedScale = stateES.Velocity;
+
+        ApplySurfaceShape(cornerRadius, width, height);
+        SetSplitPositions(_currentLeadingX, _currentTrailingX);
+
+        if (DetachedPill is not null && DetachedPill.Visibility == Visibility.Visible)
+        {
+            DetachedPill.Opacity = detachedOpacity;
+        }
+
+        if (_viewModel.IsExpanded || ExpandedView.Visibility == Visibility.Visible)
+        {
+            _expandedVisual.Scale = new Vector3((float)expandedScale, (float)expandedScale, 1f);
+        }
+
+        bool isExpanding = _animTargetWidth > _animStartWidth || _animTargetHeight > _animStartHeight;
+        bool settled = stateW.HasSettled && stateH.HasSettled && stateR.HasSettled && stateLX.HasSettled && stateTX.HasSettled && stateDO.HasSettled && stateES.HasSettled;
+        double safetyTimeoutSec = Math.Max(1.2, _animDurationMs * 0.001 * 3.0);
+
+        if (!isExpanding && !_regionCommitted &&
+            Math.Abs(width - _animTargetWidth) <= 0.1 &&
+            Math.Abs(height - _animTargetHeight) <= 0.1)
         {
             _regionCommitted = true;
             UpdateWindowRegion(_animTargetWidth, _animTargetHeight, _animTargetCornerRadius);
         }
 
-        SetSplitPositions(stateLX.Position, stateTX.Position);
-
-        if (DetachedPill is not null)
-        {
-            double durSec = Math.Max(0.001, _animDurationMs * 0.001);
-            double progress = Math.Clamp(elapsedSec / durSec, 0.0, 1.0);
-            // Fade the trailing capsule out early when merging into one card; a slow fade
-            // leaves a ghost capsule floating over the expanding surface.
-            double fade = _animTargetDetachedOpacity < _animStartDetachedOpacity
-                ? Math.Min(1.0, progress * 3.0)
-                : progress;
-            DetachedPill.Opacity = _animStartDetachedOpacity + (_animTargetDetachedOpacity - _animStartDetachedOpacity) * fade;
-        }
-
-        if ((stateW.HasSettled && stateH.HasSettled && stateR.HasSettled && stateLX.HasSettled && stateTX.HasSettled) || elapsedSec >= (_animDurationMs * 0.001 * 1.5))
+        if (settled || _dimensionAnimElapsedSec >= safetyTimeoutSec)
         {
             _isDimensionAnimating = false;
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDimensionRendering;
+            _velPillWidth = 0;
+            _velPillHeight = 0;
+            _velCornerRadius = 0;
+            _velLeadingX = 0;
+            _velTrailingX = 0;
+            _velDetachedOpacity = 0;
+            _velExpandedScale = 0;
 
-            Surface.Width = _animTargetWidth;
-            Surface.Height = _animTargetHeight;
-            ApplySurfaceShape(_animTargetCornerRadius, _animTargetWidth, _animTargetHeight);
             _currentPillWidth = _animTargetWidth;
             _currentPillHeight = _animTargetHeight;
+            _currentCornerRadius = _animTargetCornerRadius;
+            _currentLeadingX = _animTargetLeadingX;
+            _currentTrailingX = _animTargetTrailingX;
+            _currentDetachedOpacity = _animTargetDetachedOpacity;
+            _currentExpandedScale = _animTargetExpandedScale;
 
+            ApplySurfaceShape(_animTargetCornerRadius, _animTargetWidth, _animTargetHeight);
             SetSplitPositions(_animTargetLeadingX, _animTargetTrailingX);
+            _expandedVisual.Scale = new Vector3((float)_animTargetExpandedScale, (float)_animTargetExpandedScale, 1f);
 
             if (DetachedPill is not null)
             {
@@ -1071,20 +1793,14 @@ public sealed partial class IslandWindow : Window
         // A page slide must not keep writing panel offsets after the panels are reset below.
         CancelPageTransition();
 
-        if (ReducedMotion)
+        if (ReducedMotion || _isIslandHidden)
         {
             animated = false;
         }
 
-        // A hover morph may still be running when the user clicks; its per-frame loop
-        // would fight the new layout and its completion callback could shrink the host
-        // window. Cancel it (and its callback) before applying the new state.
-        if (_isDimensionAnimating)
-        {
-            _isDimensionAnimating = false;
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDimensionRendering;
-            _onAnimationCompleted = null;
-        }
+        // Discard stale completion callback from any superseded transition while preserving
+        // active velocities so AnimateSurfaceDimensions can smoothly redirect momentum.
+        _onAnimationCompleted = null;
 
         var generation = ++_transitionGeneration;
         var isExpanded = state == IslandState.Expanded;
@@ -1100,68 +1816,55 @@ public sealed partial class IslandWindow : Window
             // a stale reference (which would leave the card opaque but empty).
             ExpandedView.Visibility = Visibility.Visible;
             _expandedVisual = ElementCompositionPreview.GetElementVisual(ExpandedView);
+            _expandedVisual.CenterPoint = new Vector3(192f, 20f, 0f);
             _expandedVisual.Opacity = 0;
+            if (!_isDimensionAnimating)
+            {
+                _currentExpandedScale = 0.94;
+                _velExpandedScale = 0;
+            }
+            _expandedVisual.Scale = new Vector3((float)_currentExpandedScale, (float)_currentExpandedScale, 1f);
         }
-
-        double targetWidth;
-        double targetHeight;
-        double targetCornerRadius;
 
         bool isSplit = _viewModel.IsSplitModeActive && !isExpanded && !isCollapsing;
-        double targetLeadingX = isSplit ? -38.0 : 0.0;
-        double targetTrailingX = isSplit ? 103.0 : 66.0;
-        double targetDetachedOpacity = isSplit ? 1.0 : 0.0;
 
-        if (isExpanded)
-        {
-            targetWidth = 384;
-            targetHeight = 240;
-            // Continuous island corners: large enough to read as an Apple surface
-            // instead of a generic rounded card, still inside the content insets.
-            targetCornerRadius = 56;
-        }
-        else if (isSplit)
-        {
-            targetWidth = 196;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (_viewModel.IsNotificationActive || _viewModel.IsFileOperationActive)
-        {
-            targetWidth = 268;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (_viewModel.IsFocusTimerActive)
-        {
-            targetWidth = 220;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (!hasTrack && state is IslandState.Idle)
-        {
-            // The smart idle strip needs the full compact width. This also removes
-            // the old 76 -> 86 hover jump when no media is playing.
-            targetWidth = 216;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else if (isHover)
-        {
-            targetWidth = hasTrack ? 252 : 216;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
-        else
-        {
-            targetWidth = 216;
-            targetHeight = 40;
-            targetCornerRadius = 20;
-        }
+        double targetWidth = IslandPresentationPolicy.ComputeCompactTargetWidth(
+            state,
+            hasTrack,
+            isSplit,
+            _viewModel.IsNotificationActive,
+            _viewModel.IsFileOperationActive,
+            _viewModel.IsFocusTimerActive);
 
-        var scale = isExpanded ? 1.0 : _viewModel.IslandScale;
+        var metrics = IslandSurfaceLayout.ComputeCompactMetrics(_viewModel.IslandScale);
+        var scale = isExpanded ? 1.0 : metrics.Scale;
+        double targetHeight = isExpanded ? 240.0 : metrics.PillHeight;
+        // Continuous island corners: large enough to read as an Apple surface
+        // instead of a generic rounded card, still inside the content insets.
+        double targetCornerRadius = isExpanded ? 56.0 : metrics.PillCornerRadius;
         targetWidth *= scale;
-        targetHeight *= scale;
+
+        double detachedWidth = metrics.DetachedPillWidth;
+        double detachedHeight = metrics.DetachedPillHeight;
+        if (DetachedPill is not null && (Math.Abs(DetachedPill.Width - detachedWidth) > 0.01 || Math.Abs(DetachedPill.Height - detachedHeight) > 0.01))
+        {
+            DetachedPill.Width = detachedWidth;
+            DetachedPill.Height = detachedHeight;
+            DetachedPill.CornerRadius = new CornerRadius(metrics.DetachedPillCornerRadius);
+        }
+
+        var (splitLeadingX, splitTrailingX) = IslandSurfaceLayout.ComputeSplitOffsets(targetWidth, detachedWidth, metrics.SplitGap);
+        double targetLeadingX = isSplit ? splitLeadingX : 0.0;
+        double targetTrailingX = isSplit ? splitTrailingX : detachedWidth;
+        double targetDetachedOpacity = isSplit ? 1.0 : 0.0;
+        double targetExpandedScale = isExpanded ? 1.0 : 0.94;
+
+        // Size CompactView only when entering/updating compact states (never per-frame and not during expansion).
+        if (!isExpanded && (Math.Abs(CompactView.Width - targetWidth) > 0.01 || Math.Abs(CompactView.Height - targetHeight) > 0.01))
+        {
+            CompactView.Width = targetWidth;
+            CompactView.Height = targetHeight;
+        }
 
         if (CompactWaveBars is not null)
         {
@@ -1170,27 +1873,36 @@ public sealed partial class IslandWindow : Window
 
         if (!animated)
         {
-            if (_isDimensionAnimating)
-            {
-                _isDimensionAnimating = false;
-                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnDimensionRendering;
-            }
+            _isDimensionAnimating = false;
+            _velPillWidth = 0;
+            _velPillHeight = 0;
+            _velCornerRadius = 0;
+            _velLeadingX = 0;
+            _velTrailingX = 0;
+            _velDetachedOpacity = 0;
+            _velExpandedScale = 0;
 
-            Surface.Width = targetWidth;
-            Surface.Height = targetHeight;
-            ApplySurfaceShape(targetCornerRadius, targetWidth, targetHeight);
             _currentPillWidth = targetWidth;
             _currentPillHeight = targetHeight;
+            _currentCornerRadius = targetCornerRadius;
+            _currentLeadingX = targetLeadingX;
+            _currentTrailingX = targetTrailingX;
+            _currentDetachedOpacity = targetDetachedOpacity;
+            _currentExpandedScale = isExpanded ? 1.0 : 0.94;
+
+            ApplySurfaceShape(targetCornerRadius, targetWidth, targetHeight);
             SetSplitPositions(targetLeadingX, targetTrailingX);
             if (DetachedPill is not null)
             {
                 DetachedPill.Opacity = targetDetachedOpacity;
-                DetachedPill.Visibility = isSplit ? Visibility.Visible : Visibility.Collapsed;
+                DetachedPill.Visibility = isSplit && !_isIslandHidden ? Visibility.Visible : Visibility.Collapsed;
             }
             UpdateWindowRegion(targetWidth, targetHeight, targetCornerRadius);
 
             _compactVisual.Opacity = isExpanded ? 0 : 1;
             CompactView.IsHitTestVisible = !isExpanded;
+            _expandedVisual.CenterPoint = new Vector3(192f, 20f, 0f);
+            _expandedVisual.Scale = new Vector3((float)(isExpanded ? 1.0 : 0.94), (float)(isExpanded ? 1.0 : 0.94), 1f);
             _expandedVisual.Opacity = isExpanded ? 1 : 0;
             ExpandedView.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
             ExpandedView.IsHitTestVisible = isExpanded;
@@ -1210,9 +1922,10 @@ public sealed partial class IslandWindow : Window
                 UpdatePageDots(activeIndex, animated: false);
             }
 
-            _surfaceVisual.Scale = Vector3.One;
-            _surfaceVisual.StopAnimation("Scale");
-            _surfaceVisual.Opacity = 1;
+            _pillMaskVisual.Scale = Vector3.One;
+            _pillMaskVisual.StopAnimation("Scale");
+            _pillMaskVisual.Opacity = 1;
+            StopRenderLoopIfIdle();
 
             if (state == IslandState.Collapsing)
             {
@@ -1223,20 +1936,21 @@ public sealed partial class IslandWindow : Window
 
         try
         {
-            var compositor = _surfaceVisual.Compositor;
+            var compositor = _pillMaskVisual.Compositor;
             var quickEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(0.6f, 1f));
             var durScale = AnimationProfile.DurationScale;
 
-            _surfaceVisual.Scale = Vector3.One;
-            _surfaceVisual.StopAnimation("Scale");
+            _pillMaskVisual.Scale = Vector3.One;
+            _pillMaskVisual.StopAnimation("Scale");
 
             var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
 
-            // Open the window region to the larger of current/target so the morph is never clipped.
+            // Open the window region with spring overshoot headroom before starting the morph.
             UpdateWindowRegion(
                 Math.Max(_currentPillWidth, targetWidth),
                 Math.Max(_currentPillHeight, targetHeight),
-                Math.Max(Surface.CornerRadius.TopLeft, targetCornerRadius));
+                Math.Max(_currentCornerRadius, targetCornerRadius),
+                includeOvershootPadding: true);
 
             if (isExpanded)
             {
@@ -1269,7 +1983,7 @@ public sealed partial class IslandWindow : Window
                 _expandedVisual.StartAnimation("Opacity", expandedFade);
                 ExpandedView.Translation = Vector3.Zero;
 
-                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 0.0, 66.0, 0.0, 340);
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, 0.0, detachedWidth, 0.0, targetExpandedScale, 340);
             }
             else if (isCollapsing)
             {
@@ -1278,11 +1992,10 @@ public sealed partial class IslandWindow : Window
 
                 var expandedFade = compositor.CreateScalarKeyFrameAnimation();
                 expandedFade.Duration = TimeSpan.FromMilliseconds(70 * durScale);
-                expandedFade.InsertKeyFrame(0f, 1f);
+                expandedFade.InsertKeyFrame(0f, _expandedVisual.Opacity);
                 expandedFade.InsertKeyFrame(1f, 0f, quickEasing);
 
-                // Park the heavy expanded tree as soon as it is fully transparent so the
-                // remaining shrink frames only lay out the small compact content.
+                // Park the expanded tree once faded out so it consumes zero visual overhead when compact.
                 var fadeBatch = compositor.CreateScopedBatch(CompositionBatchTypes.Animation);
                 _expandedVisual.StartAnimation("Opacity", expandedFade);
                 fadeBatch.End();
@@ -1297,12 +2010,11 @@ public sealed partial class IslandWindow : Window
                     });
                 };
 
-                // The compact layer is already in place under the expanded content. Reveal it
-                // immediately; a fade-in from near-zero leaves the pill blank mid-shrink.
+                // Keep compact content crisp and visible during collapse.
                 _compactVisual.StopAnimation("Opacity");
                 _compactVisual.Opacity = 1;
 
-                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, targetLeadingX, targetTrailingX, targetDetachedOpacity, 300, () =>
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, targetLeadingX, targetTrailingX, targetDetachedOpacity, targetExpandedScale, 300, () =>
                 {
                     UpdateWindowRegion(targetWidth, targetHeight, targetCornerRadius);
                     if (generation == _transitionGeneration && _viewModel.CurrentIslandState == IslandState.Collapsing)
@@ -1319,26 +2031,31 @@ public sealed partial class IslandWindow : Window
                 _compactVisual.Opacity = 1;
                 ExpandedView.Visibility = Visibility.Collapsed;
 
-                UpdateWindowRegion(Math.Max(_currentPillWidth, targetWidth), Math.Max(_currentPillHeight, targetHeight), targetCornerRadius);
-                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, targetLeadingX, targetTrailingX, targetDetachedOpacity, 220, () => UpdateWindowRegion(targetWidth, targetHeight, targetCornerRadius));
+                AnimateSurfaceDimensions(targetWidth, targetHeight, targetCornerRadius, targetLeadingX, targetTrailingX, targetDetachedOpacity, targetExpandedScale, 220, () => UpdateWindowRegion(targetWidth, targetHeight, targetCornerRadius));
             }
         }
         catch
         {
-            Surface.Width = targetWidth;
-            Surface.Height = targetHeight;
+            _isDimensionAnimating = false;
+            StopRenderLoopIfIdle();
+            _currentPillWidth = targetWidth;
+            _currentPillHeight = targetHeight;
+            _currentCornerRadius = targetCornerRadius;
+            _currentLeadingX = targetLeadingX;
+            _currentTrailingX = targetTrailingX;
+            _currentDetachedOpacity = targetDetachedOpacity;
+            _currentExpandedScale = isExpanded ? 1.0 : 0.94;
             ApplySurfaceShape(targetCornerRadius, targetWidth, targetHeight);
             SetSplitPositions(targetLeadingX, targetTrailingX);
             if (DetachedPill is not null)
             {
                 DetachedPill.Opacity = targetDetachedOpacity;
-                DetachedPill.Visibility = isSplit ? Visibility.Visible : Visibility.Collapsed;
+                DetachedPill.Visibility = isSplit && !_isIslandHidden ? Visibility.Visible : Visibility.Collapsed;
             }
             _compactVisual.Opacity = isExpanded ? 0 : 1;
             _expandedVisual.Opacity = isExpanded ? 1 : 0;
             ExpandedView.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
-            _currentPillWidth = targetWidth;
-            _currentPillHeight = targetHeight;
+            UpdateWindowRegion(targetWidth, targetHeight, targetCornerRadius);
         }
     }
 
@@ -1350,7 +2067,7 @@ public sealed partial class IslandWindow : Window
     // GPU-accelerated Equalizer wave animations running on the Compositor thread (zero CPU)
     private void StartEqualizerWave()
     {
-        if (_waveAnimating) return;
+        if (!_viewModel.ShowEqualizer || _waveAnimating) return;
         _waveAnimating = true;
 
         try
@@ -1402,20 +2119,21 @@ public sealed partial class IslandWindow : Window
 
     private void PlayTrackChangePulse()
     {
+        if (ReducedMotion) return;
         try
         {
-            var compositor = _surfaceVisual.Compositor;
+            var compositor = _pillMaskVisual.Compositor;
             var springEasing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.34f, 1.56f), new Vector2(0.64f, 1f));
 
-            _surfaceVisual.CenterPoint = new Vector3((float)(_currentPillWidth / 2), (float)(_currentPillHeight / 2), 0);
+            _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), (float)(_currentPillHeight / 2.0), 0f);
 
             var pulse = compositor.CreateVector3KeyFrameAnimation();
-            pulse.Duration = TimeSpan.FromMilliseconds(420);
+            pulse.Duration = ScaledDuration(420, minMs: 120);
             pulse.InsertKeyFrame(0f, Vector3.One);
             pulse.InsertKeyFrame(0.35f, new Vector3(1.05f, 1.05f, 1f), springEasing);
             pulse.InsertKeyFrame(1f, Vector3.One, springEasing);
 
-            _surfaceVisual.StartAnimation("Scale", pulse);
+            _pillMaskVisual.StartAnimation("Scale", pulse);
         }
         catch { }
     }
@@ -1649,15 +2367,15 @@ public sealed partial class IslandWindow : Window
         if (ReducedMotion) return;
         try
         {
-            var compositor = _surfaceVisual.Compositor;
-            _surfaceVisual.CenterPoint = new Vector3((float)(_currentPillWidth / 2.0), (float)(_currentPillHeight / 2.0), 0);
+            var compositor = _pillMaskVisual.Compositor;
+            _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), (float)(_currentPillHeight / 2.0), 0f);
 
             var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.Duration = TimeSpan.FromMilliseconds(durationMs);
+            anim.Duration = ScaledDuration(durationMs);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.3f, 1.0f));
             anim.InsertKeyFrame(1f, new Vector3(scaleX, scaleY, 1f), easing);
 
-            _surfaceVisual.StartAnimation("Scale", anim);
+            _pillMaskVisual.StartAnimation("Scale", anim);
         }
         catch { }
     }
@@ -1671,7 +2389,7 @@ public sealed partial class IslandWindow : Window
             visual.CenterPoint = new Vector3((float)(element.ActualWidth / 2.0), (float)(element.ActualHeight / 2.0), 0);
             var compositor = visual.Compositor;
             var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.Duration = TimeSpan.FromMilliseconds(durationMs);
+            anim.Duration = ScaledDuration(durationMs);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.3f, 1.0f));
             anim.InsertKeyFrame(1f, new Vector3(targetScale, targetScale, 1f), easing);
             visual.StartAnimation("Scale", anim);
@@ -1796,29 +2514,39 @@ public sealed partial class IslandWindow : Window
         }
 
         int direction = isForward ? 1 : -1;
-        double elapsedSec = _isPageAnimating ? PageElapsedSeconds : 0;
+        bool wasAnimating = _isPageAnimating;
 
-        // Capture the in-flight state first: an interrupted slide resumes from where
-        // it is (with its velocity) instead of snapping to the page origin.
+        // Capture live in-flight positions and velocities for every channel (X, Opacity, Scale)
+        // so mid-flight page changes redirect smoothly instead of snapping.
         for (int i = 0; i < 3; i++)
         {
             bool isTarget = i == toIndex;
-            bool animated = _isPageAnimating && (i == _pageAnimFromIndex || i == _pageAnimToIndex);
-            if (animated)
+            bool wasPanelActive = wasAnimating && (i == _pageAnimFromIndex || i == _pageAnimToIndex);
+            if (wasPanelActive)
             {
-                var x = _pageSpring.Evaluate(elapsedSec, _pageFromX[i], _pageToX[i], _pageVelX[i]);
-                _pageFromX[i] = x.Position;
-                _pageVelX[i] = x.Velocity;
-                _pageFromOpacity[i] = _pageSpring.Evaluate(elapsedSec, _pageFromOpacity[i], _pageToOpacity[i]).Position;
-                _pageFromScale[i] = _pageSpring.Evaluate(elapsedSec, _pageFromScale[i], _pageToScale[i]).Position;
+                _pageFromX[i] = _pageCurrX[i];
+                _pageVelX[i] = _pageCurrVelX[i];
+                _pageFromOpacity[i] = _pageCurrOpacity[i];
+                _pageVelOpacity[i] = _pageCurrVelOpacity[i];
+                _pageFromScale[i] = _pageCurrScale[i];
+                _pageVelScale[i] = _pageCurrVelScale[i];
             }
             else
             {
                 _pageFromX[i] = isTarget ? direction * PageSlideDistance : 0;
                 _pageVelX[i] = 0;
                 _pageFromOpacity[i] = i == fromIndex ? 1 : 0;
+                _pageVelOpacity[i] = 0;
                 _pageFromScale[i] = isTarget ? 0.985 : 1;
+                _pageVelScale[i] = 0;
             }
+
+            _pageCurrX[i] = _pageFromX[i];
+            _pageCurrVelX[i] = _pageVelX[i];
+            _pageCurrOpacity[i] = _pageFromOpacity[i];
+            _pageCurrVelOpacity[i] = _pageVelOpacity[i];
+            _pageCurrScale[i] = _pageFromScale[i];
+            _pageCurrVelScale[i] = _pageVelScale[i];
 
             _pageToX[i] = isTarget ? 0 : (i == fromIndex ? -direction * PageSlideDistance : direction * PageSlideDistance);
             _pageToOpacity[i] = isTarget ? 1 : 0;
@@ -1833,6 +2561,7 @@ public sealed partial class IslandWindow : Window
             grid.Visibility = visible ? Visibility.Visible : Visibility.Collapsed;
             visual.StopAnimation("Translation");
             visual.StopAnimation("Opacity");
+            visual.StopAnimation("Scale");
             grid.Translation = new Vector3((float)_pageFromX[i], 0, 0);
             visual.Opacity = (float)Math.Clamp(_pageFromOpacity[i], 0, 1);
             float scale = (float)_pageFromScale[i];
@@ -1841,27 +2570,22 @@ public sealed partial class IslandWindow : Window
 
         _pageAnimFromIndex = fromIndex;
         _pageAnimToIndex = toIndex;
-        _pageAnimStartTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-
-        if (!_isPageAnimating)
-        {
-            _isPageAnimating = true;
-            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnPageTransitionRendering;
-        }
+        _pageAnimElapsedSec = 0.0;
+        _isPageAnimating = true;
+        EnsureRenderLoopRunning();
     }
 
     private void CancelPageTransition()
     {
         if (!_isPageAnimating) return;
         _isPageAnimating = false;
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnPageTransitionRendering;
+        Array.Clear(_pageCurrVelX);
+        Array.Clear(_pageCurrVelOpacity);
+        Array.Clear(_pageCurrVelScale);
+        StopRenderLoopIfIdle();
     }
 
-    private double PageElapsedSeconds =>
-        (System.Diagnostics.Stopwatch.GetTimestamp() - _pageAnimStartTicks)
-        / (double)System.Diagnostics.Stopwatch.Frequency * MotionSpeedScale;
-
-    private void OnPageTransitionRendering(object? sender, object e)
+    private void StepPageTransition(double dt)
     {
         if (!_isPageAnimating)
         {
@@ -1875,7 +2599,9 @@ public sealed partial class IslandWindow : Window
             return;
         }
 
-        double elapsedSec = PageElapsedSeconds;
+        _pageAnimElapsedSec += dt;
+        double elapsedSec = _pageAnimElapsedSec * MotionSpeedScale;
+        var pageSpring = SelectPageSpring();
         bool settled = true;
 
         for (int i = 0; i < 3; i++)
@@ -1888,19 +2614,38 @@ public sealed partial class IslandWindow : Window
             var grid = GetPanelGrid(i);
             var visual = GetPanelVisual(i);
 
-            var x = _pageSpring.Evaluate(elapsedSec, _pageFromX[i], _pageToX[i], _pageVelX[i]);
-            var opacity = _pageSpring.Evaluate(elapsedSec, _pageFromOpacity[i], _pageToOpacity[i]);
-            var scale = _pageSpring.Evaluate(elapsedSec, _pageFromScale[i], _pageToScale[i]);
+            var x = pageSpring.Evaluate(elapsedSec, _pageFromX[i], _pageToX[i], _pageVelX[i]);
+            var opacity = pageSpring.Evaluate(
+                elapsedSec,
+                _pageFromOpacity[i],
+                _pageToOpacity[i],
+                _pageVelOpacity[i],
+                DampedSpringOscillator.NormalizedPositionTolerance,
+                DampedSpringOscillator.NormalizedVelocityTolerance);
+            var scale = pageSpring.Evaluate(
+                elapsedSec,
+                _pageFromScale[i],
+                _pageToScale[i],
+                _pageVelScale[i],
+                DampedSpringOscillator.NormalizedPositionTolerance,
+                DampedSpringOscillator.NormalizedVelocityTolerance);
+
+            _pageCurrX[i] = x.Position;
+            _pageCurrVelX[i] = x.Velocity;
+            _pageCurrOpacity[i] = Math.Clamp(opacity.Position, 0.0, 1.0);
+            _pageCurrVelOpacity[i] = opacity.Velocity;
+            _pageCurrScale[i] = Math.Clamp(scale.Position, 0.90, 1.10);
+            _pageCurrVelScale[i] = scale.Velocity;
 
             grid.Translation = new Vector3((float)x.Position, 0, 0);
-            visual.Opacity = (float)Math.Clamp(opacity.Position, 0, 1);
-            float s = (float)scale.Position;
+            visual.Opacity = (float)_pageCurrOpacity[i];
+            float s = (float)_pageCurrScale[i];
             visual.Scale = new Vector3(s, s, 1);
 
             settled &= x.HasSettled && opacity.HasSettled && scale.HasSettled;
         }
 
-        if (settled)
+        if (settled || _pageAnimElapsedSec >= 1.5)
         {
             FinishPageTransition();
         }
@@ -1909,13 +2654,19 @@ public sealed partial class IslandWindow : Window
     private void FinishPageTransition()
     {
         _isPageAnimating = false;
-        Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnPageTransitionRendering;
+        Array.Clear(_pageCurrVelX);
+        Array.Clear(_pageCurrVelOpacity);
+        Array.Clear(_pageCurrVelScale);
+        StopRenderLoopIfIdle();
 
         for (int i = 0; i < 3; i++)
         {
             var grid = GetPanelGrid(i);
             var visual = GetPanelVisual(i);
             bool isTarget = i == _targetPageIndex;
+            _pageCurrX[i] = 0;
+            _pageCurrOpacity[i] = isTarget ? 1.0 : 0.0;
+            _pageCurrScale[i] = 1.0;
             grid.Translation = Vector3.Zero;
             visual.StopAnimation("Translation");
             visual.StopAnimation("Opacity");
@@ -1927,77 +2678,164 @@ public sealed partial class IslandWindow : Window
 
     private void UpdatePageDots(int activeIndex, bool animated)
     {
-        var dots = new[] { PageDot0, PageDot1, PageDot2 };
-        for (int i = 0; i < dots.Length; i++)
-        {
-            var dot = dots[i];
-            if (dot is null) continue;
-            bool isActive = (i == activeIndex);
-            double targetWidth = isActive ? 18.0 : 6.0;
-            double targetOpacity = isActive ? 1.0 : 0.35;
+        double[] targets =
+        [
+            activeIndex == 0 ? 18.0 : 6.0,
+            activeIndex == 1 ? 18.0 : 6.0,
+            activeIndex == 2 ? 18.0 : 6.0
+        ];
+        double[] targetOpacities =
+        [
+            activeIndex == 0 ? 1.0 : 0.35,
+            activeIndex == 1 ? 1.0 : 0.35,
+            activeIndex == 2 ? 1.0 : 0.35
+        ];
 
-            if (animated)
+        // Position transparent hit buttons once per page selection (zero per-frame layout).
+        double btnX = 0.0;
+        for (int i = 0; i < 3; i++)
+        {
+            var btn = _dotButtons[i];
+            if (btn is not null)
             {
-                AnimateDot(dot, targetWidth, targetOpacity);
-            }
-            else
-            {
-                dot.Width = targetWidth;
-                dot.Opacity = targetOpacity;
-                if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+                if (Math.Abs(btn.Width - targets[i]) > 0.01)
                 {
-                    dot.Background = brush;
+                    btn.Width = targets[i];
                 }
+                btn.Translation = new Vector3((float)btnX, 0f, 0f);
+            }
+            btnX += targets[i] + 5.0;
+        }
+
+        if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
+        {
+            for (int i = 0; i < 3; i++)
+            {
+                if (_dotVisualElements[i] is not null)
+                {
+                    _dotVisualElements[i].Background = brush;
+                }
+            }
+        }
+
+        if (!animated)
+        {
+            _isDotAnimating = false;
+            Array.Clear(_dotCurrVelWidth);
+            Array.Clear(_dotCurrVelOpacity);
+            double x = 0.0;
+            for (int i = 0; i < 3; i++)
+            {
+                _dotCurrWidth[i] = targets[i];
+                _dotTargetWidth[i] = targets[i];
+                _dotCurrOpacity[i] = targetOpacities[i];
+                _dotTargetOpacity[i] = targetOpacities[i];
+                ApplyDotVisualState(i, x, targets[i], targetOpacities[i]);
+                x += targets[i] + 5.0;
+            }
+            StopRenderLoopIfIdle();
+            return;
+        }
+
+        for (int i = 0; i < 3; i++)
+        {
+            _dotStartWidth[i] = _dotCurrWidth[i];
+            _dotVelWidth[i] = _isDotAnimating ? _dotCurrVelWidth[i] : 0.0;
+            _dotTargetWidth[i] = targets[i];
+
+            _dotStartOpacity[i] = _dotCurrOpacity[i];
+            _dotVelOpacity[i] = _isDotAnimating ? _dotCurrVelOpacity[i] : 0.0;
+            _dotTargetOpacity[i] = targetOpacities[i];
+        }
+
+        _dotAnimElapsedSec = 0.0;
+        _isDotAnimating = true;
+        EnsureRenderLoopRunning();
+    }
+
+    private void StepDotAnimation(double dt)
+    {
+        if (!_isDotAnimating)
+        {
+            return;
+        }
+
+        _dotAnimElapsedSec += dt;
+        double springElapsedSec = _dotAnimElapsedSec * MotionSpeedScale;
+        var dotSpring = SelectDotSpring();
+        bool settled = true;
+
+        for (int i = 0; i < 3; i++)
+        {
+            var widthState = dotSpring.Evaluate(
+                springElapsedSec,
+                _dotStartWidth[i],
+                _dotTargetWidth[i],
+                _dotVelWidth[i],
+                positionTolerance: 0.1,
+                velocityTolerance: 0.25);
+            var opacityState = dotSpring.Evaluate(
+                springElapsedSec,
+                _dotStartOpacity[i],
+                _dotTargetOpacity[i],
+                _dotVelOpacity[i],
+                DampedSpringOscillator.NormalizedPositionTolerance,
+                DampedSpringOscillator.NormalizedVelocityTolerance);
+
+            _dotCurrWidth[i] = Math.Clamp(widthState.Position, 4.0, 22.0);
+            _dotCurrVelWidth[i] = widthState.Velocity;
+            _dotCurrOpacity[i] = Math.Clamp(opacityState.Position, 0.0, 1.0);
+            _dotCurrVelOpacity[i] = opacityState.Velocity;
+
+            settled &= widthState.HasSettled && opacityState.HasSettled;
+        }
+
+        double x = 0.0;
+        for (int i = 0; i < 3; i++)
+        {
+            ApplyDotVisualState(i, x, _dotCurrWidth[i], _dotCurrOpacity[i]);
+            x += _dotCurrWidth[i] + 5.0;
+        }
+
+        if (settled || _dotAnimElapsedSec >= 1.2)
+        {
+            _isDotAnimating = false;
+            Array.Clear(_dotCurrVelWidth);
+            Array.Clear(_dotCurrVelOpacity);
+            double snapX = 0.0;
+            for (int i = 0; i < 3; i++)
+            {
+                _dotCurrWidth[i] = _dotTargetWidth[i];
+                _dotCurrOpacity[i] = _dotTargetOpacity[i];
+                ApplyDotVisualState(i, snapX, _dotTargetWidth[i], _dotTargetOpacity[i]);
+                snapX += _dotTargetWidth[i] + 5.0;
             }
         }
     }
 
-    private void AnimateDot(FrameworkElement dot, double targetWidth, double targetOpacity)
+    private void ApplyDotVisualState(int index, double offsetX, double width, double opacity)
     {
-        try
+        if (_dotVisualElements[index] is not null)
         {
-            var sb = new Microsoft.UI.Xaml.Media.Animation.Storyboard();
-            var widthAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-            {
-                To = targetWidth,
-                Duration = new Duration(TimeSpan.FromMilliseconds(200)),
-                EnableDependentAnimation = true,
-                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut }
-            };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(widthAnim, dot);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(widthAnim, "Width");
-            sb.Children.Add(widthAnim);
-
-            var opacityAnim = new Microsoft.UI.Xaml.Media.Animation.DoubleAnimation
-            {
-                To = targetOpacity,
-                Duration = new Duration(TimeSpan.FromMilliseconds(180)),
-                EasingFunction = new Microsoft.UI.Xaml.Media.Animation.CubicEase { EasingMode = Microsoft.UI.Xaml.Media.Animation.EasingMode.EaseOut }
-            };
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTarget(opacityAnim, dot);
-            Microsoft.UI.Xaml.Media.Animation.Storyboard.SetTargetProperty(opacityAnim, "Opacity");
-            sb.Children.Add(opacityAnim);
-
-            sb.Begin();
-
-            if (dot is Button btn && WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
-            {
-                btn.Background = brush;
-            }
+            _dotVisualElements[index].Translation = new Vector3((float)offsetX, 0f, 0f);
         }
-        catch
+
+        if (_dotClipGeometries[index] is not null)
         {
-            dot.Width = targetWidth;
-            dot.Opacity = targetOpacity;
+            _dotClipGeometries[index].Offset = Vector2.Zero;
+            _dotClipGeometries[index].Size = new Vector2((float)Math.Max(2.0, width), 5f);
+            _dotClipGeometries[index].CornerRadius = new Vector2(2.5f, 2.5f);
+        }
+
+        if (_dotVisuals[index] is not null)
+        {
+            _dotVisuals[index].Opacity = (float)Math.Clamp(opacity, 0.0, 1.0);
         }
     }
 
     private void OnToggleExpandedClick(object sender, RoutedEventArgs e) => _viewModel.ToggleExpanded();
     private void OnCollapseClick(object sender, RoutedEventArgs e) => _viewModel.Collapse();
     private void OnHideIslandClick(object sender, RoutedEventArgs e) => HideIslandAnimated();
-
-    private void OnOpenTaskbarFlyoutClick(object sender, RoutedEventArgs e)
-        => TaskbarFlyoutRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnHiddenAnchorPointerEntered(object sender, PointerRoutedEventArgs e) => UnhideIslandAnimated();
     private void OnHiddenAnchorPointerReleased(object sender, PointerRoutedEventArgs e) => UnhideIslandAnimated();
@@ -2062,7 +2900,7 @@ public sealed partial class IslandWindow : Window
             visual.CenterPoint = new Vector3((float)(element.ActualWidth / 2), (float)(element.ActualHeight / 2), 0);
             var compositor = visual.Compositor;
             var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.Duration = TimeSpan.FromMilliseconds(targetScale < 1 ? 65 : 130);
+            anim.Duration = ScaledDuration(targetScale < 1 ? 65 : 130);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
             anim.InsertKeyFrame(1f, new Vector3(targetScale, targetScale, 1f), easing);
             visual.StartAnimation("Scale", anim);
@@ -2079,13 +2917,59 @@ public sealed partial class IslandWindow : Window
     public void ApplyGlass()
     {
         _glassEnabled = _viewModel.UseTransparency;
+        if (!_glassEnabled)
+        {
+            _frostRefreshTimer?.Stop();
+            _frostGeneration++;
+            _hasFrostBitmap = false;
+            if (FrostLayer is not null)
+            {
+                FrostLayer.Fill = null;
+            }
+        }
+
         UpdateFrostVisibility();
         if (_glassEnabled)
         {
             // No periodic re-capture: each capture briefly hides the window, which
-            // reads as a visible blink. The blur is captured on launch/glass enable;
-            // track and slider changes only recolor the tint overlay above it.
+            // reads as a visible blink. The blur is captured on launch/glass enable,
+            // debounced TopOffset/IslandScale updates, display settles, and fullscreen returns.
             _ = RefreshFrostAsync(force: true);
+        }
+    }
+
+    private void ScheduleFrostRefresh(int delayMs = 240)
+    {
+        if (!_glassEnabled || _isIslandHidden)
+        {
+            return;
+        }
+
+        if (_frostRefreshTimer is null)
+        {
+            _frostRefreshTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _frostRefreshTimer.IsRepeating = false;
+            _frostRefreshTimer.Tick += (_, _) =>
+            {
+                if (_glassEnabled && !_isIslandHidden)
+                {
+                    _ = RefreshFrostAsync(force: true);
+                }
+            };
+        }
+
+        _frostRefreshTimer.Stop();
+        _frostRefreshTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(80, delayMs));
+        _frostRefreshTimer.Start();
+    }
+
+    private void OnWindowRootActualThemeChanged(FrameworkElement sender, object args)
+    {
+        if (string.Equals(_viewModel.Theme, "System", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(_viewModel.Theme))
+        {
+            ApplyTheme(_viewModel.Theme);
+            _viewModel.RefreshThemeResources();
         }
     }
 
@@ -2103,20 +2987,38 @@ public sealed partial class IslandWindow : Window
         }
         if (_glassEnabled)
         {
-            UpdateFrostTint();
+            UpdateFrostTint(ComputeCurrentPalette());
         }
     }
 
-    /// <summary>Recolors the live glass tint without touching the captured blur.</summary>
-    private void UpdateFrostTint()
+    private GlassSurfacePalette ComputeCurrentPalette()
     {
-        if (FrostTintLayer is null)
+        var isLight = DesktopFrostService.ResolveIsLightTheme(_viewModel.Theme);
+        var hasFrostBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
+        return LiquidGlassEngine.ComputeIslandPalette(
+            isLightTheme: isLight,
+            useTransparency: _glassEnabled,
+            transparencyLevel: _viewModel.TransparencyLevel,
+            dynamicColorTint: _viewModel.DynamicColorTint,
+            artworkAccentColor: _viewModel.ArtworkAccentColor,
+            artworkTintStrength: _viewModel.ArtworkTintStrength,
+            hasFrostBitmap: hasFrostBitmap);
+    }
+
+    /// <summary>Recolors the live glass tint and specular sheen without touching the captured blur.</summary>
+    private void UpdateFrostTint(GlassSurfacePalette palette)
+    {
+        if (FrostTintLayer is not null)
         {
-            return;
+            var hasBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
+            FrostTintLayer.Fill = DesktopFrostService.CreateBrush(palette.FrostTintRgb);
+            FrostTintLayer.Opacity = hasBitmap ? palette.FrostTintOpacity : 0.0;
         }
 
-        FrostTintLayer.Fill = Brush(CurrentGlassTint());
-        FrostTintLayer.Opacity = FrostAlpha() / 255.0;
+        if (FrostSheenTopStop is not null)
+        {
+            FrostSheenTopStop.Color = DesktopFrostService.ToColor(palette.SheenTopArgb);
+        }
     }
 
     private bool _frostBusy;
@@ -2124,147 +3026,77 @@ public sealed partial class IslandWindow : Window
     /// <summary>Samples the desktop area under the island, blurs + tints it into the frost brush.</summary>
     private async Task RefreshFrostAsync(bool force = false)
     {
-        if (!_glassEnabled || _isIslandHidden || _frostBusy || FrostLayer is null) return;
-        // Periodic refreshes skip while the pointer is over the pill (no flicker under
-        // the cursor); forced refreshes (state change / expand) always run.
-        if (!force && _isPointerOverSurface) return;
+        if (!_glassEnabled || _isIslandHidden || _frostBusy || FrostLayer is null)
+        {
+            return;
+        }
+
+        if (!force && _isPointerOverSurface)
+        {
+            return;
+        }
 
         _frostBusy = true;
+        var generation = ++_frostGeneration;
         try
         {
-            var clientW = 0;
-            var clientH = 0;
-            var screenX = 0;
-            var screenY = 0;
-            RunOnDispatcher(() =>
-            {
-                // Capture the whole fixed host footprint once. The brush renders with
-                // Stretch=None and top/center alignment, so every pill size reads a 1:1
-                // crop of the same snapshot instead of re-scaling an old capture.
-                GetClientRect(_hwnd, out var crc);
-                var pt = new Win32Point();
-                _ = ClientToScreen(_hwnd, ref pt);
-                screenX = pt.X;
-                screenY = pt.Y;
-                clientW = Math.Max(16, crc.Right - crc.Left);
-                clientH = Math.Max(16, crc.Bottom - crc.Top);
-            });
-            if (clientW < 16 || clientH < 16) return;
-
+            GetClientRect(_hwnd, out var crc);
+            var pt = new Win32Point();
+            _ = ClientToScreen(_hwnd, ref pt);
             var dpiScale = _dpiScale > 0 ? _dpiScale : 1.0;
-            var frost = await Task.Run(() =>
+            var surfaceInsetPx = (int)Math.Round(IslandSurfaceLayout.SurfaceTopInsetDip * dpiScale);
+            var screenX = pt.X;
+            var screenY = pt.Y + surfaceInsetPx;
+            var clientW = Math.Max(16, crc.Right - crc.Left);
+            var remainingH = Math.Max(16, (crc.Bottom - crc.Top) - surfaceInsetPx);
+            var targetSurfaceH = (int)Math.Round(IslandSurfaceLayout.DefaultHostHeightDip * dpiScale);
+            var clientH = Math.Max(16, Math.Min(remainingH, targetSurfaceH));
+
+            if (clientW < 16 || clientH < 16)
             {
-                var bmp = CaptureDesktopSample(screenX, screenY, clientW, clientH);
-                if (bmp is null) return null;
-
-                var result = BlurDesktop(bmp);
-                bmp.Dispose();
-
-                var dip = ScaleToDip(result, dpiScale);
-                if (!ReferenceEquals(dip, result))
-                {
-                    result.Dispose();
-                }
-                return dip;
-            });
-            if (frost is null) return;
-
-            byte[] pngBytes;
-            using (var ms = new System.IO.MemoryStream())
-            {
-                frost.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                pngBytes = ms.ToArray();
+                return;
             }
-            frost.Dispose();
 
-            RunOnDispatcher(() =>
+            var pngBytes = await Task.Run(() =>
             {
-                var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
-                using (var writer = new Windows.Storage.Streams.DataWriter(stream.GetOutputStreamAt(0)))
+                using var bmp = CaptureDesktopSample(screenX, screenY, clientW, clientH);
+                if (bmp is null)
                 {
-                    writer.WriteBytes(pngBytes);
-                    _ = writer.StoreAsync().AsTask().GetAwaiter().GetResult();
-                    _ = writer.FlushAsync().AsTask().GetAwaiter().GetResult();
+                    return null;
                 }
 
-                var image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
-                _ = image.SetSourceAsync(stream);
-                FrostLayer.Fill = new Microsoft.UI.Xaml.Media.ImageBrush
-                {
-                    ImageSource = image,
-                    Stretch = Microsoft.UI.Xaml.Media.Stretch.None,
-                    AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Center,
-                    AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Top
-                };
-                UpdateFrostTint();
+                return DesktopFrostService.ProcessCapturedFrostToPng(bmp, dpiScale, blurRadius: 11, vibrancyBoost: 1.24);
             });
+
+            if (pngBytes is null || generation != _frostGeneration || _isIslandHidden || !_glassEnabled || FrostLayer is null)
+            {
+                return;
+            }
+
+            var image = await DesktopFrostService.DecodePngToBitmapImageAsync(pngBytes);
+            if (generation != _frostGeneration || _isIslandHidden || !_glassEnabled || FrostLayer is null)
+            {
+                return;
+            }
+
+            FrostLayer.Fill = new Microsoft.UI.Xaml.Media.ImageBrush
+            {
+                ImageSource = image,
+                Stretch = Microsoft.UI.Xaml.Media.Stretch.None,
+                AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Center,
+                AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Top
+            };
+            _hasFrostBitmap = true;
+            ApplyTheme(_viewModel.Theme);
         }
-        catch
+        catch (Exception ex)
         {
-            // Be resilient — worst case the frost simply shows the previous frame.
+            CrashLogger.Write("IslandWindow.RefreshFrostAsync", ex);
         }
         finally
         {
             _frostBusy = false;
         }
-    }
-
-    private void RunOnDispatcher(Action action)
-    {
-        var dispatcher = DispatcherQueue.GetForCurrentThread();
-        if (dispatcher.HasThreadAccess)
-        {
-            action();
-            return;
-        }
-        using var evt = new System.Threading.ManualResetEvent(false);
-        dispatcher.TryEnqueue(() =>
-        {
-            try { action(); }
-            finally { _ = evt.Set(); }
-        });
-        _ = evt.WaitOne(200);
-    }
-
-    private static bool IsSystemLightTheme()
-    {
-        try
-        {
-            var background = SystemUiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
-            return (background.R * 0.299 + background.G * 0.587 + background.B * 0.114) > 128;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>Resolves the Settings "System" option to the real OS theme instead of forcing dark.</summary>
-    private static bool IsLightTheme(string theme) =>
-        theme == "Light" || (theme != "Dark" && IsSystemLightTheme());
-
-    /// <summary>Surface alpha from the transparency slider; 0xF2 = solid, 0x5E = most transparent.</summary>
-    private uint SurfaceAlpha()
-    {
-        if (!_glassEnabled) return 0xF2u;
-        var level = Math.Clamp(_viewModel.TransparencyLevel, 0, 100);
-        return (uint)Math.Round(0xF2 - (0xF2 - 0x5E) * level / 100.0);
-    }
-
-    /// <summary>Frost stays a little denser than the surface so text keeps its contrast.</summary>
-    private uint FrostAlpha()
-    {
-        if (!_glassEnabled) return 0xF2u;
-        return Math.Min(0xF2u, SurfaceAlpha() + 0x1E);
-    }
-
-    private uint CurrentGlassTint()
-    {
-        var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
-        var tintAmount = Math.Clamp(_viewModel.ArtworkTintStrength, 0, 100) / 100.0;
-        var baseColor = IsLightTheme(_viewModel.Theme) ? 0xFFF2F5F7u : 0xFF0B1018u;
-        // Opaque RGB: FrostTintLayer applies the transparency as its Opacity.
-        return Blend(baseColor, artworkAccent, tintAmount);
     }
 
     /// <summary>
@@ -2273,6 +3105,11 @@ public sealed partial class IslandWindow : Window
     /// </summary>
     private System.Drawing.Bitmap? CaptureDesktopSample(int x, int y, int width, int height)
     {
+        if (_isIslandHidden)
+        {
+            return null;
+        }
+
         try
         {
             _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpHideWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
@@ -2283,174 +3120,109 @@ public sealed partial class IslandWindow : Window
             // ignore — capture below still runs; worst case includes the pill itself
         }
 
-        System.Drawing.Bitmap? captured = null;
         try
         {
-            captured = new System.Drawing.Bitmap(width, height);
-            using var g = System.Drawing.Graphics.FromImage(captured);
-            g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
-        }
-        catch
-        {
+            return _isIslandHidden
+                ? null
+                : DesktopFrostService.CaptureScreenRegion(x, y, width, height);
         }
         finally
         {
-            try
+            if (!_isIslandHidden)
             {
-                _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
+                try
+                {
+                    _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
+                }
+                catch
+                {
+                }
             }
-            catch
-            {
-            }
         }
-
-        return captured;
-    }
-
-    private static System.Drawing.Bitmap BlurDesktop(System.Drawing.Bitmap captured)
-    {
-        var w = captured.Width;
-        var h = captured.Height;
-
-        // Progressive "frosted" blur: downscale hard, upscale smooth.
-        var fSmall = Math.Max(4, w / 8);
-        var fSmallH = Math.Max(4, h / 8);
-        using var small = new System.Drawing.Bitmap(fSmall, fSmallH);
-        using (var g = System.Drawing.Graphics.FromImage(small))
-        {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-            g.DrawImage(captured, new System.Drawing.Rectangle(0, 0, fSmall, fSmallH),
-                0, 0, w, h, System.Drawing.GraphicsUnit.Pixel);
-        }
-
-        var midW = Math.Max(8, w / 2);
-        var midH = Math.Max(8, h / 2);
-        using var mid = new System.Drawing.Bitmap(midW, midH);
-        using (var g = System.Drawing.Graphics.FromImage(mid))
-        {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.DrawImage(small, 0, 0, midW, midH);
-        }
-
-        var frost = new System.Drawing.Bitmap(w, h);
-        using (var g = System.Drawing.Graphics.FromImage(frost))
-        {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.DrawImage(mid, 0, 0, w, h);
-        }
-
-        return frost;
-    }
-
-    /// <summary>Converts a physical-pixel snapshot to Dip size so Stretch=None maps 1:1.</summary>
-    private static System.Drawing.Bitmap ScaleToDip(System.Drawing.Bitmap source, double dpiScale)
-    {
-        if (dpiScale <= 0 || Math.Abs(dpiScale - 1.0) < 0.01)
-        {
-            return source;
-        }
-
-        var width = Math.Max(16, (int)Math.Round(source.Width / dpiScale));
-        var height = Math.Max(16, (int)Math.Round(source.Height / dpiScale));
-        var scaled = new System.Drawing.Bitmap(width, height);
-        using var g = System.Drawing.Graphics.FromImage(scaled);
-        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-        g.DrawImage(source, 0, 0, width, height);
-        return scaled;
     }
 
     public void ApplyTheme(string theme)
     {
-        var isLight = IsLightTheme(theme);
-        WindowRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
+        var palette = ComputeCurrentPalette();
+        var requestedTheme = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase)
+            ? ElementTheme.Dark
+            : string.Equals(theme, "Light", StringComparison.OrdinalIgnoreCase)
+                ? ElementTheme.Light
+                : ElementTheme.Default;
+        if (WindowRoot.RequestedTheme != requestedTheme)
+        {
+            WindowRoot.RequestedTheme = requestedTheme;
+        }
 
-        var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
-        var tintAmount   = Math.Clamp(_viewModel.ArtworkTintStrength, 0, 100) / 100.0;
-        var accentColor  = artworkAccent;
-        // Glass is used in both compact and expanded states; the transparency slider
-        // controls how much desktop shows through, and the artwork accent tints it.
-        var bgAlpha      = SurfaceAlpha();
-        var bgColor      = isLight
-            ? Blend((bgAlpha << 24) | 0xF2F5F7u, artworkAccent, tintAmount)
-            : Blend((bgAlpha << 24) | 0x0B1018u, artworkAccent, tintAmount);
-        var borderColor  = isLight ? 0x22000000u : Blend(0x33FFFFFFu, artworkAccent, 0.22);
-        var primaryText  = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
-        var secondaryTxt = isLight ? 0xFF8E8E93u : 0xFFA4ABB6u;
-        var pillCtrlBg   = isLight ? 0x14000000u : Blend(0x24FFFFFFu, artworkAccent, 0.14);
-        var playBg       = accentColor;
-        var playFg       = 0xFFFFFFFFu;
-        var seekAccent   = accentColor;
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandBackground", palette.FallbackBackgroundArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandSolidSurface", 0xFF000000u | (palette.FallbackBackgroundArgb & 0x00FFFFFFu));
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandBorder", palette.BorderRimTopArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PrimaryText", palette.PrimaryTextArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SecondaryText", palette.SecondaryTextArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PillControlBackground", palette.PillControlBackgroundArgb);
 
-        UpdateBrush("IslandBackground", bgColor);
-        UpdateBrush("IslandBorder", borderColor);
-        UpdateBrush("PrimaryText", primaryText);
-        UpdateBrush("SecondaryText", secondaryTxt);
-        UpdateBrush("PillControlBackground", pillCtrlBg);
-        var sliderFill = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
-        var sliderFillPressed = isLight ? 0xFF3A3A3Cu : 0xE6FFFFFFu;
-        var sliderTrack = isLight ? 0x1F000000u : 0x26FFFFFFu;
-        var sliderTrackHover = isLight ? 0x29000000u : 0x33FFFFFFu;
-        var sliderThumb = isLight ? 0xFFFFFFFFu : 0xFFFFFFFFu;
-        var sliderThumbPressed = isLight ? 0xFFE5E5EAu : 0xE6FFFFFFu;
-        UpdateBrush("SliderTrackValueFill", sliderFill);
-        UpdateBrush("SliderTrackValueFillPointerOver", sliderFill);
-        UpdateBrush("SliderTrackValueFillPressed", sliderFillPressed);
-        UpdateBrush("SliderTrackFill", sliderTrack);
-        UpdateBrush("SliderTrackFillPointerOver", sliderTrackHover);
-        UpdateBrush("SliderTrackFillPressed", sliderTrackHover);
-        UpdateBrush("SliderThumbBackground", sliderThumb);
-        UpdateBrush("SliderThumbBackgroundPointerOver", sliderThumb);
-        UpdateBrush("SliderThumbBackgroundPressed", sliderThumbPressed);
-        UpdateBrush("PlayButtonBackground", playBg);
-        UpdateBrush("PlayButtonForeground", playFg);
-        UpdateBrush("Accent", accentColor);
-        UpdateBrush("SeekAccent", seekAccent);
+        var sliderFill = palette.IsLightTheme ? 0xFF141518u : 0xFFFFFFFFu;
+        var sliderFillPressed = palette.IsLightTheme ? 0xFF3A3A3Cu : 0xE6FFFFFFu;
+        var sliderTrack = palette.IsLightTheme ? 0x24000000u : 0x26FFFFFFu;
+        var sliderTrackHover = palette.IsLightTheme ? 0x33000000u : 0x36FFFFFFu;
+        var sliderThumb = 0xFFFFFFFFu;
+        var sliderThumbPressed = palette.IsLightTheme ? 0xFFE5E5EAu : 0xE6FFFFFFu;
 
-        Surface.Background = Brush(bgColor);
-        Surface.BorderBrush = Brush(0x00000000);
-        Surface.BorderThickness = new Thickness(0);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFill", sliderFill);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFillPointerOver", sliderFill);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFillPressed", sliderFillPressed);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackFill", sliderTrack);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackFillPointerOver", sliderTrackHover);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackFillPressed", sliderTrackHover);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderThumbBackground", sliderThumb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderThumbBackgroundPointerOver", sliderThumb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderThumbBackgroundPressed", sliderThumbPressed);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PlayButtonBackground", palette.PlayButtonBackgroundArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PlayButtonForeground", palette.PlayButtonForegroundArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "Accent", palette.AccentArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SeekAccent", palette.AccentArgb);
+
+        PillBackdrop.Background = DesktopFrostService.CreateBrush(palette.SurfaceBackgroundArgb);
+        PillBackdrop.BorderBrush = DesktopFrostService.CreateBrush(0x00000000u);
+        PillBackdrop.BorderThickness = new Thickness(0);
+
+        if (_frostRimShape is not null)
+        {
+            _frostRimShape.StrokeBrush = DesktopFrostService.CreateCompositionVerticalGradient(
+                _pillMaskVisual.Compositor,
+                palette.BorderRimTopArgb,
+                palette.BorderRimBottomArgb);
+        }
+
+        if (HiddenAnchor is not null)
+        {
+            HiddenAnchor.Background = DesktopFrostService.CreateBrush(palette.HiddenAnchorArgb);
+        }
+
         if (DetachedPill is not null)
         {
-            DetachedPill.Background = Brush(bgColor);
-            DetachedPill.BorderBrush = Brush(0x00000000);
-            DetachedPill.BorderThickness = new Thickness(0);
+            DetachedPill.Background = DesktopFrostService.CreateBrush(palette.DetachedTintArgb);
+            DetachedPill.BorderBrush = DesktopFrostService.CreateVerticalGradientBrush(palette.BorderRimTopArgb, palette.BorderRimBottomArgb);
+            DetachedPill.BorderThickness = new Thickness(1);
+            if (DetachedFrostSheenTopStop is not null)
+            {
+                DetachedFrostSheenTopStop.Color = DesktopFrostService.ToColor(palette.SheenTopArgb);
+            }
         }
-        WaveBar1.Background = Brush(accentColor);
-        WaveBar2.Background = Brush(accentColor);
-        WaveBar3.Background = Brush(accentColor);
+
+        WaveBar1.Background = DesktopFrostService.CreateBrush(palette.AccentArgb);
+        WaveBar2.Background = DesktopFrostService.CreateBrush(palette.AccentArgb);
+        WaveBar3.Background = DesktopFrostService.CreateBrush(palette.AccentArgb);
         if (ExpandedSeekBar is not null)
-            ExpandedSeekBar.AccentBrush = Brush(seekAccent);
+        {
+            ExpandedSeekBar.AccentBrush = DesktopFrostService.CreateBrush(palette.AccentArgb);
+        }
+
         UpdatePageDots(_viewModel.SelectedPageIndex, animated: false);
 
         // The glass tint is a live overlay on the captured blur, so track/theme/slider
         // changes recolor it instantly without a desktop re-capture (no blink).
-        UpdateFrostTint();
-    }
-
-    private void UpdateBrush(string key, uint color)
-    {
-        var c = ToColor(color);
-        if (WindowRoot.Resources.TryGetValue(key, out var res) && res is Microsoft.UI.Xaml.Media.SolidColorBrush brush)
-            brush.Color = c;
-        else
-            WindowRoot.Resources[key] = new Microsoft.UI.Xaml.Media.SolidColorBrush(c);
-    }
-
-    private static Microsoft.UI.Xaml.Media.SolidColorBrush Brush(uint color)
-        => new(ToColor(color));
-
-    private static Windows.UI.Color ToColor(uint color)
-        => Windows.UI.Color.FromArgb((byte)(color >> 24), (byte)(color >> 16), (byte)(color >> 8), (byte)color);
-
-    private static uint Blend(uint baseColor, uint overlayColor, double amount)
-    {
-        amount = Math.Clamp(amount, 0, 1);
-        var a = (byte)(baseColor >> 24);
-        var r = (byte)Math.Round(((baseColor >> 16) & 0xFF) * (1 - amount) + ((overlayColor >> 16) & 0xFF) * amount);
-        var g = (byte)Math.Round(((baseColor >> 8) & 0xFF) * (1 - amount) + ((overlayColor >> 8) & 0xFF) * amount);
-        var b = (byte)Math.Round((baseColor & 0xFF) * (1 - amount) + (overlayColor & 0xFF) * amount);
-        return ((uint)a << 24) | ((uint)r << 16) | ((uint)g << 8) | b;
+        UpdateFrostTint(palette);
     }
 
     // Win32 Styles & Border/Shadow Stripping
@@ -2479,13 +3251,16 @@ public sealed partial class IslandWindow : Window
             SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged);
     }
 
-    // Subclass WndProc to handle native hit-testing and eliminate OS window minimum size constraints
+    // Subclass WndProc to handle native hit-testing, DPI/display changes, and eliminate OS window minimum size constraints
     private IntPtr WndProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, UIntPtr uIdSubclass, IntPtr dwRefData)
     {
         const uint WM_GETMINMAXINFO = 0x0024;
-        const uint WM_NCHITTEST = 0x0084;
-        const uint WM_HOTKEY = 0x0312;
+        const uint WM_SETTINGCHANGE = 0x001A;
         const uint WM_WINDOWPOSCHANGING = 0x0046;
+        const uint WM_DISPLAYCHANGE = 0x007E;
+        const uint WM_NCHITTEST = 0x0084;
+        const uint WM_DPICHANGED = 0x02E0;
+        const uint WM_HOTKEY = 0x0312;
         const uint SwpNoZOrder = 0x0004;
 
         if (uMsg == WM_WINDOWPOSCHANGING)
@@ -2497,6 +3272,16 @@ public sealed partial class IslandWindow : Window
                 wp.hwndInsertAfter = HwndTopmost;
                 Marshal.StructureToPtr(wp, lParam, false);
             }
+            return DefSubclassProc(hWnd, uMsg, wParam, lParam);
+        }
+
+        if (uMsg == WM_DPICHANGED || uMsg == WM_DISPLAYCHANGE || (uMsg == WM_SETTINGCHANGE && wParam.ToInt32() == 0x002F))
+        {
+            _ = DispatcherQueue.TryEnqueue(() =>
+            {
+                PositionHostWindow();
+                ScheduleDisplaySettle();
+            });
             return DefSubclassProc(hWnd, uMsg, wParam, lParam);
         }
 
@@ -2537,8 +3322,7 @@ public sealed partial class IslandWindow : Window
                 return DefSubclassProc(hWnd, uMsg, wParam, lParam);
             }
 
-            int screenX = unchecked((short)(long)lParam);
-            int screenY = unchecked((short)((long)lParam >> 16));
+            var (screenX, screenY) = IslandSurfaceLayout.ExtractSignedScreenCoordinates(lParam);
 
             if (!IsPointInsideVisibleIsland(screenX, screenY))
             {
@@ -2564,47 +3348,30 @@ public sealed partial class IslandWindow : Window
         if (_dpiScale <= 0) _dpiScale = 1.0;
 
         double localDipX = (screenX - winRect.Left) / _dpiScale;
-        double localDipY = (screenY - winRect.Top) / _dpiScale;
-
-        double hostWidth = _hostPillWidth + 40.0;
-
-        if (_isIslandHidden)
-        {
-            double anchorLeft = (HostWidthDip - 48.0) / 2.0;
-            double anchorRight = anchorLeft + 48.0;
-            double anchorTop = 0.0;
-            double anchorBottom = 16.0;
-
-            return localDipX >= anchorLeft && localDipX <= anchorRight &&
-                   localDipY >= anchorTop && localDipY <= anchorBottom;
-        }
+        double localDipY = ((screenY - winRect.Top) / _dpiScale) - IslandSurfaceLayout.SurfaceTopInsetDip;
 
         bool isSplit = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
+        double pillWidth = _currentPillWidth > 0 ? _currentPillWidth : 216.0;
+        double pillHeight = _currentPillHeight > 0 ? _currentPillHeight : 40.0;
+        double detachedWidth = (DetachedPill is not null && DetachedPill.Width > 0)
+            ? DetachedPill.Width
+            : IslandSurfaceLayout.DetachedPillWidthDip;
+        double detachedHeight = (DetachedPill is not null && DetachedPill.Height > 0)
+            ? DetachedPill.Height
+            : IslandSurfaceLayout.DetachedPillHeightDip;
 
-        if (isSplit)
-        {
-            // Surface bounds: [78, 278], Detached bounds: [288, 346]
-            bool insideSurface = localDipX >= 74.0 && localDipX <= 282.0 &&
-                                 localDipY >= 0.0 && localDipY <= 44.0;
-            bool insideDetached = localDipX >= 284.0 && localDipX <= 350.0 &&
-                                  localDipY >= 0.0 && localDipY <= 44.0;
-            return insideSurface || insideDetached;
-        }
-
-        double pillWidth = _currentPillWidth > 0 ? _currentPillWidth : Surface.ActualWidth;
-        if (pillWidth <= 0) pillWidth = 216.0;
-
-        double pillHeight = _currentPillHeight > 0 ? _currentPillHeight : Surface.ActualHeight;
-        if (pillHeight <= 0) pillHeight = 40.0;
-
-        double surfaceOffset = Surface.Translation.X;
-        double leftDip = (HostWidthDip - pillWidth) / 2.0 + surfaceOffset;
-        double rightDip = leftDip + pillWidth;
-        double topDip = 0.0;
-        double bottomDip = pillHeight;
-
-        return localDipX >= (leftDip - 4.0) && localDipX <= (rightDip + 4.0) &&
-               localDipY >= (topDip - 4.0) && localDipY <= (bottomDip + 4.0);
+        return IslandSurfaceLayout.IsPointInsideIsland(
+            localDipX: localDipX,
+            localDipY: localDipY,
+            hostWidth: IslandSurfaceLayout.DefaultHostWidthDip,
+            isHidden: _isIslandHidden,
+            pillWidth: pillWidth,
+            pillHeight: pillHeight,
+            surfaceOffsetX: _currentLeadingX,
+            isSplit: isSplit,
+            detachedWidth: detachedWidth,
+            detachedHeight: detachedHeight,
+            detachedOffsetX: _currentTrailingX);
     }
 
     // P/Invoke
@@ -2623,7 +3390,13 @@ public sealed partial class IslandWindow : Window
     private static extern bool SetWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, UIntPtr uIdSubclass, IntPtr dwRefData);
 
     [DllImport("comctl32.dll", SetLastError = true)]
+    private static extern bool RemoveWindowSubclass(IntPtr hWnd, SubclassProc pfnSubclass, UIntPtr uIdSubclass);
+
+    [DllImport("comctl32.dll", SetLastError = true)]
     private static extern IntPtr DefSubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, ref int pvAttribute, int cbAttribute);
 
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, uint dwAttribute, ref int pvAttribute, int cbAttribute);
@@ -2639,6 +3412,9 @@ public sealed partial class IslandWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
+
+    [DllImport("user32.dll")]
+    private static extern bool UnregisterHotKey(IntPtr hWnd, int id);
 
     [DllImport("gdi32.dll")]
     private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);

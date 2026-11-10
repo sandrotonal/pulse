@@ -9,7 +9,6 @@ using Pulse.Services.Media;
 using Pulse.Services.Settings;
 using Pulse.Services.System;
 using Pulse.ViewModels;
-using Pulse.Views.Flyout;
 using Pulse.Views.Island;
 using Pulse.Views.Settings;
 
@@ -26,21 +25,32 @@ public partial class App : Application
     private readonly FileOperationService _fileOperationService;
     private readonly WindowsSystemControlService _systemControlService;
     private readonly DownloadsWatcherService _downloadsWatcherService;
+    private readonly WindowsToastNotificationService _windowsToastService;
+    private readonly BluetoothWatcherService _bluetoothWatcherService;
+    private readonly ScreenshotWatcherService _screenshotWatcherService;
     private readonly HttpClient _httpClient;
     private readonly OpenMeteoWeatherService _weatherService;
     private readonly LocationService _locationService;
     private readonly MediaViewModel _mediaViewModel;
     private readonly IslandViewModel _islandViewModel;
     private IslandWindow? _islandWindow;
-    private TaskbarFlyoutWindow? _taskbarFlyoutWindow;
     private SettingsWindow? _settingsWindow;
+    private SettingsViewModel? _activeSettingsViewModel;
     private TrayService? _trayService;
+    private bool _exiting;
 
     private const string InstanceMutexName = "Local\\PulseDynamicIslandInstance";
     private const string ShowIslandEventName = "Local\\PulseShowIslandSignal";
+    private const string ShowSettingsEventName = "Local\\PulseShowSettingsSignal";
     private static Mutex? _instanceMutex;
     private EventWaitHandle? _showIslandSignal;
     private RegisteredWaitHandle? _showIslandRegistration;
+    private EventWaitHandle? _showSettingsSignal;
+    private RegisteredWaitHandle? _showSettingsRegistration;
+
+    private static bool HasSettingsLaunchArg()
+        => Environment.GetCommandLineArgs().Any(arg =>
+            string.Equals(arg, "--settings", StringComparison.OrdinalIgnoreCase));
 
     public App()
     {
@@ -50,10 +60,11 @@ public partial class App : Application
         {
             try
             {
-                if (EventWaitHandle.TryOpenExisting(ShowIslandEventName, out var showEvent))
+                var targetSignal = HasSettingsLaunchArg() ? ShowSettingsEventName : ShowIslandEventName;
+                if (EventWaitHandle.TryOpenExisting(targetSignal, out var signalEvent))
                 {
-                    showEvent.Set();
-                    showEvent.Dispose();
+                    signalEvent.Set();
+                    signalEvent.Dispose();
                 }
             }
             catch
@@ -66,33 +77,32 @@ public partial class App : Application
         }
 
         InitializeComponent();
-        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
-            try
+            if (e.ExceptionObject is Exception ex)
             {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] AppDomain.UnhandledException: {e.ExceptionObject}\n\n");
+                CrashLogger.Write("AppDomain.UnhandledException", ex);
             }
-            catch { }
+            else
+            {
+                CrashLogger.WriteMessage("AppDomain.UnhandledException", e.ExceptionObject?.ToString() ?? "Unknown exception");
+            }
         };
-        TaskScheduler.UnobservedTaskException += (s, e) =>
+        TaskScheduler.UnobservedTaskException += (_, e) =>
         {
-            try
-            {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] TaskScheduler.UnobservedTaskException: {e.Exception}\n\n");
-            }
-            catch { }
+            CrashLogger.Write("TaskScheduler.UnobservedTaskException", e.Exception);
             e.SetObserved();
         };
-        UnhandledException += (sender, args) =>
+        UnhandledException += (_, args) =>
         {
-            try
+            if (args.Exception is Exception ex)
             {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] UnhandledException: {args.Message}\nException: {args.Exception}\nStackTrace: {args.Exception?.StackTrace}\n\n");
+                CrashLogger.Write("Application.UnhandledException", ex, args.Message);
             }
-            catch { }
+            else
+            {
+                CrashLogger.WriteMessage("Application.UnhandledException", args.Message);
+            }
             args.Handled = true;
         };
 
@@ -109,6 +119,9 @@ public partial class App : Application
         _fileOperationService = new FileOperationService(_eventRouter);
         _systemControlService = new WindowsSystemControlService();
         _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
+        _windowsToastService = new WindowsToastNotificationService(_systemEventService, _settingsService);
+        _bluetoothWatcherService = new BluetoothWatcherService(_systemEventService, _settingsService);
+        _screenshotWatcherService = new ScreenshotWatcherService(_systemEventService);
 
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
         _weatherService = new OpenMeteoWeatherService(_httpClient);
@@ -137,30 +150,31 @@ public partial class App : Application
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         await _settingsService.LoadAsync();
+        var startupEnabled = await _startupService.ReconcileAsync(_settingsService.Current.StartWithWindows);
+        if (startupEnabled != _settingsService.Current.StartWithWindows)
+        {
+            await _settingsService.SaveAsync(_settingsService.Current with { StartWithWindows = startupEnabled });
+        }
+
         await _mediaViewModel.InitializeAsync();
 
-        AppDomain.CurrentDomain.ProcessExit += (s, e) =>
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
         {
-            try
+            if (Environment.ExitCode != 0)
             {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] ProcessExit fired! Environment.ExitCode={Environment.ExitCode}\n");
+                CrashLogger.WriteMessage("AppDomain.ProcessExit", $"Abnormal exit code={Environment.ExitCode}");
             }
-            catch { }
         };
 
         _islandWindow = new IslandWindow(_islandViewModel);
-        _islandWindow.Closed += (s, e) =>
+        _islandWindow.Closed += (_, _) =>
         {
-            try
+            if (!_exiting)
             {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] IslandWindow.Closed fired!\n");
+                CrashLogger.WriteMessage("IslandWindow.Closed", "IslandWindow closed unexpectedly before application exit.");
             }
-            catch { }
         };
         _islandWindow.SettingsRequested += OnSettingsRequested;
-        _islandWindow.TaskbarFlyoutRequested += (_, _) => _taskbarFlyoutWindow?.ToggleFlyout();
         _islandWindow.Activate();
         _islandWindow.ShowIsland();
         _islandViewModel.StartIdleMonitoring();
@@ -171,41 +185,30 @@ public partial class App : Application
         _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
             _showIslandSignal,
             (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() =>
-            {
-                islandWindow.ReassertTopmost();
-
-                if (islandWindow.IsIslandHidden)
-                {
-                    islandWindow.ShowIsland();
-                }
-
-                // Visible feedback so a re-launch clearly surfaces the running island.
-                if (!_islandViewModel.IsExpanded)
-                {
-                    _islandViewModel.ToggleExpanded();
-                }
-
-                islandWindow.Activate();
-            }),
+                SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true)),
             null,
             Timeout.Infinite,
             executeOnlyOnce: false);
 
-        _taskbarFlyoutWindow = new TaskbarFlyoutWindow(_mediaViewModel);
+        _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsEventName);
+        _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _showSettingsSignal,
+            (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty)),
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: false);
+
+        if (HasSettingsLaunchArg())
+        {
+            islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
+        }
 
         try
         {
-            var startupEnabled = await _startupService.IsEnabledAsync();
             var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
             _trayService = new TrayService(iconPath, startupEnabled);
             _trayService.ShowRequested += (_, _) =>
-            {
-                if (_islandWindow?.IsIslandHidden == true)
-                {
-                    _islandWindow.ShowIsland();
-                }
-                _taskbarFlyoutWindow?.ToggleFlyout();
-            };
+                SurfaceIsland(toggleIfAlreadyVisible: true, activateWindow: false);
             _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
             _trayService.SettingsRequested += OnSettingsRequested;
             _trayService.AboutRequested += OnAboutRequested;
@@ -216,12 +219,47 @@ public partial class App : Application
         }
         catch (Exception ex)
         {
-            try
+            CrashLogger.Write("App.TrayService", ex);
+        }
+    }
+
+    private void SurfaceIsland(bool toggleIfAlreadyVisible, bool activateWindow)
+    {
+        if (_islandWindow is not { } islandWindow)
+        {
+            return;
+        }
+
+        try
+        {
+            islandWindow.ReassertTopmost();
+
+            var wasHidden = islandWindow.IsIslandHidden;
+            if (wasHidden)
             {
-                var logPath = Path.Combine(AppContext.BaseDirectory, "crash.log");
-                File.AppendAllText(logPath, $"[{DateTime.UtcNow:O}] TrayService warning: {ex.Message}\n");
+                islandWindow.ShowIsland();
             }
-            catch { }
+
+            if (wasHidden || !toggleIfAlreadyVisible)
+            {
+                if (!_islandViewModel.IsExpanded)
+                {
+                    _islandViewModel.ToggleExpanded();
+                }
+            }
+            else
+            {
+                _islandViewModel.ToggleExpanded();
+            }
+
+            if (activateWindow)
+            {
+                islandWindow.Activate();
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.SurfaceIsland", ex);
         }
     }
 
@@ -234,9 +272,31 @@ public partial class App : Application
         }
 
         var viewModel = new SettingsViewModel(_settingsService, _startupService, _locationService);
-        _settingsWindow = new SettingsWindow(viewModel);
-        _settingsWindow.Closed += (_, _) => _settingsWindow = null;
-        BringToFront(_settingsWindow);
+        _activeSettingsViewModel = viewModel;
+        try
+        {
+            var window = new SettingsWindow(viewModel);
+            _settingsWindow = window;
+            window.Closed += (_, _) =>
+            {
+                _settingsWindow = null;
+                if (ReferenceEquals(_activeSettingsViewModel, viewModel))
+                {
+                    _activeSettingsViewModel = null;
+                }
+            };
+            BringToFront(window);
+        }
+        catch (Exception ex)
+        {
+            _settingsWindow = null;
+            if (ReferenceEquals(_activeSettingsViewModel, viewModel))
+            {
+                _activeSettingsViewModel = null;
+            }
+            viewModel.Dispose();
+            CrashLogger.Write("App.OnSettingsRequested", ex);
+        }
     }
 
     /// <summary>
@@ -271,25 +331,42 @@ public partial class App : Application
 
     private async void OnStartupRequested(object? sender, bool enabled)
     {
-        var accepted = await _startupService.SetEnabledAsync(enabled);
-        if (_trayService is not null)
+        try
         {
-            _trayService.SetStartupEnabled(accepted);
-        }
+            var accepted = await _startupService.SetEnabledAsync(enabled);
+            var actual = await _startupService.IsEnabledAsync();
+            _trayService?.SetStartupEnabled(actual);
 
-        if (accepted)
+            if (accepted || actual != _settingsService.Current.StartWithWindows)
+            {
+                await _settingsService.SaveAsync(_settingsService.Current with { StartWithWindows = actual });
+                await _settingsService.FlushAsync();
+            }
+        }
+        catch (Exception ex)
         {
-            await _settingsService.SaveAsync(_settingsService.Current with { StartWithWindows = enabled });
+            CrashLogger.Write("App.OnStartupRequested", ex);
         }
     }
 
     private async void OnNotificationsPauseRequested(object? sender, bool paused)
     {
-        await _settingsService.SaveAsync(_settingsService.Current with { NotificationsPaused = paused });
+        try
+        {
+            await _settingsService.SaveAsync(_settingsService.Current with { NotificationsPaused = paused });
+            await _settingsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.OnNotificationsPauseRequested", ex);
+        }
     }
 
     private void OnSettingsChanged(object? sender, Pulse.Core.Models.AppSettings settings)
-        => _trayService?.SetNotificationsPaused(settings.NotificationsPaused);
+    {
+        _trayService?.SetNotificationsPaused(settings.NotificationsPaused);
+        _trayService?.SetStartupEnabled(settings.StartWithWindows);
+    }
 
     private async void OnAboutRequested(object? sender, EventArgs args)
     {
@@ -310,15 +387,39 @@ public partial class App : Application
 
     private async void OnExitRequested(object? sender, EventArgs args)
     {
+        if (_exiting)
+        {
+            return;
+        }
+
+        _exiting = true;
+        try
+        {
+            if (_activeSettingsViewModel is { } activeVm)
+            {
+                await activeVm.FlushPendingSaveAsync();
+            }
+
+            await _settingsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.OnExitRequested.Flush", ex);
+        }
+
         _showIslandRegistration?.Unregister(null);
         _showIslandSignal?.Dispose();
+        _showSettingsRegistration?.Unregister(null);
+        _showSettingsSignal?.Dispose();
         _trayService?.Dispose();
         _settingsWindow?.Close();
-        _taskbarFlyoutWindow?.Close();
         _islandWindow?.Close();
         _islandViewModel.Dispose();
         _httpClient.Dispose();
         _downloadsWatcherService.Dispose();
+        _windowsToastService.Dispose();
+        _bluetoothWatcherService.Dispose();
+        _screenshotWatcherService.Dispose();
         await _mediaViewModel.DisposeAsync();
         await _mediaSessionService.DisposeAsync();
         _systemControlService.Dispose();

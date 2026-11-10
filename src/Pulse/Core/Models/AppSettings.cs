@@ -9,6 +9,8 @@ public sealed record AppSettings
     public bool AudioNotifications { get; init; } = true;
     public bool PowerNotifications { get; init; } = true;
     public bool DownloadNotifications { get; init; } = true;
+    public bool SystemToastNotifications { get; init; } = true;
+    public bool BluetoothNotifications { get; init; } = true;
     /// <summary>Play a short system sound when a focus or break session ends.</summary>
     public bool FocusCompletionSound { get; init; } = true;
     public bool EnableHoverExpand { get; init; } = true;
