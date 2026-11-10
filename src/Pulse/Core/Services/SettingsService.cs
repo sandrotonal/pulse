@@ -245,7 +245,17 @@ public sealed class SettingsService : ISettingsService, IDisposable
             IdleLocationSource = settings.IdleLocationSource == "Manual" ? "Manual" : "Auto",
             IdleLocationCity = NormalizeCity(settings.IdleLocationCity),
             IdleLocationLatitude = hasValidCoordinates ? settings.IdleLocationLatitude : null,
-            IdleLocationLongitude = hasValidCoordinates ? settings.IdleLocationLongitude : null
+            IdleLocationLongitude = hasValidCoordinates ? settings.IdleLocationLongitude : null,
+            PreferredMonitorDeviceName = NormalizeMonitorDeviceName(settings.PreferredMonitorDeviceName),
+            HorizontalOffset = Math.Clamp(settings.HorizontalOffset, -400, 400),
+            AutoCollapseDelayMs = Math.Clamp(settings.AutoCollapseDelayMs, 300, 3000),
+            CompactClickAction = NormalizeCompactClickAction(settings.CompactClickAction),
+            HoverAction = NormalizeHoverAction(settings.HoverAction),
+            ScrollWheelAction = NormalizeScrollWheelAction(settings.ScrollWheelAction),
+            TemperatureUnit = string.Equals(settings.TemperatureUnit?.Trim(), "F", StringComparison.OrdinalIgnoreCase) ? "F" : "C",
+            FocusDefaultMinutes = Math.Clamp(settings.FocusDefaultMinutes, 1, 180),
+            FocusBreakMinutes = Math.Clamp(settings.FocusBreakMinutes, 1, 60),
+            FocusCustomMinutes = Math.Clamp(settings.FocusCustomMinutes, 1, 180)
         };
     }
 
@@ -260,6 +270,29 @@ public sealed class SettingsService : ISettingsService, IDisposable
     {
         var trimmed = (city ?? string.Empty).Trim();
         return trimmed.Length <= 80 ? trimmed : trimmed[..80];
+    }
+
+    private static string NormalizeMonitorDeviceName(string? deviceName)
+    {
+        var trimmed = (deviceName ?? string.Empty).Trim();
+        return trimmed.Length <= 128 ? trimmed : trimmed[..128];
+    }
+
+    private static string NormalizeCompactClickAction(string? action)
+    {
+        if (string.Equals(action, "ActivateApp", StringComparison.OrdinalIgnoreCase)) return "ActivateApp";
+        if (string.Equals(action, "PlayPause", StringComparison.OrdinalIgnoreCase)) return "PlayPause";
+        return "Expand";
+    }
+
+    private static string NormalizeHoverAction(string? action) =>
+        string.Equals(action, "ExpandCard", StringComparison.OrdinalIgnoreCase) ? "ExpandCard" : "Preview";
+
+    private static string NormalizeScrollWheelAction(string? action)
+    {
+        if (string.Equals(action, "Volume", StringComparison.OrdinalIgnoreCase)) return "Volume";
+        if (string.Equals(action, "PageSwitch", StringComparison.OrdinalIgnoreCase)) return "PageSwitch";
+        return "Smart";
     }
 
     public void Dispose()

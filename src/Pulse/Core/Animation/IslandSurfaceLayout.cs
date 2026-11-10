@@ -306,6 +306,14 @@ public static class IslandSurfaceLayout
         return double.IsFinite(scale) ? Math.Clamp(scale, 0.5, 4.0) : 1.0;
     }
 
+    /// <summary>
+    /// Converts the user-configured TopOffset (DIP from top work area edge) into the host
+    /// window Y inset by subtracting SurfaceTopInsetDip (3 DIP antialiasing buffer) without adding
+    /// any hidden base gap, allowing TopOffset = 0 to dock flush against the screen top.
+    /// </summary>
+    public static double ComputeEffectiveTopOffsetDip(int topOffsetDip) =>
+        Math.Max(0.0, topOffsetDip - SurfaceTopInsetDip);
+
     public static PixelWindowRect ComputeHostWindowBounds(
         int workAreaLeft,
         int workAreaTop,

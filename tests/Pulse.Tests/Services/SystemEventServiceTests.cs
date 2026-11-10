@@ -113,4 +113,48 @@ public sealed class SystemEventServiceTests
 
         Assert.Null(router.CurrentActiveEvent);
     }
+
+    [Fact]
+    public void DisabledScreenshotNotificationSettingSuppressesScreenshotEvents()
+    {
+        using var router = new EventRouter();
+        var settings = new ToggleSettingsService
+        {
+            Current = new Pulse.Core.Models.AppSettings { ScreenshotNotifications = false }
+        };
+        var service = new SystemEventService(router, settings);
+
+        service.ReportScreenshotSaved(@"C:\Screenshots\Snap.png");
+
+        Assert.Null(router.CurrentActiveEvent);
+    }
+
+    [Fact]
+    public void DoNotDisturbSuppressesInformationalEventsButAllowsUrgentAndLowBattery()
+    {
+        using var router = new EventRouter();
+        var settings = new ToggleSettingsService
+        {
+            Current = new Pulse.Core.Models.AppSettings { DoNotDisturb = true }
+        };
+        var service = new SystemEventService(router, settings);
+
+        service.ReportPowerConnected(90);
+        service.ReportBatteryStatus(85, isCharging: true, isLowBattery: false);
+        service.ReportBluetoothStatus("AirPods", true);
+        service.ReportAudioStatus(45, false);
+        service.ReportScreenshotSaved(@"C:\Screenshots\Snap.png");
+        service.ReportSystemToast("info1", "Normal", "Mesaj", "\uE7E7", isUrgent: false);
+
+        Assert.Null(router.CurrentActiveEvent);
+
+        service.ReportSystemToast("urg1", "Acil", "Kritik", "\uE7E7", isUrgent: true);
+        var urgentEvt = Assert.IsType<SystemNotificationEvent>(router.CurrentActiveEvent);
+        Assert.Equal("Acil", urgentEvt.Title);
+
+        router.Dismiss(urgentEvt.Id);
+        service.ReportBatteryStatus(12, isCharging: false, isLowBattery: true);
+        var lowBatteryEvt = Assert.IsType<SystemNotificationEvent>(router.CurrentActiveEvent);
+        Assert.Equal(EventPriority.Warning, lowBatteryEvt.Priority);
+    }
 }

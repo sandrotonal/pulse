@@ -168,17 +168,45 @@
               PointerWheelChanged="OnSurfacePointerWheelChanged">
 
             <Grid.ContextFlyout>
-                <MenuFlyout>
+                <MenuFlyout x:Name="IslandContextFlyout" Opening="OnContextFlyoutOpening">
                     <MenuFlyoutItem Text="Genişlet / Daralt" Click="OnToggleExpandedClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE740;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
                     <MenuFlyoutItem Text="Adayı Gizle" Click="OnHideIslandClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xED1A;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
+                    <ToggleMenuFlyoutItem x:Name="DoNotDisturbMenuItem"
+                                          Text="Rahatsız Etmeyin"
+                                          Click="OnDoNotDisturbToggleClick">
+                        <ToggleMenuFlyoutItem.Icon><FontIcon Glyph="&#xE708;" /></ToggleMenuFlyoutItem.Icon>
+                    </ToggleMenuFlyoutItem>
                     <MenuFlyoutSeparator />
 
-                    <!-- Test ve Demo Modları -->
-                    <MenuFlyoutSubItem Text="Test ve Demo Modları">
+                    <!-- Odak Sayacı (Pomodoro) -->
+                    <MenuFlyoutSubItem Text="Odak Sayacı (Pomodoro)">
+                        <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutSubItem.Icon>
+                        <MenuFlyoutItem x:Name="StartFocusContextItem"
+                                        Text="Başlat (25 Dk)"
+                                        Command="{Binding StartFocusTimerCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE768;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Duraklat / Devam Et" Command="{Binding ToggleFocusTimerCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE769;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Sonraki Aşamaya Geç" Command="{Binding SkipFocusSessionCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE893;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutItem Text="Sıfırla" Command="{Binding ResetFocusTimerCommand}">
+                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                    </MenuFlyoutSubItem>
+
+                    <MenuFlyoutSeparator x:Name="DeveloperMenuSeparator" Visibility="Collapsed" />
+
+                    <!-- Test ve Demo Modları (Shift + Sağ tık) -->
+                    <MenuFlyoutSubItem x:Name="TestDemoSubMenu"
+                                       Text="Test ve Demo Modları"
+                                       Visibility="Collapsed">
                         <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE7C4;" /></MenuFlyoutSubItem.Icon>
                         <MenuFlyoutItem Text="Çift Kapsül (Split Island) Modunu Başlat / Kapat" Command="{Binding ToggleSplitIslandDemoCommand}">
                             <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE7C4;" /></MenuFlyoutItem.Icon>
@@ -188,22 +216,10 @@
                         </MenuFlyoutItem>
                     </MenuFlyoutSubItem>
 
-                    <!-- Odak Sayacı (Pomodoro) -->
-                    <MenuFlyoutSubItem Text="Odak Sayacı (Pomodoro)">
-                        <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xE916;" /></MenuFlyoutSubItem.Icon>
-                        <MenuFlyoutItem Text="Başlat (25 Dk)" Command="{Binding StartFocusTimerCommand}">
-                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE768;" /></MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem Text="Duraklat / Devam Et" Command="{Binding ToggleFocusTimerCommand}">
-                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE769;" /></MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                        <MenuFlyoutItem Text="Sıfırla" Command="{Binding ResetFocusTimerCommand}">
-                            <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE777;" /></MenuFlyoutItem.Icon>
-                        </MenuFlyoutItem>
-                    </MenuFlyoutSubItem>
-
-                    <!-- Bildirim Test Simülatörü -->
-                    <MenuFlyoutSubItem Text="Bildirim Simülatörü">
+                    <!-- Bildirim Test Simülatörü (Shift + Sağ tık) -->
+                    <MenuFlyoutSubItem x:Name="NotificationSimulatorSubMenu"
+                                       Text="Bildirim Simülatörü"
+                                       Visibility="Collapsed">
                         <MenuFlyoutSubItem.Icon><FontIcon Glyph="&#xEA8F;" /></MenuFlyoutSubItem.Icon>
                         <MenuFlyoutItem Text="Düşük Pil Uyarısı (%15)" Command="{Binding TestBatteryNotificationCommand}">
                             <MenuFlyoutItem.Icon><FontIcon Glyph="&#xEBA0;" /></MenuFlyoutItem.Icon>
@@ -1076,6 +1092,15 @@
                                 </StackPanel>
 
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                    <Button Style="{StaticResource CircularHeaderButtonStyle}"
+                                            Width="32" Height="32" CornerRadius="16"
+                                            Command="{Binding SkipFocusSessionCommand}"
+                                            PointerPressed="OnButtonPointerPressed"
+                                            PointerReleased="OnButtonPointerReleased"
+                                            AutomationProperties.Name="Sonraki aşamaya geç"
+                                            ToolTipService.ToolTip="Sonraki Aşamaya Geç">
+                                        <FontIcon Glyph="&#xE893;" FontSize="12" />
+                                    </Button>
                                     <Button Style="{StaticResource CircularHeaderButtonStyle}"
                                             Width="32" Height="32" CornerRadius="16"
                                             Command="{Binding ResetFocusTimerCommand}"

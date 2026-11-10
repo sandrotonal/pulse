@@ -228,7 +228,10 @@ public partial class App : Application
                 _trayService.ExitRequested += OnExitRequested;
                 _trayService.StartupRequested += OnStartupRequested;
                 _trayService.SetNotificationsPaused(_settingsService.Current.NotificationsPaused);
+                _trayService.SetDoNotDisturb(_settingsService.Current.DoNotDisturb);
+                _trayService.SetHotkeysEnabled(_settingsService.Current.EnableGlobalHotkeys);
                 _trayService.NotificationsPauseRequested += OnNotificationsPauseRequested;
+                _trayService.DoNotDisturbRequested += OnDoNotDisturbRequested;
             }
             catch (Exception ex)
             {
@@ -313,7 +316,11 @@ public partial class App : Application
             return;
         }
 
-        var viewModel = new SettingsViewModel(_settingsService, _startupService, _locationService);
+        var viewModel = new SettingsViewModel(
+            _settingsService,
+            _startupService,
+            _locationService,
+            () => _islandWindow?.HotkeyConflictWarning);
         _activeSettingsViewModel = viewModel;
         try
         {
@@ -404,9 +411,24 @@ public partial class App : Application
         }
     }
 
+    private async void OnDoNotDisturbRequested(object? sender, bool enabled)
+    {
+        try
+        {
+            await _settingsService.SaveAsync(_settingsService.Current with { DoNotDisturb = enabled });
+            await _settingsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.OnDoNotDisturbRequested", ex);
+        }
+    }
+
     private void OnSettingsChanged(object? sender, Pulse.Core.Models.AppSettings settings)
     {
         _trayService?.SetNotificationsPaused(settings.NotificationsPaused);
+        _trayService?.SetDoNotDisturb(settings.DoNotDisturb);
+        _trayService?.SetHotkeysEnabled(settings.EnableGlobalHotkeys);
         _trayService?.SetStartupEnabled(settings.StartWithWindows);
     }
 

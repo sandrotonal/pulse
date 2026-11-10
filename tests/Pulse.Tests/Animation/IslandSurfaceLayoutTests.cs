@@ -362,5 +362,34 @@ public sealed class IslandSurfaceLayoutTests
         var m = IslandSurfaceLayout.ComputeCompactMetrics(input);
         Assert.Equal(expected, m.Scale, precision: 3);
     }
+
+    [Theory]
+    [InlineData(-10, 0.0)]
+    [InlineData(0, 0.0)]
+    [InlineData(3, 0.0)]
+    [InlineData(14, 11.0)]
+    [InlineData(50, 47.0)]
+    public void ComputeEffectiveTopOffsetDipAlignsFlushAndSubtractsSurfaceInsetWithoutDoubleGap(int topOffsetDip, double expected)
+    {
+        Assert.Equal(expected, IslandSurfaceLayout.ComputeEffectiveTopOffsetDip(topOffsetDip), precision: 3);
+    }
+
+    [Fact]
+    public void ComputeHostWindowBoundsAppliesHorizontalOffsetScaledByDpi()
+    {
+        var centered = IslandSurfaceLayout.ComputeHostWindowBounds(
+            workAreaLeft: 0, workAreaTop: 0, workAreaRight: 1920, workAreaBottom: 1080,
+            dpiScale: 1.5, effectiveTopOffsetDip: 11.0, horizontalOffsetDip: 0.0);
+        var shiftedRight = IslandSurfaceLayout.ComputeHostWindowBounds(
+            workAreaLeft: 0, workAreaTop: 0, workAreaRight: 1920, workAreaBottom: 1080,
+            dpiScale: 1.5, effectiveTopOffsetDip: 11.0, horizontalOffsetDip: 100.0);
+        var shiftedLeft = IslandSurfaceLayout.ComputeHostWindowBounds(
+            workAreaLeft: 0, workAreaTop: 0, workAreaRight: 1920, workAreaBottom: 1080,
+            dpiScale: 1.5, effectiveTopOffsetDip: 11.0, horizontalOffsetDip: -80.0);
+
+        Assert.Equal(centered.X + 150, shiftedRight.X);
+        Assert.Equal(centered.X - 120, shiftedLeft.X);
+        Assert.Equal(centered.Y, shiftedRight.Y);
+    }
 }
 

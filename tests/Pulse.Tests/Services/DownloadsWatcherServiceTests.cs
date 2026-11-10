@@ -184,4 +184,35 @@ public sealed class DownloadsWatcherServiceTests
             if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task SuppressesEventWhenDoNotDisturbEnabled()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "PulseDownloadTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        using var router = new EventRouter();
+        var settings = new StubSettingsService(new AppSettings
+        {
+            DownloadNotifications = true,
+            DoNotDisturb = true
+        });
+        using var watcher = new DownloadsWatcherService(
+            router,
+            settings,
+            dir,
+            TimeSpan.FromMilliseconds(35),
+            maxLockRetries: 2);
+
+        try
+        {
+            await File.WriteAllBytesAsync(Path.Combine(dir, "dnd.zip"), [1, 2, 3, 4, 5]);
+            await Task.Delay(160);
+
+            Assert.Null(router.CurrentActiveEvent);
+        }
+        finally
+        {
+            if (Directory.Exists(dir)) Directory.Delete(dir, recursive: true);
+        }
+    }
 }

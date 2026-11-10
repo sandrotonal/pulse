@@ -38,6 +38,8 @@ public sealed class TrayService : IDisposable
     private int _retryAttempts;
     private bool _startupEnabled;
     private bool _notificationsPaused;
+    private bool _doNotDisturb;
+    private bool _hotkeysEnabled = true;
     private bool _disposed;
 
     public event EventHandler? ShowRequested;
@@ -46,6 +48,7 @@ public sealed class TrayService : IDisposable
     public event EventHandler? ExitRequested;
     public event EventHandler<bool>? StartupRequested;
     public event EventHandler<bool>? NotificationsPauseRequested;
+    public event EventHandler<bool>? DoNotDisturbRequested;
     public event EventHandler? AboutRequested;
 
     public TrayService(string iconPath, bool startWithWindows)
@@ -117,6 +120,8 @@ public sealed class TrayService : IDisposable
 
     public void SetStartupEnabled(bool enabled) => _startupEnabled = enabled;
     public void SetNotificationsPaused(bool paused) => _notificationsPaused = paused;
+    public void SetDoNotDisturb(bool enabled) => _doNotDisturb = enabled;
+    public void SetHotkeysEnabled(bool enabled) => _hotkeysEnabled = enabled;
 
     private void OnRetryAddTimerTick(DispatcherQueueTimer sender, object args)
     {
@@ -207,12 +212,16 @@ public sealed class TrayService : IDisposable
 
         try
         {
+            var toggleHideText = _hotkeysEnabled
+                ? "Dynamic Island'ı Gizle / Göster\tWin+Alt+I"
+                : "Dynamic Island'ı Gizle / Göster";
             AppendMenu(menu, MfString, 1, "Dynamic Island'ı Genişlet / Daralt");
-            AppendMenu(menu, MfString, 7, "Dynamic Island'ı Gizle / Göster");
+            AppendMenu(menu, MfString, 7, toggleHideText);
             AppendMenu(menu, MfString, 2, "Ayarlar");
             AppendMenu(menu, MfSeparator, 0, null);
             AppendMenu(menu, MfString | (_startupEnabled ? MfChecked : 0), 3, "Windows ile başlat");
             AppendMenu(menu, MfString | (_notificationsPaused ? MfChecked : 0), 4, "Parça değişimlerini duraklat");
+            AppendMenu(menu, MfString | (_doNotDisturb ? MfChecked : 0), 8, "Rahatsız Etmeyin");
             AppendMenu(menu, MfSeparator, 0, null);
             AppendMenu(menu, MfString, 5, "Hakkında");
             AppendMenu(menu, MfString, 6, "Çıkış");
@@ -233,6 +242,10 @@ public sealed class TrayService : IDisposable
                     case 4:
                         _notificationsPaused = !_notificationsPaused;
                         NotificationsPauseRequested?.Invoke(this, _notificationsPaused);
+                        break;
+                    case 8:
+                        _doNotDisturb = !_doNotDisturb;
+                        DoNotDisturbRequested?.Invoke(this, _doNotDisturb);
                         break;
                     case 5: AboutRequested?.Invoke(this, EventArgs.Empty); break;
                     case 6: ExitRequested?.Invoke(this, EventArgs.Empty); break;

@@ -38,6 +38,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private double? _seekPreviewPercent;
     private string? _seekStatus;
     private bool _isInitialized;
+    private bool _lastShowLyrics;
     private volatile bool _disposed;
 
     public MediaViewModel(
@@ -51,6 +52,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         _mediaSessionService = mediaSessionService;
         _playbackController = playbackController;
         _settingsService = settingsService;
+        _lastShowLyrics = _settingsService.Current.ShowLyrics;
         _dispatcherQueue = dispatcherQueue;
         _eventRouter = eventRouter;
         _lyricsService = new LyricsService(httpClient);
@@ -195,6 +197,21 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public double IslandScale => _settingsService.Current.IslandScale / 100d;
     public string AnimationIntensity => _settingsService.Current.AnimationIntensity;
     public string Theme => _settingsService.Current.Theme;
+    public string PreferredMonitorDeviceName => _settingsService.Current.PreferredMonitorDeviceName;
+    public int HorizontalOffset => _settingsService.Current.HorizontalOffset;
+    public int AutoCollapseDelayMs => _settingsService.Current.AutoCollapseDelayMs;
+    public string CompactClickAction => _settingsService.Current.CompactClickAction;
+    public string HoverAction => _settingsService.Current.HoverAction;
+    public string ScrollWheelAction => _settingsService.Current.ScrollWheelAction;
+    public bool Use24HourClock => _settingsService.Current.Use24HourClock;
+    public string TemperatureUnit => _settingsService.Current.TemperatureUnit;
+    public bool ShowLyrics => _settingsService.Current.ShowLyrics;
+    public int FocusDefaultMinutes => _settingsService.Current.FocusDefaultMinutes;
+    public int FocusBreakMinutes => _settingsService.Current.FocusBreakMinutes;
+    public int FocusCustomMinutes => _settingsService.Current.FocusCustomMinutes;
+    public bool EnableGlobalHotkeys => _settingsService.Current.EnableGlobalHotkeys;
+    public bool ScreenshotNotifications => _settingsService.Current.ScreenshotNotifications;
+    public bool DoNotDisturb => _settingsService.Current.DoNotDisturb;
     public bool CanTogglePlayback => CurrentTrack is { CanPlay: true } or { CanPause: true };
     public string? SourceAppUserModelId => CurrentTrack?.SourceApplicationId;
     public bool CanGoNext => CurrentTrack?.CanNext == true;
@@ -509,7 +526,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             _eventRouter?.Dismiss("active_media");
         }
 
-        if (changedTrack && !NotificationsPaused && _stateMachine.ShowTrackChanged())
+        if (changedTrack && !NotificationsPaused && !DoNotDisturb && _stateMachine.ShowTrackChanged())
         {
             _stateTimer.Interval = TimeSpan.FromSeconds(2.4);
             _stateTimer.Start();
@@ -651,6 +668,28 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(IslandScale));
         OnPropertyChanged(nameof(AnimationIntensity));
         OnPropertyChanged(nameof(Theme));
+        OnPropertyChanged(nameof(PreferredMonitorDeviceName));
+        OnPropertyChanged(nameof(HorizontalOffset));
+        OnPropertyChanged(nameof(AutoCollapseDelayMs));
+        OnPropertyChanged(nameof(CompactClickAction));
+        OnPropertyChanged(nameof(HoverAction));
+        OnPropertyChanged(nameof(ScrollWheelAction));
+        OnPropertyChanged(nameof(Use24HourClock));
+        OnPropertyChanged(nameof(TemperatureUnit));
+        OnPropertyChanged(nameof(ShowLyrics));
+        OnPropertyChanged(nameof(FocusDefaultMinutes));
+        OnPropertyChanged(nameof(FocusBreakMinutes));
+        OnPropertyChanged(nameof(FocusCustomMinutes));
+        OnPropertyChanged(nameof(EnableGlobalHotkeys));
+        OnPropertyChanged(nameof(ScreenshotNotifications));
+        OnPropertyChanged(nameof(DoNotDisturb));
+
+        if (_lastShowLyrics != settings.ShowLyrics)
+        {
+            _lastShowLyrics = settings.ShowLyrics;
+            _ = UpdateLyricsAsync(CurrentTrack);
+        }
+
         if (!settings.AutoCollapse)
         {
             _stateTimer.Stop();
@@ -660,6 +699,21 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private async Task UpdateLyricsAsync(MediaTrack? track)
     {
         var prevCts = _lyricsCts;
+        if (!_settingsService.Current.ShowLyrics)
+        {
+            _lyricsCts = null;
+            if (prevCts is not null)
+            {
+                try { prevCts.Cancel(); } catch (ObjectDisposedException) { }
+            }
+
+            _lyricsLookupKey = null;
+            _lyrics = null;
+            SetLyricLines("Şarkı sözleri kapalı", string.Empty);
+            OnPropertyChanged(nameof(HasLyrics));
+            return;
+        }
+
         var cts = new CancellationTokenSource();
         _lyricsCts = cts;
         if (prevCts is not null)

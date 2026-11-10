@@ -41,4 +41,32 @@ public sealed record AppSettings
     public string IdleLocationCity { get; init; } = string.Empty;
     public double? IdleLocationLatitude { get; init; }
     public double? IdleLocationLongitude { get; init; }
+
+    // Paket 3: Display placement & interaction personalization
+    /// <summary>"" = Primary monitor, "FollowCursor" = monitor under pointer, or explicit MONITORINFOEX device name.</summary>
+    public string PreferredMonitorDeviceName { get; init; } = string.Empty;
+    /// <summary>Horizontal pixel offset (-400 to 400 DIP) from monitor horizontal center.</summary>
+    public int HorizontalOffset { get; init; }
+    /// <summary>Delay in ms (300-3000) before the expanded island auto-collapses on pointer exit.</summary>
+    public int AutoCollapseDelayMs { get; init; } = 600;
+    /// <summary>Short-tap action in compact mode: "Expand", "ActivateApp", or "PlayPause".</summary>
+    public string CompactClickAction { get; init; } = "Expand";
+    /// <summary>Hover action in compact mode: "Preview" or "ExpandCard".</summary>
+    public string HoverAction { get; init; } = "Preview";
+    /// <summary>Scroll wheel behavior: "Smart", "Volume", or "PageSwitch".</summary>
+    public string ScrollWheelAction { get; init; } = "Smart";
+    public bool Use24HourClock { get; init; } = true;
+    /// <summary>"C" for Celsius, "F" for Fahrenheit.</summary>
+    public string TemperatureUnit { get; init; } = "C";
+    public bool ShowLyrics { get; init; } = true;
+
+    // Focus timer presets (minutes)
+    public int FocusDefaultMinutes { get; init; } = 25;
+    public int FocusBreakMinutes { get; init; } = 5;
+    public int FocusCustomMinutes { get; init; } = 45;
+
+    // Global hotkeys & notification silencing
+    public bool EnableGlobalHotkeys { get; init; } = true;
+    public bool ScreenshotNotifications { get; init; } = true;
+    public bool DoNotDisturb { get; init; }
 }

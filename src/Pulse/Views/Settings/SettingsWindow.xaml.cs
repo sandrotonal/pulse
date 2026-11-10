@@ -116,6 +116,17 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    private void OnLocationCityKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter &&
+            SettingsRoot.DataContext is SettingsViewModel viewModel &&
+            viewModel.ApplyLocationCommand.CanExecute(null))
+        {
+            e.Handled = true;
+            viewModel.ApplyLocationCommand.Execute(null);
+        }
+    }
+
     private async void OnSaveClick(object sender, RoutedEventArgs e)
     {
         if (sender is not Button button || SettingsRoot.DataContext is not SettingsViewModel viewModel)

@@ -16,7 +16,8 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportBatteryStatus(int percentage, bool isCharging, bool isLowBattery)
     {
-        if (_settings is not null && !_settings.Current.PowerNotifications)
+        if (_settings is not null &&
+            (!_settings.Current.PowerNotifications || (_settings.Current.DoNotDisturb && !isLowBattery)))
         {
             return;
         }
@@ -41,7 +42,7 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportPowerConnected(int percentage)
     {
-        if (_settings is not null && !_settings.Current.PowerNotifications)
+        if (_settings is not null && (!_settings.Current.PowerNotifications || _settings.Current.DoNotDisturb))
         {
             return;
         }
@@ -62,7 +63,7 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportBluetoothStatus(string deviceName, bool isConnected)
     {
-        if (_settings is not null && !_settings.Current.BluetoothNotifications)
+        if (_settings is not null && (!_settings.Current.BluetoothNotifications || _settings.Current.DoNotDisturb))
         {
             return;
         }
@@ -83,7 +84,7 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportAudioStatus(int volumePercentage, bool isMuted)
     {
-        if (_settings is not null && !_settings.Current.AudioNotifications)
+        if (_settings is not null && (!_settings.Current.AudioNotifications || _settings.Current.DoNotDisturb))
         {
             return;
         }
@@ -104,6 +105,11 @@ public sealed class SystemEventService : ISystemEventService
 
     public void ReportScreenshotSaved(string filePath)
     {
+        if (_settings is not null && (!_settings.Current.ScreenshotNotifications || _settings.Current.DoNotDisturb))
+        {
+            return;
+        }
+
         var fileName = string.IsNullOrWhiteSpace(filePath) ? "Ekran Görüntüsü" : System.IO.Path.GetFileName(filePath);
         var evt = new SystemNotificationEvent(
             "screenshot_saved",
@@ -127,7 +133,8 @@ public sealed class SystemEventService : ISystemEventService
         bool isUrgent = false,
         string? launchTarget = null)
     {
-        if (_settings is not null && !_settings.Current.SystemToastNotifications)
+        if (_settings is not null &&
+            (!_settings.Current.SystemToastNotifications || (_settings.Current.DoNotDisturb && !isUrgent)))
         {
             return;
         }

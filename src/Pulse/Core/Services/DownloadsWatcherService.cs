@@ -100,7 +100,7 @@ public sealed class DownloadsWatcherService : IDisposable
     {
         if (_isDisposed ||
             !IsCandidate(path) ||
-            (_settings is not null && !_settings.Current.DownloadNotifications))
+            (_settings is not null && (!_settings.Current.DownloadNotifications || _settings.Current.DoNotDisturb)))
         {
             return;
         }
@@ -142,7 +142,7 @@ public sealed class DownloadsWatcherService : IDisposable
             if (token.IsCancellationRequested ||
                 _isDisposed ||
                 !IsCandidate(path) ||
-                (_settings is not null && !_settings.Current.DownloadNotifications))
+                (_settings is not null && (!_settings.Current.DownloadNotifications || _settings.Current.DoNotDisturb)))
             {
                 return;
             }

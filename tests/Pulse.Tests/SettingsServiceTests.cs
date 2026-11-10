@@ -359,4 +359,122 @@ public sealed class SettingsServiceTests
             }
         }
     }
+
+    [Fact]
+    public void PersonalizationDefaultsMatchExpectedValues()
+    {
+        var settings = new AppSettings();
+
+        Assert.Equal(string.Empty, settings.PreferredMonitorDeviceName);
+        Assert.Equal(0, settings.HorizontalOffset);
+        Assert.Equal(600, settings.AutoCollapseDelayMs);
+        Assert.Equal("Expand", settings.CompactClickAction);
+        Assert.Equal("Preview", settings.HoverAction);
+        Assert.Equal("Smart", settings.ScrollWheelAction);
+        Assert.True(settings.Use24HourClock);
+        Assert.Equal("C", settings.TemperatureUnit);
+        Assert.True(settings.ShowLyrics);
+        Assert.Equal(25, settings.FocusDefaultMinutes);
+        Assert.Equal(5, settings.FocusBreakMinutes);
+        Assert.Equal(45, settings.FocusCustomMinutes);
+        Assert.True(settings.EnableGlobalHotkeys);
+        Assert.True(settings.ScreenshotNotifications);
+        Assert.False(settings.DoNotDisturb);
+    }
+
+    [Fact]
+    public async Task PersonalizationSettingsRoundTripAndNormalize()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var first = new SettingsService(directory);
+            await first.SaveAsync(new AppSettings
+            {
+                PreferredMonitorDeviceName = "  \\\\.\\DISPLAY2  ",
+                HorizontalOffset = -120,
+                AutoCollapseDelayMs = 1250,
+                CompactClickAction = "activateapp",
+                HoverAction = "expandcard",
+                ScrollWheelAction = "volume",
+                Use24HourClock = false,
+                TemperatureUnit = "f",
+                ShowLyrics = false,
+                FocusDefaultMinutes = 50,
+                FocusBreakMinutes = 10,
+                FocusCustomMinutes = 65,
+                EnableGlobalHotkeys = false,
+                ScreenshotNotifications = false,
+                DoNotDisturb = true
+            });
+            await first.FlushAsync();
+
+            using var second = new SettingsService(directory);
+            await second.LoadAsync();
+
+            Assert.Equal(@"\\.\DISPLAY2", second.Current.PreferredMonitorDeviceName);
+            Assert.Equal(-120, second.Current.HorizontalOffset);
+            Assert.Equal(1250, second.Current.AutoCollapseDelayMs);
+            Assert.Equal("ActivateApp", second.Current.CompactClickAction);
+            Assert.Equal("ExpandCard", second.Current.HoverAction);
+            Assert.Equal("Volume", second.Current.ScrollWheelAction);
+            Assert.False(second.Current.Use24HourClock);
+            Assert.Equal("F", second.Current.TemperatureUnit);
+            Assert.False(second.Current.ShowLyrics);
+            Assert.Equal(50, second.Current.FocusDefaultMinutes);
+            Assert.Equal(10, second.Current.FocusBreakMinutes);
+            Assert.Equal(65, second.Current.FocusCustomMinutes);
+            Assert.False(second.Current.EnableGlobalHotkeys);
+            Assert.False(second.Current.ScreenshotNotifications);
+            Assert.True(second.Current.DoNotDisturb);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task InvalidPersonalizationValuesAreClampedAndFallbackCleanly()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var service = new SettingsService(directory);
+            await service.SaveAsync(new AppSettings
+            {
+                PreferredMonitorDeviceName = new string('M', 200),
+                HorizontalOffset = -999,
+                AutoCollapseDelayMs = 50,
+                CompactClickAction = "Unknown",
+                HoverAction = "Unknown",
+                ScrollWheelAction = "Unknown",
+                TemperatureUnit = "K",
+                FocusDefaultMinutes = 0,
+                FocusBreakMinutes = 999,
+                FocusCustomMinutes = 300
+            });
+
+            Assert.Equal(128, service.Current.PreferredMonitorDeviceName.Length);
+            Assert.Equal(-400, service.Current.HorizontalOffset);
+            Assert.Equal(300, service.Current.AutoCollapseDelayMs);
+            Assert.Equal("Expand", service.Current.CompactClickAction);
+            Assert.Equal("Preview", service.Current.HoverAction);
+            Assert.Equal("Smart", service.Current.ScrollWheelAction);
+            Assert.Equal("C", service.Current.TemperatureUnit);
+            Assert.Equal(1, service.Current.FocusDefaultMinutes);
+            Assert.Equal(60, service.Current.FocusBreakMinutes);
+            Assert.Equal(180, service.Current.FocusCustomMinutes);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
 }
