@@ -373,6 +373,24 @@ public sealed partial class IslandWindow : Window
         _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
 
+    private void ResetDetachedVisualOpacity(float? opacity = 1f)
+    {
+        if (DetachedPill is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _detachedVisual.StopAnimation("Opacity");
+            if (opacity.HasValue)
+            {
+                _detachedVisual.Opacity = opacity.Value;
+            }
+        }
+        catch { }
+    }
+
     public void ShowIsland()
     {
         // Showing the island during a fullscreen app is an explicit user override;
@@ -390,6 +408,8 @@ public sealed partial class IslandWindow : Window
         }
         else
         {
+            _viewModel.EventRouter.SetPresentationPaused(_sessionLocked);
+            ResetDetachedVisualOpacity(1f);
             _pillMaskVisual.StopAnimation("Opacity");
             _pillMaskVisual.StopAnimation("Scale");
             _pillMaskVisual.StopAnimation("Translation");
@@ -397,6 +417,12 @@ public sealed partial class IslandWindow : Window
             _pillMaskVisual.Scale = Vector3.One;
             PillMaskHost.Translation = Vector3.Zero;
             Surface.Visibility = Visibility.Visible;
+            if (DetachedPill is not null)
+            {
+                bool showDetached = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
+                DetachedPill.Visibility = showDetached ? Visibility.Visible : Visibility.Collapsed;
+                DetachedPill.Opacity = showDetached ? 1.0 : 0.0;
+            }
             HiddenAnchor.Visibility = Visibility.Collapsed;
         }
 
@@ -422,6 +448,7 @@ public sealed partial class IslandWindow : Window
         _isPointerOverSurface = false;
         _isInteractingWithControl = false;
         _longPressTriggered = false;
+        _viewModel.EventRouter.SetPresentationPaused(true);
 
         if (!showAnchor)
         {
@@ -444,8 +471,17 @@ public sealed partial class IslandWindow : Window
             Surface.Visibility = Visibility.Collapsed;
             if (DetachedPill is not null)
             {
-                _detachedVisual.StopAnimation("Opacity");
+                ResetDetachedVisualOpacity(1f);
                 DetachedPill.Visibility = Visibility.Collapsed;
+            }
+
+            if (_viewModel.IsExpanded)
+            {
+                _viewModel.Collapse();
+            }
+            if (_viewModel.CurrentIslandState == IslandState.Collapsing)
+            {
+                _viewModel.CompleteCollapse();
             }
 
             HiddenAnchor.Visibility = _hideAnchorVisible ? Visibility.Visible : Visibility.Collapsed;
@@ -506,8 +542,19 @@ public sealed partial class IslandWindow : Window
                     Surface.Visibility = Visibility.Collapsed;
                     if (DetachedPill is not null)
                     {
+                        ResetDetachedVisualOpacity(1f);
                         DetachedPill.Visibility = Visibility.Collapsed;
                     }
+
+                    if (_viewModel.IsExpanded)
+                    {
+                        _viewModel.Collapse();
+                    }
+                    if (_viewModel.CurrentIslandState == IslandState.Collapsing)
+                    {
+                        _viewModel.CompleteCollapse();
+                    }
+
                     HiddenAnchor.Visibility = _hideAnchorVisible ? Visibility.Visible : Visibility.Collapsed;
                     if (!_hideAnchorVisible)
                     {
@@ -517,6 +564,7 @@ public sealed partial class IslandWindow : Window
                     }
                     else
                     {
+                        _lastWindowRegion = null;
                         UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
                     }
                 }
@@ -543,6 +591,19 @@ public sealed partial class IslandWindow : Window
         HiddenAnchor.Visibility = Visibility.Collapsed;
         Surface.Visibility = Visibility.Visible;
 
+        if (_viewModel.IsExpanded && !_isPointerOverSurface && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
+        {
+            _viewModel.Collapse();
+        }
+        if (_viewModel.CurrentIslandState == IslandState.Collapsing)
+        {
+            _viewModel.CompleteCollapse();
+        }
+
+        // Clear any leftover Composition hide opacity override before recalculating layout and resuming alerts.
+        ResetDetachedVisualOpacity(1f);
+        _viewModel.EventRouter.SetPresentationPaused(_sessionLocked);
+
         // Re-sync layout bounds & visibility cleanly before reveal so returning from fullscreen never shows stale widths.
         UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
         RestoreAmbientAnimations();
@@ -559,6 +620,13 @@ public sealed partial class IslandWindow : Window
             _pillMaskVisual.Opacity = 1f;
             _pillMaskVisual.Scale = Vector3.One;
             PillMaskHost.Translation = Vector3.Zero;
+            ResetDetachedVisualOpacity(1f);
+            if (DetachedPill is not null)
+            {
+                bool showDetached = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
+                DetachedPill.Visibility = showDetached ? Visibility.Visible : Visibility.Collapsed;
+                DetachedPill.Opacity = showDetached ? 1.0 : 0.0;
+            }
             if (_glassEnabled)
             {
                 _ = RefreshFrostAsync(force: true);
@@ -594,6 +662,10 @@ public sealed partial class IslandWindow : Window
             _pillMaskVisual.StartAnimation("Scale", scaleAnim);
             _pillMaskVisual.StartAnimation("Opacity", opacityAnim);
             _pillMaskVisual.StartAnimation("Translation", translateAnim);
+            if (DetachedPill is not null && DetachedPill.Visibility == Visibility.Visible)
+            {
+                _detachedVisual.StartAnimation("Opacity", opacityAnim);
+            }
             batch.End();
             batch.Completed += (_, _) =>
             {
@@ -643,6 +715,22 @@ public sealed partial class IslandWindow : Window
         _pillMaskVisual.Opacity = 1f;
         _pillMaskVisual.Scale = Vector3.One;
         PillMaskHost.Translation = Vector3.Zero;
+
+        if (_isDimensionAnimating)
+        {
+            ResetDetachedVisualOpacity((float)Math.Clamp(_currentDetachedOpacity, 0.0, 1.0));
+        }
+        else
+        {
+            ResetDetachedVisualOpacity(1f);
+            if (DetachedPill is not null)
+            {
+                bool showDetached = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
+                DetachedPill.Visibility = showDetached ? Visibility.Visible : Visibility.Collapsed;
+                DetachedPill.Opacity = showDetached ? 1.0 : 0.0;
+            }
+        }
+
         ApplySurfaceShape(_currentCornerRadius, _currentPillWidth, _currentPillHeight);
         _lastWindowRegion = null;
         UpdateWindowRegion(_currentPillWidth, _currentPillHeight, _currentCornerRadius, forceRedraw: true);
@@ -762,7 +850,7 @@ public sealed partial class IslandWindow : Window
         var foreground = GetForegroundWindow();
         if (foreground == IntPtr.Zero || _hwnd == IntPtr.Zero)
         {
-            return true;
+            return false;
         }
 
         var islandMonitor = MonitorFromWindow(_hwnd, MonitorDefaultToNearest);
@@ -1438,7 +1526,7 @@ public sealed partial class IslandWindow : Window
             if (_lastSplitModeActive != isSplit)
             {
                 _lastSplitModeActive = isSplit;
-                UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+                UpdateStateLayout(_viewModel.CurrentIslandState, animated: !_isIslandHidden);
             }
         }
         else if (e.PropertyName == nameof(IslandViewModel.IsFocusTimerActive))
@@ -1449,7 +1537,7 @@ public sealed partial class IslandWindow : Window
                 _lastFocusTimerActive = isFocus;
                 if (!_viewModel.IsSplitModeActive)
                 {
-                    UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+                    UpdateStateLayout(_viewModel.CurrentIslandState, animated: !_isIslandHidden);
                 }
             }
         }
@@ -1463,7 +1551,7 @@ public sealed partial class IslandWindow : Window
                 {
                     _viewModel.Collapse();
                 }
-                UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+                UpdateStateLayout(_viewModel.CurrentIslandState, animated: !_isIslandHidden);
             }
         }
         else if (e.PropertyName == nameof(IslandViewModel.IsFileOperationActive))
@@ -1472,7 +1560,7 @@ public sealed partial class IslandWindow : Window
             if (_lastFileOpActive != isFile)
             {
                 _lastFileOpActive = isFile;
-                UpdateStateLayout(_viewModel.CurrentIslandState, animated: true);
+                UpdateStateLayout(_viewModel.CurrentIslandState, animated: !_isIslandHidden);
             }
         }
         else if (e.PropertyName is nameof(IslandViewModel.FocusProgress) or nameof(IslandViewModel.PreserveFocusPanel))
@@ -1960,6 +2048,7 @@ public sealed partial class IslandWindow : Window
             SetSplitPositions(toLeadingX, toTrailingX);
             if (DetachedPill is not null)
             {
+                ResetDetachedVisualOpacity(null);
                 DetachedPill.Opacity = toDetachedOpacity;
                 DetachedPill.Visibility = toDetachedOpacity > 0 ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -1997,6 +2086,7 @@ public sealed partial class IslandWindow : Window
 
         if (toDetachedOpacity > 0 && DetachedPill is not null)
         {
+            ResetDetachedVisualOpacity(null);
             DetachedPill.Visibility = Visibility.Visible;
             if (!wasAnimating && _animStartDetachedOpacity <= 0.05)
             {
@@ -2216,6 +2306,16 @@ public sealed partial class IslandWindow : Window
         var isHover = state == IslandState.Hover;
         var hasTrack = _viewModel.HasTrack;
 
+        _lastSplitModeActive = _viewModel.IsSplitModeActive;
+        _lastFocusTimerActive = _viewModel.IsFocusTimerActive;
+        _lastNotificationActive = _viewModel.IsNotificationActive;
+        _lastFileOpActive = _viewModel.IsFileOperationActive;
+
+        if (!isExpanded)
+        {
+            _isInteractingWithControl = false;
+        }
+
         if (isExpanded && ExpandedView.Visibility != Visibility.Visible)
         {
             // The tree is parked while compact; wake it before the fade so the first
@@ -2310,6 +2410,7 @@ public sealed partial class IslandWindow : Window
             SetSplitPositions(targetLeadingX, targetTrailingX);
             if (DetachedPill is not null)
             {
+                ResetDetachedVisualOpacity(null);
                 DetachedPill.Opacity = targetDetachedOpacity;
                 DetachedPill.Visibility = isSplit && !_isIslandHidden ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -2344,9 +2445,12 @@ public sealed partial class IslandWindow : Window
                 UpdatePageDots(activeIndex, animated: false);
             }
 
-            _pillMaskVisual.StopAnimation("Scale");
-            _pillMaskVisual.Scale = Vector3.One;
-            _pillMaskVisual.Opacity = 1;
+            if (!_isIslandHidden)
+            {
+                _pillMaskVisual.StopAnimation("Scale");
+                _pillMaskVisual.Scale = Vector3.One;
+                _pillMaskVisual.Opacity = 1;
+            }
             StopRenderLoopIfIdle();
 
             if (state == IslandState.Collapsing)
@@ -2378,6 +2482,7 @@ public sealed partial class IslandWindow : Window
             SetSplitPositions(targetLeadingX, targetTrailingX);
             if (DetachedPill is not null)
             {
+                ResetDetachedVisualOpacity(null);
                 DetachedPill.Opacity = targetDetachedOpacity;
                 DetachedPill.Visibility = isSplit && !_isIslandHidden ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -2565,6 +2670,7 @@ public sealed partial class IslandWindow : Window
             SetSplitPositions(targetLeadingX, targetTrailingX);
             if (DetachedPill is not null)
             {
+                ResetDetachedVisualOpacity(null);
                 DetachedPill.Opacity = targetDetachedOpacity;
                 DetachedPill.Visibility = isSplit && !_isIslandHidden ? Visibility.Visible : Visibility.Collapsed;
             }
@@ -2572,6 +2678,10 @@ public sealed partial class IslandWindow : Window
             _expandedVisual.Opacity = isExpanded ? 1 : 0;
             ExpandedView.Visibility = isExpanded ? Visibility.Visible : Visibility.Collapsed;
             UpdateWindowRegion(targetWidth, targetHeight, targetCornerRadius);
+            if (isCollapsing && generation == _transitionGeneration && _viewModel.CurrentIslandState == IslandState.Collapsing)
+            {
+                _viewModel.CompleteCollapse();
+            }
         }
     }
 
@@ -2992,6 +3102,10 @@ public sealed partial class IslandWindow : Window
     private void OnDetachedPillPointerExited(object sender, PointerRoutedEventArgs e)
     {
         AnimateElementScale(DetachedPill, 1.0f, 120);
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl && !_viewModel.PreserveFocusPanel)
+        {
+            RestartCollapseDelayTimer();
+        }
     }
 
     private void OnDetachedPillPointerPressed(object sender, PointerRoutedEventArgs e)
@@ -4083,6 +4197,7 @@ public sealed partial class IslandWindow : Window
                 _sessionLocked = true;
                 _topmostGuardTimer?.Stop();
                 _fullscreenPollTimer?.Stop();
+                _viewModel.EventRouter.SetPresentationPaused(true);
                 _viewModel.SetSessionLocked(true);
             }
             else if (status == WtsSessionUnlock)
@@ -4093,6 +4208,7 @@ public sealed partial class IslandWindow : Window
                     _topmostGuardTimer?.Start();
                     UpdateBackgroundPollTimerState();
                     _viewModel.SetSessionLocked(false);
+                    _viewModel.EventRouter.SetPresentationPaused(_isIslandHidden);
                     ScheduleDisplaySettle();
                 }
             }

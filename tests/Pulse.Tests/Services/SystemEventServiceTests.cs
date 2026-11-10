@@ -157,4 +157,27 @@ public sealed class SystemEventServiceTests
         var lowBatteryEvt = Assert.IsType<SystemNotificationEvent>(router.CurrentActiveEvent);
         Assert.Equal(EventPriority.Warning, lowBatteryEvt.Priority);
     }
+
+    [Fact]
+    public void ReportAudioStatus_PublishesRoutinePrioritySoBluetoothBeatsAudioSwitchRegardlessOfOrder()
+    {
+        using var routerA = new EventRouter();
+        var serviceA = new SystemEventService(routerA);
+        serviceA.ReportAudioStatus(50, false);
+        serviceA.ReportBluetoothStatus("AirPods", true);
+        var activeA = Assert.IsType<SystemNotificationEvent>(routerA.CurrentActiveEvent);
+        Assert.Equal("bt_AirPods", activeA.Id);
+
+        using var routerB = new EventRouter();
+        var serviceB = new SystemEventService(routerB);
+        serviceB.ReportBluetoothStatus("AirPods", true);
+        serviceB.ReportAudioStatus(50, false);
+        var activeB = Assert.IsType<SystemNotificationEvent>(routerB.CurrentActiveEvent);
+        Assert.Equal("bt_AirPods", activeB.Id);
+        Assert.Equal(EventPriority.Informational, activeB.Priority);
+
+        routerB.Dismiss("bt_AirPods");
+        var audioEvt = Assert.IsType<SystemNotificationEvent>(routerB.CurrentActiveEvent);
+        Assert.Equal(EventPriority.Routine, audioEvt.Priority);
+    }
 }

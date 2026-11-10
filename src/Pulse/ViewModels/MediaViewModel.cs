@@ -616,6 +616,15 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnIslandStateChanged(object? sender, IslandState state)
     {
+        if (state == IslandState.Expanded)
+        {
+            _eventRouter?.LockUserInteraction();
+        }
+        else
+        {
+            _eventRouter?.UnlockUserInteraction();
+        }
+
         OnPropertyChanged(nameof(CurrentIslandState));
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsExpanded));

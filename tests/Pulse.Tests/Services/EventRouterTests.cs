@@ -154,4 +154,117 @@ public sealed class EventRouterTests
 
         Assert.Equal(router.CurrentActiveEvent?.Id, lastDelivered);
     }
+
+    [Fact]
+    public void OngoingFocusTimerYieldsToRoutineAndInformationalEventsThenRestores()
+    {
+        using var router = new EventRouter();
+        var focus = new FocusTimerEvent("focus_timer", TimeSpan.FromMinutes(24), TimeSpan.FromMinutes(25), false, FocusTimerState.Running);
+        var volume = new SystemNotificationEvent("audio_status", EventCategory.Audio, "Ses", "%60", "\uE995", EventPriority.Routine);
+        var screenshot = new SystemNotificationEvent("screenshot_saved", EventCategory.Screenshot, "Ekran Görüntüsü Kaydedildi", "Shot.png", "\uE722", EventPriority.Informational);
+
+        router.Publish(focus);
+        Assert.Equal("focus_timer", router.CurrentActiveEvent?.Id);
+
+        router.Publish(volume);
+        Assert.Equal("audio_status", router.CurrentActiveEvent?.Id);
+
+        router.Publish(screenshot);
+        Assert.Equal("screenshot_saved", router.CurrentActiveEvent?.Id);
+
+        router.Dismiss("screenshot_saved");
+        Assert.Equal("audio_status", router.CurrentActiveEvent?.Id);
+
+        router.Dismiss("audio_status");
+        Assert.Equal("focus_timer", router.CurrentActiveEvent?.Id);
+    }
+
+    [Fact]
+    public void SamePriorityEventsPreferMostRecentlyPublishedEvent()
+    {
+        using var router = new EventRouter();
+        var first = new SystemNotificationEvent("toast_1", EventCategory.SystemToast, "Birinci", "Msg 1", "\uE7E7", EventPriority.Informational);
+        var second = new SystemNotificationEvent("toast_2", EventCategory.SystemToast, "İkinci", "Msg 2", "\uE7E7", EventPriority.Informational);
+
+        router.Publish(first);
+        Assert.Equal("toast_1", router.CurrentActiveEvent?.Id);
+
+        router.Publish(second);
+        Assert.Equal("toast_2", router.CurrentActiveEvent?.Id);
+
+        router.Dismiss("toast_2");
+        Assert.Equal("toast_1", router.CurrentActiveEvent?.Id);
+    }
+
+    [Fact]
+    public async Task SetPresentationPausedDefersTimedNotificationsUntilUnhiddenWithoutExpiring()
+    {
+        using var router = new EventRouter();
+        var focus = new FocusTimerEvent("focus_timer", TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(25), false, FocusTimerState.Running);
+        var screenshot = new SystemNotificationEvent(
+            "screenshot_saved",
+            EventCategory.Screenshot,
+            "Ekran Görüntüsü Kaydedildi",
+            "Shot.png",
+            "\uE722",
+            EventPriority.Informational,
+            DisplayDuration: TimeSpan.FromMilliseconds(140));
+
+        router.Publish(focus);
+        router.SetPresentationPaused(true);
+
+        // Published while island is hidden (e.g. Snipping Tool overlay active)
+        router.Publish(screenshot);
+        Assert.Equal("focus_timer", router.CurrentActiveEvent?.Id);
+
+        // Wait longer than DisplayDuration while still paused
+        await Task.Delay(260);
+        Assert.Equal("focus_timer", router.CurrentActiveEvent?.Id);
+
+        // Once island unhides, deferred notification surfaces immediately for its display window
+        router.SetPresentationPaused(false);
+        Assert.Equal("screenshot_saved", router.CurrentActiveEvent?.Id);
+
+        await Task.Delay(320);
+        Assert.Equal("focus_timer", router.CurrentActiveEvent?.Id);
+    }
+
+    [Fact]
+    public async Task SetPresentationPausedSuspendsActiveTimerAndSkipsTransientRoutineEvents()
+    {
+        using var router = new EventRouter();
+        var toast = new SystemNotificationEvent(
+            "bt_AirPods",
+            EventCategory.Bluetooth,
+            "AirPods",
+            "Bağlandı",
+            "\uE702",
+            EventPriority.Informational,
+            DisplayDuration: TimeSpan.FromMilliseconds(260));
+        var hiddenVolume = new SystemNotificationEvent(
+            "audio_status",
+            EventCategory.Audio,
+            "Ses",
+            "%40",
+            "\uE995",
+            EventPriority.Routine,
+            DisplayDuration: TimeSpan.FromMilliseconds(200));
+
+        router.Publish(toast);
+        Assert.Equal("bt_AirPods", router.CurrentActiveEvent?.Id);
+
+        await Task.Delay(60);
+        router.SetPresentationPaused(true);
+        router.Publish(hiddenVolume);
+
+        // Wait longer than original duration while hidden
+        await Task.Delay(320);
+
+        // Unpausing restores remaining toast duration and never surfaces transient routine volume HUD
+        router.SetPresentationPaused(false);
+        Assert.Equal("bt_AirPods", router.CurrentActiveEvent?.Id);
+
+        await Task.Delay(360);
+        Assert.Null(router.CurrentActiveEvent);
+    }
 }

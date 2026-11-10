@@ -2,6 +2,7 @@ namespace Pulse.Core.Events;
 
 public enum EventPriority
 {
+    Ambient = 0,
     Routine = 1,
     Informational = 2,
     Progress = 3,

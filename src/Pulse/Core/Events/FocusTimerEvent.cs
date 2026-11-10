@@ -16,7 +16,7 @@ public sealed record FocusTimerEvent(
     TimeSpan? DisplayDuration = null
 ) : IslandEvent(
     Id,
-    State == FocusTimerState.Completed ? EventPriority.Warning : EventPriority.Progress,
+    State == FocusTimerState.Completed ? EventPriority.Warning : EventPriority.Ambient,
     EventCategory.FocusTimer,
     DateTimeOffset.UtcNow,
     DisplayDuration ?? (State == FocusTimerState.Completed ? TimeSpan.FromSeconds(5.0) : null),

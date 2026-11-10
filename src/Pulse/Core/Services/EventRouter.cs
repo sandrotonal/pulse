@@ -9,15 +9,19 @@ public sealed class EventRouter : IEventRouter
 
     private sealed class TrackedEntry
     {
-        public TrackedEntry(IslandEvent @event, DateTimeOffset queuedAtUtc)
+        public TrackedEntry(IslandEvent @event, DateTimeOffset queuedAtUtc, long sequence)
         {
             Event = @event;
             QueuedAtUtc = queuedAtUtc;
+            RemainingDuration = @event.DisplayDuration;
+            Sequence = sequence;
         }
 
         public IslandEvent Event { get; set; }
         public DateTimeOffset QueuedAtUtc { get; set; }
         public DateTimeOffset? PresentedAtUtc { get; set; }
+        public TimeSpan? RemainingDuration { get; set; }
+        public long Sequence { get; set; }
         public Timer? ExpirationTimer { get; set; }
     }
 
@@ -26,7 +30,9 @@ public sealed class EventRouter : IEventRouter
     private readonly Queue<IslandEvent?> _pendingNotifications = new();
     private bool _isDispatchingNotifications;
     private IslandEvent? _persistentEvent;
+    private long _nextSequence;
     private bool _isInteractionLocked;
+    private bool _isPresentationPaused;
     private bool _isDisposed;
 
     public IslandEvent? CurrentActiveEvent { get; private set; }
@@ -49,6 +55,11 @@ public sealed class EventRouter : IEventRouter
             {
                 _persistentEvent = @event;
             }
+            else if (_isPresentationPaused && @event.DisplayDuration.HasValue && @event.Priority <= EventPriority.Routine)
+            {
+                // Skip transient routine HUDs (e.g. volume changes during fullscreen games) while hidden.
+                return;
+            }
             else if (_events.TryGetValue(@event.Id, out var existing))
             {
                 existing.ExpirationTimer?.Dispose();
@@ -56,10 +67,12 @@ public sealed class EventRouter : IEventRouter
                 existing.Event = @event;
                 existing.QueuedAtUtc = now;
                 existing.PresentedAtUtc = null;
+                existing.RemainingDuration = @event.DisplayDuration;
+                existing.Sequence = ++_nextSequence;
             }
             else
             {
-                _events[@event.Id] = new TrackedEntry(@event, now);
+                _events[@event.Id] = new TrackedEntry(@event, now, ++_nextSequence);
             }
 
             var previousActive = CurrentActiveEvent;
@@ -142,10 +155,87 @@ public sealed class EventRouter : IEventRouter
 
         lock (_syncRoot)
         {
-            if (_isDisposed) return;
+            if (_isDisposed || !_isInteractionLocked) return;
 
             _isInteractionLocked = false;
             var now = DateTimeOffset.UtcNow;
+            var previousActive = CurrentActiveEvent;
+            var newActive = DetermineActiveEvent_NoLock(now);
+
+            if (!ReferenceEquals(previousActive, newActive))
+            {
+                CurrentActiveEvent = newActive;
+                _pendingNotifications.Enqueue(newActive);
+                if (!_isDispatchingNotifications)
+                {
+                    _isDispatchingNotifications = true;
+                    shouldDrain = true;
+                }
+            }
+
+            EnsureActiveTimerStarted_NoLock(newActive, now);
+        }
+
+        if (shouldDrain)
+        {
+            DrainNotifications();
+        }
+    }
+
+    public void SetPresentationPaused(bool isPaused)
+    {
+        var shouldDrain = false;
+
+        lock (_syncRoot)
+        {
+            if (_isDisposed || _isPresentationPaused == isPaused)
+            {
+                return;
+            }
+
+            _isPresentationPaused = isPaused;
+            var now = DateTimeOffset.UtcNow;
+
+            if (isPaused)
+            {
+                List<string>? completedIds = null;
+                foreach (var (id, entry) in _events)
+                {
+                    if (!entry.Event.DisplayDuration.HasValue)
+                    {
+                        continue;
+                    }
+
+                    if (entry.PresentedAtUtc.HasValue)
+                    {
+                        var total = entry.RemainingDuration ?? entry.Event.DisplayDuration.Value;
+                        var remaining = total - (now - entry.PresentedAtUtc.Value);
+                        entry.ExpirationTimer?.Dispose();
+                        entry.ExpirationTimer = null;
+                        entry.PresentedAtUtc = null;
+
+                        if (remaining <= TimeSpan.Zero)
+                        {
+                            completedIds ??= [];
+                            completedIds.Add(id);
+                        }
+                        else
+                        {
+                            entry.RemainingDuration = remaining;
+                            entry.QueuedAtUtc = now;
+                        }
+                    }
+                }
+
+                if (completedIds is not null)
+                {
+                    foreach (var completedId in completedIds)
+                    {
+                        _events.Remove(completedId);
+                    }
+                }
+            }
+
             var previousActive = CurrentActiveEvent;
             var newActive = DetermineActiveEvent_NoLock(now);
 
@@ -202,7 +292,7 @@ public sealed class EventRouter : IEventRouter
             return CurrentActiveEvent;
         }
 
-        IslandEvent? highestPriorityEvent = null;
+        TrackedEntry? bestEntry = null;
         List<string>? staleIds = null;
 
         foreach (var (id, entry) in _events)
@@ -214,9 +304,16 @@ public sealed class EventRouter : IEventRouter
                 continue;
             }
 
-            if (highestPriorityEvent == null || entry.Event.Priority > highestPriorityEvent.Priority)
+            if (_isPresentationPaused && entry.Event.DisplayDuration.HasValue)
             {
-                highestPriorityEvent = entry.Event;
+                continue;
+            }
+
+            if (bestEntry is null ||
+                entry.Event.Priority > bestEntry.Event.Priority ||
+                (entry.Event.Priority == bestEntry.Event.Priority && entry.Sequence > bestEntry.Sequence))
+            {
+                bestEntry = entry;
             }
         }
 
@@ -232,9 +329,9 @@ public sealed class EventRouter : IEventRouter
             }
         }
 
-        if (highestPriorityEvent != null)
+        if (bestEntry is not null)
         {
-            return highestPriorityEvent;
+            return bestEntry.Event;
         }
 
         return _persistentEvent;
@@ -247,19 +344,20 @@ public sealed class EventRouter : IEventRouter
             return false;
         }
 
-        // If never presented yet (e.g., queued while interaction lock held an expanded panel),
-        // keep it valid for up to MaxDeferredPendingAge rather than aging it out unseen.
+        // If never presented yet (e.g., queued while interaction lock held an expanded panel,
+        // or while the island was hidden), keep it valid for up to MaxDeferredPendingAge.
         if (entry.PresentedAtUtc is null)
         {
             return (now - entry.QueuedAtUtc) >= MaxDeferredPendingAge;
         }
 
-        return (now - entry.PresentedAtUtc.Value) >= entry.Event.DisplayDuration.Value;
+        var duration = entry.RemainingDuration ?? entry.Event.DisplayDuration.Value;
+        return (now - entry.PresentedAtUtc.Value) >= duration;
     }
 
     private void EnsureActiveTimerStarted_NoLock(IslandEvent? activeEvent, DateTimeOffset now)
     {
-        if (activeEvent is null || !activeEvent.DisplayDuration.HasValue || activeEvent.DisplayDuration.Value <= TimeSpan.Zero)
+        if (_isPresentationPaused || activeEvent is null || !activeEvent.DisplayDuration.HasValue)
         {
             return;
         }
@@ -274,9 +372,15 @@ public sealed class EventRouter : IEventRouter
             return;
         }
 
+        var duration = entry.RemainingDuration ?? activeEvent.DisplayDuration.Value;
+        if (duration <= TimeSpan.Zero)
+        {
+            return;
+        }
+
         entry.PresentedAtUtc = now;
         var id = activeEvent.Id;
-        entry.ExpirationTimer = new Timer(_ => OnEventExpired(id), null, activeEvent.DisplayDuration.Value, Timeout.InfiniteTimeSpan);
+        entry.ExpirationTimer = new Timer(_ => OnEventExpired(id), null, duration, Timeout.InfiniteTimeSpan);
     }
 
     public void Dispose()

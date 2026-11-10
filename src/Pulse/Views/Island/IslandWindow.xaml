@@ -994,6 +994,8 @@
                                         CornerRadius="12" Padding="14,2"
                                         HorizontalAlignment="Center"
                                         Command="{Binding ToggleCustomFocusEditorCommand}"
+                                        PointerPressed="OnButtonPointerPressed"
+                                        PointerReleased="OnButtonPointerReleased"
                                         AutomationProperties.Name="Özel odak süresi ayarla"
                                         ToolTipService.ToolTip="Süre seç (özel süre)">
                                     <TextBlock Text="{Binding FocusTimerText, TargetNullValue='25:00'}"

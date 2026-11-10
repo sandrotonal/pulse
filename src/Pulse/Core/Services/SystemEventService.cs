@@ -96,7 +96,7 @@ public sealed class SystemEventService : ISystemEventService
             isMuted ? "Sessiz" : "Ses",
             isMuted ? "Ses kapatıldı" : $"%{clamped}",
             isMuted ? "\uE74F" : "\uE995",
-            EventPriority.Informational,
+            EventPriority.Routine,
             TimeSpan.FromSeconds(1.8)
         );
 
