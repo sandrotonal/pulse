@@ -9,6 +9,7 @@ using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
 using Pulse.Core.Services.Weather;
+using Pulse.Services.Glass;
 
 namespace Pulse.ViewModels;
 
@@ -508,7 +509,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private Microsoft.UI.Xaml.Media.SolidColorBrush FocusTipBrush(string key)
     {
         var isActive = key == _focusPresetKey;
-        var isLight = _media.Theme == "Light";
+        var isLight = DesktopFrostService.ResolveIsLightTheme(_media.Theme);
 
         // Keep the focus panel monochrome so it reads as part of the same glass surface.
         var color = isLight
@@ -517,6 +518,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         return MakeBrush(color);
     }
+
+    public void RefreshThemeResources() => NotifyFocusBrushes();
 
     private static Microsoft.UI.Xaml.Media.SolidColorBrush MakeBrush(uint value)
     {

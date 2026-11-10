@@ -11,6 +11,7 @@ using Microsoft.UI.Xaml.Input;
 using Pulse.Core.Animation;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
+using Pulse.Services.Glass;
 using Pulse.ViewModels;
 using Windows.Graphics;
 
@@ -55,6 +56,8 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _pillMaskVisual;
     private readonly Visual _frostSheenVisual;
     private CompositionRoundedRectangleGeometry? _surfaceClipGeometry;
+    private CompositionSpriteShape? _frostRimShape;
+    private ShapeVisual? _frostRimVisual;
     private readonly Visual _compactVisual;
     private Visual _expandedVisual;
     private readonly Visual _wave1Visual;
@@ -72,8 +75,12 @@ public sealed partial class IslandWindow : Window
     private readonly DampedSpringOscillator _springMinimal = new(dampingRatio: 0.95, responseSeconds: 0.25);
     private readonly DampedSpringOscillator _springNormal = new(dampingRatio: 0.82, responseSeconds: 0.34);
     private readonly DampedSpringOscillator _springDynamic = new(dampingRatio: 0.60, responseSeconds: 0.40);
-    private readonly DampedSpringOscillator _pageSpring = new(dampingRatio: 0.90, responseSeconds: 0.30);
-    private readonly DampedSpringOscillator _dotSpring = new(dampingRatio: 0.86, responseSeconds: 0.24);
+    private readonly DampedSpringOscillator _pageSpringMinimal = new(dampingRatio: 0.95, responseSeconds: 0.22);
+    private readonly DampedSpringOscillator _pageSpringNormal = new(dampingRatio: 0.90, responseSeconds: 0.30);
+    private readonly DampedSpringOscillator _pageSpringDynamic = new(dampingRatio: 0.72, responseSeconds: 0.34);
+    private readonly DampedSpringOscillator _dotSpringMinimal = new(dampingRatio: 0.95, responseSeconds: 0.18);
+    private readonly DampedSpringOscillator _dotSpringNormal = new(dampingRatio: 0.86, responseSeconds: 0.24);
+    private readonly DampedSpringOscillator _dotSpringDynamic = new(dampingRatio: 0.68, responseSeconds: 0.28);
     private DampedSpringOscillator _activeDimensionSpring;
     private readonly SubclassProc _subclassProc;
 
@@ -121,8 +128,11 @@ public sealed partial class IslandWindow : Window
     private DispatcherQueueTimer? _topmostGuardTimer;
     private DispatcherQueueTimer? _displaySettleTimer;
     private DispatcherQueueTimer? _unhideRecoveryTimer;
+    private DispatcherQueueTimer? _frostRefreshTimer;
     private int _displaySettlePassesRemaining;
     private long _hideShowGeneration;
+    private long _frostGeneration;
+    private bool _hasFrostBitmap;
     private readonly FullscreenStabilityTracker _fullscreenTracker = new(exitConfirmationThreshold: 2);
     private const int DwmwaCloaked = 14;
     private string? _lastPulseTrackKey;
@@ -279,10 +289,12 @@ public sealed partial class IslandWindow : Window
 
         PositionHostWindow();
         ApplyWindowStyles();
+        EnsureSurfaceClipAndRim();
         ApplyGlass();
         ApplyTheme(_viewModel.Theme);
 
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
+        WindowRoot.ActualThemeChanged += OnWindowRootActualThemeChanged;
         Closed += OnWindowClosed;
         UpdateBatteryChargingAnimation();
 
@@ -300,7 +312,7 @@ public sealed partial class IslandWindow : Window
         _topmostGuardTimer.Tick += (_, _) => ReassertTopmost();
         _topmostGuardTimer.Start();
 
-        if (_viewModel.IsPlaying)
+        if (_viewModel.IsPlaying && _viewModel.ShowEqualizer)
         {
             StartEqualizerWave();
         }
@@ -375,24 +387,24 @@ public sealed partial class IslandWindow : Window
             StopAmbientAnimations();
         }
 
+        var hideDuration = ScaledDuration(180);
         try
         {
             var compositor = _pillMaskVisual.Compositor;
-            var duration = TimeSpan.FromMilliseconds(180);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(1f, 1f));
 
             _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), 0f, 0f);
 
             var scaleAnim = compositor.CreateVector3KeyFrameAnimation();
-            scaleAnim.Duration = duration;
+            scaleAnim.Duration = hideDuration;
             scaleAnim.InsertKeyFrame(1f, new Vector3(0.6f, 0.4f, 1f), easing);
 
             var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
-            opacityAnim.Duration = duration;
+            opacityAnim.Duration = hideDuration;
             opacityAnim.InsertKeyFrame(1f, 0f, easing);
 
             var translateAnim = compositor.CreateVector3KeyFrameAnimation();
-            translateAnim.Duration = duration;
+            translateAnim.Duration = hideDuration;
             translateAnim.InsertKeyFrame(1f, new Vector3(0f, -18f, 0f), easing);
 
             _pillMaskVisual.StartAnimation("Scale", scaleAnim);
@@ -410,7 +422,6 @@ public sealed partial class IslandWindow : Window
         if (timer is null)
         {
             timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
-            timer.Interval = TimeSpan.FromMilliseconds(190);
             timer.Tick += (_, _) =>
             {
                 timer.Stop();
@@ -436,6 +447,7 @@ public sealed partial class IslandWindow : Window
             };
             _hideAnimationTimer = timer;
         }
+        timer.Interval = hideDuration + TimeSpan.FromMilliseconds(15);
         timer.Start();
     }
 
@@ -481,7 +493,7 @@ public sealed partial class IslandWindow : Window
         try
         {
             var compositor = _pillMaskVisual.Compositor;
-            var duration = TimeSpan.FromMilliseconds(320);
+            var duration = ScaledDuration(320);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
 
             _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), 0f, 0f);
@@ -493,7 +505,7 @@ public sealed partial class IslandWindow : Window
             scaleAnim.InsertKeyFrame(1f, Vector3.One, easing);
 
             var opacityAnim = compositor.CreateScalarKeyFrameAnimation();
-            opacityAnim.Duration = TimeSpan.FromMilliseconds(160);
+            opacityAnim.Duration = ScaledDuration(160);
             opacityAnim.InsertKeyFrame(0f, 0f);
             opacityAnim.InsertKeyFrame(1f, 1f, easing);
 
@@ -517,9 +529,9 @@ public sealed partial class IslandWindow : Window
             {
                 _unhideRecoveryTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
                 _unhideRecoveryTimer.IsRepeating = false;
-                _unhideRecoveryTimer.Interval = TimeSpan.FromMilliseconds(390);
                 _unhideRecoveryTimer.Tick += (_, _) => FinalizeUnhideSurface(_hideShowGeneration);
             }
+            _unhideRecoveryTimer.Interval = duration + TimeSpan.FromMilliseconds(70);
             _unhideRecoveryTimer.Stop();
             _unhideRecoveryTimer.Start();
         }
@@ -570,7 +582,7 @@ public sealed partial class IslandWindow : Window
 
     private void RestoreAmbientAnimations()
     {
-        if (_viewModel.IsPlaying)
+        if (_viewModel.IsPlaying && _viewModel.ShowEqualizer)
         {
             StartEqualizerWave();
         }
@@ -777,6 +789,7 @@ public sealed partial class IslandWindow : Window
         _hideAnimationTimer?.Stop();
         _unhideRecoveryTimer?.Stop();
         _displaySettleTimer?.Stop();
+        _frostRefreshTimer?.Stop();
         _collapseDelayTimer.Stop();
         _fullscreenPollTimer?.Stop();
         _hoverExpandTimer?.Stop();
@@ -785,6 +798,7 @@ public sealed partial class IslandWindow : Window
         _isPageAnimating = false;
         _isDotAnimating = false;
         StopRenderLoop();
+        WindowRoot.ActualThemeChanged -= OnWindowRootActualThemeChanged;
         _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
 
         if (_hwnd != IntPtr.Zero)
@@ -1012,7 +1026,7 @@ public sealed partial class IslandWindow : Window
         }
         else if (e.PropertyName is nameof(MediaViewModel.CurrentTrack) or nameof(MediaViewModel.IsPlaying))
         {
-            if (_viewModel.IsPlaying && (!_isIslandHidden || _hideAnchorVisible))
+            if (_viewModel.IsPlaying && _viewModel.ShowEqualizer && (!_isIslandHidden || _hideAnchorVisible))
             {
                 StartEqualizerWave();
             }
@@ -1054,6 +1068,21 @@ public sealed partial class IslandWindow : Window
         {
             PositionHostWindow();
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
+            if (_glassEnabled && !_isIslandHidden)
+            {
+                ScheduleFrostRefresh(delayMs: 240);
+            }
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.EnableHoverExpand))
+        {
+            if (!_viewModel.EnableHoverExpand)
+            {
+                _hoverExpandTimer?.Stop();
+                if (_viewModel.CurrentIslandState == IslandState.Hover)
+                {
+                    _viewModel.OnPointerExited();
+                }
+            }
         }
         else if (e.PropertyName == nameof(MediaViewModel.HoverExpandDelayMs))
         {
@@ -1072,6 +1101,14 @@ public sealed partial class IslandWindow : Window
             if (CompactWaveBars is not null)
             {
                 CompactWaveBars.Opacity = (_viewModel.CurrentIslandState == IslandState.Hover && _viewModel.ShowEqualizer) ? 1.0 : 0.0;
+            }
+            if (_viewModel.ShowEqualizer && _viewModel.IsPlaying && (!_isIslandHidden || _hideAnchorVisible))
+            {
+                StartEqualizerWave();
+            }
+            else
+            {
+                StopEqualizerWave();
             }
         }
         else if (e.PropertyName == nameof(IslandViewModel.IsSplitModeActive))
@@ -1153,6 +1190,23 @@ public sealed partial class IslandWindow : Window
     /// <summary>70-140% user speed; higher values compress both durations and spring time.</summary>
     private double MotionSpeedScale => Math.Clamp(_viewModel.MotionSpeed, 70, 140) / 100.0;
 
+    private TimeSpan ScaledDuration(double baseMs, double minMs = 30.0)
+        => TimeSpan.FromMilliseconds(Math.Max(minMs, baseMs * AnimationProfile.DurationScale));
+
+    private DampedSpringOscillator SelectPageSpring() => _viewModel.AnimationIntensity switch
+    {
+        "Minimal" => _pageSpringMinimal,
+        "Dynamic" => _pageSpringDynamic,
+        _ => _pageSpringNormal
+    };
+
+    private DampedSpringOscillator SelectDotSpring() => _viewModel.AnimationIntensity switch
+    {
+        "Minimal" => _dotSpringMinimal,
+        "Dynamic" => _dotSpringDynamic,
+        _ => _dotSpringNormal
+    };
+
     private static readonly Windows.UI.ViewManagement.UISettings SystemUiSettings = new();
 
     /// <summary>Respects the Windows "animation effects" accessibility setting.</summary>
@@ -1180,6 +1234,33 @@ public sealed partial class IslandWindow : Window
         }
     }
 
+    private void EnsureSurfaceClipAndRim()
+    {
+        var compositor = _pillMaskVisual.Compositor;
+        if (_surfaceClipGeometry is null)
+        {
+            _surfaceClipGeometry = compositor.CreateRoundedRectangleGeometry();
+            _pillMaskVisual.Clip = compositor.CreateGeometricClip(_surfaceClipGeometry);
+        }
+
+        if (_frostRimVisual is null && FrostRimHost is not null)
+        {
+            _frostRimShape = compositor.CreateSpriteShape(_surfaceClipGeometry);
+            _frostRimShape.StrokeThickness = 1.15f;
+            _frostRimShape.StrokeBrush = DesktopFrostService.CreateCompositionVerticalGradient(
+                compositor,
+                0x46FFFFFFu,
+                0x14FFFFFFu);
+
+            _frostRimVisual = compositor.CreateShapeVisual();
+            _frostRimVisual.Size = new Vector2(
+                (float)IslandSurfaceLayout.DefaultHostWidthDip,
+                (float)IslandSurfaceLayout.DefaultHostHeightDip);
+            _frostRimVisual.Shapes.Add(_frostRimShape);
+            ElementCompositionPreview.SetElementChildVisual(FrostRimHost, _frostRimVisual);
+        }
+    }
+
     /// <summary>
     /// Shapes the fixed 560x300 pill surface purely on the GPU using CompositionRoundedRectangleGeometry
     /// and frost sheen scaling, avoiding any per-frame XAML layout invalidation or Measure/Arrange pass.
@@ -1188,18 +1269,14 @@ public sealed partial class IslandWindow : Window
     {
         if (width > 0 && height > 0)
         {
-            if (_surfaceClipGeometry is null)
-            {
-                _surfaceClipGeometry = _pillMaskVisual.Compositor.CreateRoundedRectangleGeometry();
-                _pillMaskVisual.Clip = _pillMaskVisual.Compositor.CreateGeometricClip(_surfaceClipGeometry);
-            }
+            EnsureSurfaceClipAndRim();
 
             double clampedWidth = Math.Min(IslandSurfaceLayout.DefaultHostWidthDip, Math.Max(1.0, width));
             double clampedHeight = Math.Min(IslandSurfaceLayout.DefaultHostHeightDip, Math.Max(1.0, height));
             float offsetX = (float)((IslandSurfaceLayout.DefaultHostWidthDip - clampedWidth) / 2.0);
             float clampedRadius = (float)Math.Max(0.0, cornerRadius);
 
-            _surfaceClipGeometry.Offset = new Vector2(offsetX, 0f);
+            _surfaceClipGeometry!.Offset = new Vector2(offsetX, 0f);
             _surfaceClipGeometry.Size = new Vector2((float)clampedWidth, (float)clampedHeight);
             _surfaceClipGeometry.CornerRadius = new Vector2(clampedRadius, clampedRadius);
         }
@@ -1805,7 +1882,7 @@ public sealed partial class IslandWindow : Window
     // GPU-accelerated Equalizer wave animations running on the Compositor thread (zero CPU)
     private void StartEqualizerWave()
     {
-        if (_waveAnimating) return;
+        if (!_viewModel.ShowEqualizer || _waveAnimating) return;
         _waveAnimating = true;
 
         try
@@ -1857,6 +1934,7 @@ public sealed partial class IslandWindow : Window
 
     private void PlayTrackChangePulse()
     {
+        if (ReducedMotion) return;
         try
         {
             var compositor = _pillMaskVisual.Compositor;
@@ -1865,7 +1943,7 @@ public sealed partial class IslandWindow : Window
             _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), (float)(_currentPillHeight / 2.0), 0f);
 
             var pulse = compositor.CreateVector3KeyFrameAnimation();
-            pulse.Duration = TimeSpan.FromMilliseconds(420);
+            pulse.Duration = ScaledDuration(420, minMs: 120);
             pulse.InsertKeyFrame(0f, Vector3.One);
             pulse.InsertKeyFrame(0.35f, new Vector3(1.05f, 1.05f, 1f), springEasing);
             pulse.InsertKeyFrame(1f, Vector3.One, springEasing);
@@ -2108,7 +2186,7 @@ public sealed partial class IslandWindow : Window
             _pillMaskVisual.CenterPoint = new Vector3((float)(IslandSurfaceLayout.DefaultHostWidthDip / 2.0), (float)(_currentPillHeight / 2.0), 0f);
 
             var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.Duration = TimeSpan.FromMilliseconds(durationMs);
+            anim.Duration = ScaledDuration(durationMs);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.3f, 1.0f));
             anim.InsertKeyFrame(1f, new Vector3(scaleX, scaleY, 1f), easing);
 
@@ -2126,7 +2204,7 @@ public sealed partial class IslandWindow : Window
             visual.CenterPoint = new Vector3((float)(element.ActualWidth / 2.0), (float)(element.ActualHeight / 2.0), 0);
             var compositor = visual.Compositor;
             var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.Duration = TimeSpan.FromMilliseconds(durationMs);
+            anim.Duration = ScaledDuration(durationMs);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1.0f), new Vector2(0.3f, 1.0f));
             anim.InsertKeyFrame(1f, new Vector3(targetScale, targetScale, 1f), easing);
             visual.StartAnimation("Scale", anim);
@@ -2338,6 +2416,7 @@ public sealed partial class IslandWindow : Window
 
         _pageAnimElapsedSec += dt;
         double elapsedSec = _pageAnimElapsedSec * MotionSpeedScale;
+        var pageSpring = SelectPageSpring();
         bool settled = true;
 
         for (int i = 0; i < 3; i++)
@@ -2350,15 +2429,15 @@ public sealed partial class IslandWindow : Window
             var grid = GetPanelGrid(i);
             var visual = GetPanelVisual(i);
 
-            var x = _pageSpring.Evaluate(elapsedSec, _pageFromX[i], _pageToX[i], _pageVelX[i]);
-            var opacity = _pageSpring.Evaluate(
+            var x = pageSpring.Evaluate(elapsedSec, _pageFromX[i], _pageToX[i], _pageVelX[i]);
+            var opacity = pageSpring.Evaluate(
                 elapsedSec,
                 _pageFromOpacity[i],
                 _pageToOpacity[i],
                 _pageVelOpacity[i],
                 DampedSpringOscillator.NormalizedPositionTolerance,
                 DampedSpringOscillator.NormalizedVelocityTolerance);
-            var scale = _pageSpring.Evaluate(
+            var scale = pageSpring.Evaluate(
                 elapsedSec,
                 _pageFromScale[i],
                 _pageToScale[i],
@@ -2498,18 +2577,19 @@ public sealed partial class IslandWindow : Window
 
         _dotAnimElapsedSec += dt;
         double springElapsedSec = _dotAnimElapsedSec * MotionSpeedScale;
+        var dotSpring = SelectDotSpring();
         bool settled = true;
 
         for (int i = 0; i < 3; i++)
         {
-            var widthState = _dotSpring.Evaluate(
+            var widthState = dotSpring.Evaluate(
                 springElapsedSec,
                 _dotStartWidth[i],
                 _dotTargetWidth[i],
                 _dotVelWidth[i],
                 positionTolerance: 0.1,
                 velocityTolerance: 0.25);
-            var opacityState = _dotSpring.Evaluate(
+            var opacityState = dotSpring.Evaluate(
                 springElapsedSec,
                 _dotStartOpacity[i],
                 _dotTargetOpacity[i],
@@ -2638,7 +2718,7 @@ public sealed partial class IslandWindow : Window
             visual.CenterPoint = new Vector3((float)(element.ActualWidth / 2), (float)(element.ActualHeight / 2), 0);
             var compositor = visual.Compositor;
             var anim = compositor.CreateVector3KeyFrameAnimation();
-            anim.Duration = TimeSpan.FromMilliseconds(targetScale < 1 ? 65 : 130);
+            anim.Duration = ScaledDuration(targetScale < 1 ? 65 : 130);
             var easing = compositor.CreateCubicBezierEasingFunction(new Vector2(0.16f, 1f), new Vector2(0.3f, 1f));
             anim.InsertKeyFrame(1f, new Vector3(targetScale, targetScale, 1f), easing);
             visual.StartAnimation("Scale", anim);
@@ -2655,13 +2735,59 @@ public sealed partial class IslandWindow : Window
     public void ApplyGlass()
     {
         _glassEnabled = _viewModel.UseTransparency;
+        if (!_glassEnabled)
+        {
+            _frostRefreshTimer?.Stop();
+            _frostGeneration++;
+            _hasFrostBitmap = false;
+            if (FrostLayer is not null)
+            {
+                FrostLayer.Fill = null;
+            }
+        }
+
         UpdateFrostVisibility();
         if (_glassEnabled)
         {
             // No periodic re-capture: each capture briefly hides the window, which
-            // reads as a visible blink. The blur is captured on launch/glass enable;
-            // track and slider changes only recolor the tint overlay above it.
+            // reads as a visible blink. The blur is captured on launch/glass enable,
+            // debounced TopOffset/IslandScale updates, display settles, and fullscreen returns.
             _ = RefreshFrostAsync(force: true);
+        }
+    }
+
+    private void ScheduleFrostRefresh(int delayMs = 240)
+    {
+        if (!_glassEnabled || _isIslandHidden)
+        {
+            return;
+        }
+
+        if (_frostRefreshTimer is null)
+        {
+            _frostRefreshTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+            _frostRefreshTimer.IsRepeating = false;
+            _frostRefreshTimer.Tick += (_, _) =>
+            {
+                if (_glassEnabled && !_isIslandHidden)
+                {
+                    _ = RefreshFrostAsync(force: true);
+                }
+            };
+        }
+
+        _frostRefreshTimer.Stop();
+        _frostRefreshTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(80, delayMs));
+        _frostRefreshTimer.Start();
+    }
+
+    private void OnWindowRootActualThemeChanged(FrameworkElement sender, object args)
+    {
+        if (string.Equals(_viewModel.Theme, "System", StringComparison.OrdinalIgnoreCase) ||
+            string.IsNullOrWhiteSpace(_viewModel.Theme))
+        {
+            ApplyTheme(_viewModel.Theme);
+            _viewModel.RefreshThemeResources();
         }
     }
 
@@ -2679,20 +2805,38 @@ public sealed partial class IslandWindow : Window
         }
         if (_glassEnabled)
         {
-            UpdateFrostTint();
+            UpdateFrostTint(ComputeCurrentPalette());
         }
     }
 
-    /// <summary>Recolors the live glass tint without touching the captured blur.</summary>
-    private void UpdateFrostTint()
+    private GlassSurfacePalette ComputeCurrentPalette()
     {
-        if (FrostTintLayer is null)
+        var isLight = DesktopFrostService.ResolveIsLightTheme(_viewModel.Theme);
+        var hasFrostBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
+        return LiquidGlassEngine.ComputeIslandPalette(
+            isLightTheme: isLight,
+            useTransparency: _glassEnabled,
+            transparencyLevel: _viewModel.TransparencyLevel,
+            dynamicColorTint: _viewModel.DynamicColorTint,
+            artworkAccentColor: _viewModel.ArtworkAccentColor,
+            artworkTintStrength: _viewModel.ArtworkTintStrength,
+            hasFrostBitmap: hasFrostBitmap);
+    }
+
+    /// <summary>Recolors the live glass tint and specular sheen without touching the captured blur.</summary>
+    private void UpdateFrostTint(GlassSurfacePalette palette)
+    {
+        if (FrostTintLayer is not null)
         {
-            return;
+            var hasBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
+            FrostTintLayer.Fill = DesktopFrostService.CreateBrush(palette.FrostTintRgb);
+            FrostTintLayer.Opacity = hasBitmap ? palette.FrostTintOpacity : 0.0;
         }
 
-        FrostTintLayer.Fill = Brush(CurrentGlassTint());
-        FrostTintLayer.Opacity = FrostAlpha() / 255.0;
+        if (FrostSheenTopStop is not null)
+        {
+            FrostSheenTopStop.Color = DesktopFrostService.ToColor(palette.SheenTopArgb);
+        }
     }
 
     private bool _frostBusy;
@@ -2700,152 +2844,74 @@ public sealed partial class IslandWindow : Window
     /// <summary>Samples the desktop area under the island, blurs + tints it into the frost brush.</summary>
     private async Task RefreshFrostAsync(bool force = false)
     {
-        if (!_glassEnabled || _isIslandHidden || _frostBusy || FrostLayer is null) return;
-        // Periodic refreshes skip while the pointer is over the pill (no flicker under
-        // the cursor); forced refreshes (state change / expand) always run.
-        if (!force && _isPointerOverSurface) return;
+        if (!_glassEnabled || _isIslandHidden || _frostBusy || FrostLayer is null)
+        {
+            return;
+        }
+
+        if (!force && _isPointerOverSurface)
+        {
+            return;
+        }
 
         _frostBusy = true;
+        var generation = ++_frostGeneration;
         try
         {
-            var clientW = 0;
-            var clientH = 0;
-            var screenX = 0;
-            var screenY = 0;
-            RunOnDispatcher(() =>
+            GetClientRect(_hwnd, out var crc);
+            var pt = new Win32Point();
+            _ = ClientToScreen(_hwnd, ref pt);
+            var screenX = pt.X;
+            var screenY = pt.Y;
+            var clientW = Math.Max(16, crc.Right - crc.Left);
+            var clientH = Math.Max(16, crc.Bottom - crc.Top);
+
+            if (clientW < 16 || clientH < 16)
             {
-                // Capture the whole fixed host footprint once. The brush renders with
-                // Stretch=None and top/center alignment, so every pill size reads a 1:1
-                // crop of the same snapshot instead of re-scaling an old capture.
-                GetClientRect(_hwnd, out var crc);
-                var pt = new Win32Point();
-                _ = ClientToScreen(_hwnd, ref pt);
-                screenX = pt.X;
-                screenY = pt.Y;
-                clientW = Math.Max(16, crc.Right - crc.Left);
-                clientH = Math.Max(16, crc.Bottom - crc.Top);
-            });
-            if (clientW < 16 || clientH < 16) return;
+                return;
+            }
 
             var dpiScale = _dpiScale > 0 ? _dpiScale : 1.0;
-            var frost = await Task.Run(() =>
+            var pngBytes = await Task.Run(() =>
             {
-                var bmp = CaptureDesktopSample(screenX, screenY, clientW, clientH);
-                if (bmp is null) return null;
-
-                var result = BlurDesktop(bmp);
-                bmp.Dispose();
-
-                var dip = ScaleToDip(result, dpiScale);
-                if (!ReferenceEquals(dip, result))
+                using var bmp = CaptureDesktopSample(screenX, screenY, clientW, clientH);
+                if (bmp is null)
                 {
-                    result.Dispose();
+                    return null;
                 }
-                return dip;
-            });
-            if (frost is null) return;
 
-            byte[] pngBytes;
-            using (var ms = new System.IO.MemoryStream())
+                return DesktopFrostService.ProcessCapturedFrostToPng(bmp, dpiScale, blurRadius: 11, vibrancyBoost: 1.24);
+            });
+
+            if (pngBytes is null || generation != _frostGeneration || _isIslandHidden || !_glassEnabled || FrostLayer is null)
             {
-                frost.Save(ms, System.Drawing.Imaging.ImageFormat.Png);
-                pngBytes = ms.ToArray();
+                return;
             }
-            frost.Dispose();
 
-            RunOnDispatcher(() =>
+            var image = await DesktopFrostService.DecodePngToBitmapImageAsync(pngBytes);
+            if (generation != _frostGeneration || _isIslandHidden || !_glassEnabled || FrostLayer is null)
             {
-                if (_isIslandHidden || !_glassEnabled || FrostLayer is null)
-                {
-                    return;
-                }
+                return;
+            }
 
-                var stream = new Windows.Storage.Streams.InMemoryRandomAccessStream();
-                using (var writer = new Windows.Storage.Streams.DataWriter(stream.GetOutputStreamAt(0)))
-                {
-                    writer.WriteBytes(pngBytes);
-                    _ = writer.StoreAsync().AsTask().GetAwaiter().GetResult();
-                    _ = writer.FlushAsync().AsTask().GetAwaiter().GetResult();
-                }
-
-                var image = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage();
-                _ = image.SetSourceAsync(stream);
-                FrostLayer.Fill = new Microsoft.UI.Xaml.Media.ImageBrush
-                {
-                    ImageSource = image,
-                    Stretch = Microsoft.UI.Xaml.Media.Stretch.None,
-                    AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Center,
-                    AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Top
-                };
-                UpdateFrostTint();
-            });
+            FrostLayer.Fill = new Microsoft.UI.Xaml.Media.ImageBrush
+            {
+                ImageSource = image,
+                Stretch = Microsoft.UI.Xaml.Media.Stretch.None,
+                AlignmentX = Microsoft.UI.Xaml.Media.AlignmentX.Center,
+                AlignmentY = Microsoft.UI.Xaml.Media.AlignmentY.Top
+            };
+            _hasFrostBitmap = true;
+            ApplyTheme(_viewModel.Theme);
         }
-        catch
+        catch (Exception ex)
         {
-            // Be resilient — worst case the frost simply shows the previous frame.
+            CrashLogger.Write("IslandWindow.RefreshFrostAsync", ex);
         }
         finally
         {
             _frostBusy = false;
         }
-    }
-
-    private void RunOnDispatcher(Action action)
-    {
-        var dispatcher = DispatcherQueue.GetForCurrentThread();
-        if (dispatcher.HasThreadAccess)
-        {
-            action();
-            return;
-        }
-        using var evt = new System.Threading.ManualResetEvent(false);
-        dispatcher.TryEnqueue(() =>
-        {
-            try { action(); }
-            finally { _ = evt.Set(); }
-        });
-        _ = evt.WaitOne(200);
-    }
-
-    private static bool IsSystemLightTheme()
-    {
-        try
-        {
-            var background = SystemUiSettings.GetColorValue(Windows.UI.ViewManagement.UIColorType.Background);
-            return (background.R * 0.299 + background.G * 0.587 + background.B * 0.114) > 128;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>Resolves the Settings "System" option to the real OS theme instead of forcing dark.</summary>
-    private static bool IsLightTheme(string theme) =>
-        theme == "Light" || (theme != "Dark" && IsSystemLightTheme());
-
-    /// <summary>Surface alpha from the transparency slider; 0xF2 = solid, 0x5E = most transparent.</summary>
-    private uint SurfaceAlpha()
-    {
-        if (!_glassEnabled) return 0xF2u;
-        var level = Math.Clamp(_viewModel.TransparencyLevel, 0, 100);
-        return (uint)Math.Round(0xF2 - (0xF2 - 0x5E) * level / 100.0);
-    }
-
-    /// <summary>Frost stays a little denser than the surface so text keeps its contrast.</summary>
-    private uint FrostAlpha()
-    {
-        if (!_glassEnabled) return 0xF2u;
-        return Math.Min(0xF2u, SurfaceAlpha() + 0x1E);
-    }
-
-    private uint CurrentGlassTint()
-    {
-        var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
-        var tintAmount = Math.Clamp(_viewModel.ArtworkTintStrength, 0, 100) / 100.0;
-        var baseColor = IsLightTheme(_viewModel.Theme) ? 0xFFF2F5F7u : 0xFF0B1018u;
-        // Opaque RGB: FrostTintLayer applies the transparency as its Opacity.
-        return Blend(baseColor, artworkAccent, tintAmount);
     }
 
     /// <summary>
@@ -2869,18 +2935,11 @@ public sealed partial class IslandWindow : Window
             // ignore — capture below still runs; worst case includes the pill itself
         }
 
-        System.Drawing.Bitmap? captured = null;
         try
         {
-            if (!_isIslandHidden)
-            {
-                captured = new System.Drawing.Bitmap(width, height);
-                using var g = System.Drawing.Graphics.FromImage(captured);
-                g.CopyFromScreen(x, y, 0, 0, new System.Drawing.Size(width, height), System.Drawing.CopyPixelOperation.SourceCopy);
-            }
-        }
-        catch
-        {
+            return _isIslandHidden
+                ? null
+                : DesktopFrostService.CaptureScreenRegion(x, y, width, height);
         }
         finally
         {
@@ -2895,154 +2954,90 @@ public sealed partial class IslandWindow : Window
                 }
             }
         }
-
-        return captured;
-    }
-
-    private static System.Drawing.Bitmap BlurDesktop(System.Drawing.Bitmap captured)
-    {
-        var w = captured.Width;
-        var h = captured.Height;
-
-        // Progressive "frosted" blur: downscale hard, upscale smooth.
-        var fSmall = Math.Max(4, w / 8);
-        var fSmallH = Math.Max(4, h / 8);
-        using var small = new System.Drawing.Bitmap(fSmall, fSmallH);
-        using (var g = System.Drawing.Graphics.FromImage(small))
-        {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBilinear;
-            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.HighQuality;
-            g.DrawImage(captured, new System.Drawing.Rectangle(0, 0, fSmall, fSmallH),
-                0, 0, w, h, System.Drawing.GraphicsUnit.Pixel);
-        }
-
-        var midW = Math.Max(8, w / 2);
-        var midH = Math.Max(8, h / 2);
-        using var mid = new System.Drawing.Bitmap(midW, midH);
-        using (var g = System.Drawing.Graphics.FromImage(mid))
-        {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.DrawImage(small, 0, 0, midW, midH);
-        }
-
-        var frost = new System.Drawing.Bitmap(w, h);
-        using (var g = System.Drawing.Graphics.FromImage(frost))
-        {
-            g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-            g.DrawImage(mid, 0, 0, w, h);
-        }
-
-        return frost;
-    }
-
-    /// <summary>Converts a physical-pixel snapshot to Dip size so Stretch=None maps 1:1.</summary>
-    private static System.Drawing.Bitmap ScaleToDip(System.Drawing.Bitmap source, double dpiScale)
-    {
-        if (dpiScale <= 0 || Math.Abs(dpiScale - 1.0) < 0.01)
-        {
-            return source;
-        }
-
-        var width = Math.Max(16, (int)Math.Round(source.Width / dpiScale));
-        var height = Math.Max(16, (int)Math.Round(source.Height / dpiScale));
-        var scaled = new System.Drawing.Bitmap(width, height);
-        using var g = System.Drawing.Graphics.FromImage(scaled);
-        g.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
-        g.DrawImage(source, 0, 0, width, height);
-        return scaled;
     }
 
     public void ApplyTheme(string theme)
     {
-        var isLight = IsLightTheme(theme);
-        WindowRoot.RequestedTheme = isLight ? ElementTheme.Light : ElementTheme.Dark;
+        var palette = ComputeCurrentPalette();
+        var requestedTheme = string.Equals(theme, "Dark", StringComparison.OrdinalIgnoreCase)
+            ? ElementTheme.Dark
+            : string.Equals(theme, "Light", StringComparison.OrdinalIgnoreCase)
+                ? ElementTheme.Light
+                : ElementTheme.Default;
+        if (WindowRoot.RequestedTheme != requestedTheme)
+        {
+            WindowRoot.RequestedTheme = requestedTheme;
+        }
 
-        var artworkAccent = _viewModel.DynamicColorTint ? _viewModel.ArtworkAccentColor : 0xFF007AFFu;
-        var tintAmount   = Math.Clamp(_viewModel.ArtworkTintStrength, 0, 100) / 100.0;
-        var accentColor  = artworkAccent;
-        // Glass is used in both compact and expanded states; the transparency slider
-        // controls how much desktop shows through, and the artwork accent tints it.
-        var bgAlpha      = SurfaceAlpha();
-        var bgColor      = isLight
-            ? Blend((bgAlpha << 24) | 0xF2F5F7u, artworkAccent, tintAmount)
-            : Blend((bgAlpha << 24) | 0x0B1018u, artworkAccent, tintAmount);
-        var borderColor  = isLight ? 0x22000000u : Blend(0x33FFFFFFu, artworkAccent, 0.22);
-        var primaryText  = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
-        var secondaryTxt = isLight ? 0xFF8E8E93u : 0xFFA4ABB6u;
-        var pillCtrlBg   = isLight ? 0x14000000u : Blend(0x24FFFFFFu, artworkAccent, 0.14);
-        var playBg       = accentColor;
-        var playFg       = 0xFFFFFFFFu;
-        var seekAccent   = accentColor;
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandBackground", palette.FallbackBackgroundArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandSolidSurface", 0xFF000000u | (palette.FallbackBackgroundArgb & 0x00FFFFFFu));
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandBorder", palette.BorderRimTopArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PrimaryText", palette.PrimaryTextArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SecondaryText", palette.SecondaryTextArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PillControlBackground", palette.PillControlBackgroundArgb);
 
-        UpdateBrush("IslandBackground", bgColor);
-        UpdateBrush("IslandBorder", borderColor);
-        UpdateBrush("PrimaryText", primaryText);
-        UpdateBrush("SecondaryText", secondaryTxt);
-        UpdateBrush("PillControlBackground", pillCtrlBg);
-        var sliderFill = isLight ? 0xFF1C1C1Eu : 0xFFFFFFFFu;
-        var sliderFillPressed = isLight ? 0xFF3A3A3Cu : 0xE6FFFFFFu;
-        var sliderTrack = isLight ? 0x1F000000u : 0x26FFFFFFu;
-        var sliderTrackHover = isLight ? 0x29000000u : 0x33FFFFFFu;
-        var sliderThumb = isLight ? 0xFFFFFFFFu : 0xFFFFFFFFu;
-        var sliderThumbPressed = isLight ? 0xFFE5E5EAu : 0xE6FFFFFFu;
-        UpdateBrush("SliderTrackValueFill", sliderFill);
-        UpdateBrush("SliderTrackValueFillPointerOver", sliderFill);
-        UpdateBrush("SliderTrackValueFillPressed", sliderFillPressed);
-        UpdateBrush("SliderTrackFill", sliderTrack);
-        UpdateBrush("SliderTrackFillPointerOver", sliderTrackHover);
-        UpdateBrush("SliderTrackFillPressed", sliderTrackHover);
-        UpdateBrush("SliderThumbBackground", sliderThumb);
-        UpdateBrush("SliderThumbBackgroundPointerOver", sliderThumb);
-        UpdateBrush("SliderThumbBackgroundPressed", sliderThumbPressed);
-        UpdateBrush("PlayButtonBackground", playBg);
-        UpdateBrush("PlayButtonForeground", playFg);
-        UpdateBrush("Accent", accentColor);
-        UpdateBrush("SeekAccent", seekAccent);
+        var sliderFill = palette.IsLightTheme ? 0xFF141518u : 0xFFFFFFFFu;
+        var sliderFillPressed = palette.IsLightTheme ? 0xFF3A3A3Cu : 0xE6FFFFFFu;
+        var sliderTrack = palette.IsLightTheme ? 0x24000000u : 0x26FFFFFFu;
+        var sliderTrackHover = palette.IsLightTheme ? 0x33000000u : 0x36FFFFFFu;
+        var sliderThumb = 0xFFFFFFFFu;
+        var sliderThumbPressed = palette.IsLightTheme ? 0xFFE5E5EAu : 0xE6FFFFFFu;
 
-        PillBackdrop.Background = Brush(bgColor);
-        PillBackdrop.BorderBrush = Brush(0x00000000);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFill", sliderFill);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFillPointerOver", sliderFill);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackValueFillPressed", sliderFillPressed);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackFill", sliderTrack);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackFillPointerOver", sliderTrackHover);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderTrackFillPressed", sliderTrackHover);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderThumbBackground", sliderThumb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderThumbBackgroundPointerOver", sliderThumb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SliderThumbBackgroundPressed", sliderThumbPressed);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PlayButtonBackground", palette.PlayButtonBackgroundArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PlayButtonForeground", palette.PlayButtonForegroundArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "Accent", palette.AccentArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SeekAccent", palette.AccentArgb);
+
+        PillBackdrop.Background = DesktopFrostService.CreateBrush(palette.SurfaceBackgroundArgb);
+        PillBackdrop.BorderBrush = DesktopFrostService.CreateBrush(0x00000000u);
         PillBackdrop.BorderThickness = new Thickness(0);
+
+        if (_frostRimShape is not null)
+        {
+            _frostRimShape.StrokeBrush = DesktopFrostService.CreateCompositionVerticalGradient(
+                _pillMaskVisual.Compositor,
+                palette.BorderRimTopArgb,
+                palette.BorderRimBottomArgb);
+        }
+
+        if (HiddenAnchor is not null)
+        {
+            HiddenAnchor.Background = DesktopFrostService.CreateBrush(palette.HiddenAnchorArgb);
+        }
+
         if (DetachedPill is not null)
         {
-            DetachedPill.Background = Brush(bgColor);
-            DetachedPill.BorderBrush = Brush(0x00000000);
-            DetachedPill.BorderThickness = new Thickness(0);
+            DetachedPill.Background = DesktopFrostService.CreateBrush(palette.DetachedTintArgb);
+            DetachedPill.BorderBrush = DesktopFrostService.CreateVerticalGradientBrush(palette.BorderRimTopArgb, palette.BorderRimBottomArgb);
+            DetachedPill.BorderThickness = new Thickness(1);
+            if (DetachedFrostSheenTopStop is not null)
+            {
+                DetachedFrostSheenTopStop.Color = DesktopFrostService.ToColor(palette.SheenTopArgb);
+            }
         }
-        WaveBar1.Background = Brush(accentColor);
-        WaveBar2.Background = Brush(accentColor);
-        WaveBar3.Background = Brush(accentColor);
+
+        WaveBar1.Background = DesktopFrostService.CreateBrush(palette.AccentArgb);
+        WaveBar2.Background = DesktopFrostService.CreateBrush(palette.AccentArgb);
+        WaveBar3.Background = DesktopFrostService.CreateBrush(palette.AccentArgb);
         if (ExpandedSeekBar is not null)
-            ExpandedSeekBar.AccentBrush = Brush(seekAccent);
+        {
+            ExpandedSeekBar.AccentBrush = DesktopFrostService.CreateBrush(palette.AccentArgb);
+        }
+
         UpdatePageDots(_viewModel.SelectedPageIndex, animated: false);
 
         // The glass tint is a live overlay on the captured blur, so track/theme/slider
         // changes recolor it instantly without a desktop re-capture (no blink).
-        UpdateFrostTint();
-    }
-
-    private void UpdateBrush(string key, uint color)
-    {
-        var c = ToColor(color);
-        if (WindowRoot.Resources.TryGetValue(key, out var res) && res is Microsoft.UI.Xaml.Media.SolidColorBrush brush)
-            brush.Color = c;
-        else
-            WindowRoot.Resources[key] = new Microsoft.UI.Xaml.Media.SolidColorBrush(c);
-    }
-
-    private static Microsoft.UI.Xaml.Media.SolidColorBrush Brush(uint color)
-        => new(ToColor(color));
-
-    private static Windows.UI.Color ToColor(uint color)
-        => Windows.UI.Color.FromArgb((byte)(color >> 24), (byte)(color >> 16), (byte)(color >> 8), (byte)color);
-
-    private static uint Blend(uint baseColor, uint overlayColor, double amount)
-    {
-        amount = Math.Clamp(amount, 0, 1);
-        var a = (byte)(baseColor >> 24);
-        var r = (byte)Math.Round(((baseColor >> 16) & 0xFF) * (1 - amount) + ((overlayColor >> 16) & 0xFF) * amount);
-        var g = (byte)Math.Round(((baseColor >> 8) & 0xFF) * (1 - amount) + ((overlayColor >> 8) & 0xFF) * amount);
-        var b = (byte)Math.Round((baseColor & 0xFF) * (1 - amount) + (overlayColor & 0xFF) * amount);
-        return ((uint)a << 24) | ((uint)r << 16) | ((uint)g << 8) | b;
+        UpdateFrostTint(palette);
     }
 
     // Win32 Styles & Border/Shadow Stripping

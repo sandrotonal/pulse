@@ -20,6 +20,7 @@
         <Grid.Resources>
             <!-- Reference Dark Glass palette -->
             <SolidColorBrush x:Key="IslandBackground" Color="#F20B1018" />
+            <SolidColorBrush x:Key="IslandSolidSurface" Color="#FF0B1018" />
             <SolidColorBrush x:Key="IslandBorder"     Color="#33FFFFFF" />
             <SolidColorBrush x:Key="PrimaryText"      Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="SecondaryText"    Color="#FFA4ABB6" />
@@ -260,11 +261,17 @@
                                    IsHitTestVisible="False">
                             <Rectangle.Fill>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop Color="#24FFFFFF" Offset="0" />
+                                    <GradientStop x:Name="FrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
                                     <GradientStop Color="#00FFFFFF" Offset="1" />
                                 </LinearGradientBrush>
                             </Rectangle.Fill>
                         </Rectangle>
+
+                        <!-- GPU-clipped 1px Fresnel specular rim synced every frame with surface shape -->
+                        <Border x:Name="FrostRimHost"
+                                HorizontalAlignment="Stretch"
+                                VerticalAlignment="Stretch"
+                                IsHitTestVisible="False" />
                     </Grid>
                 </Border>
 
@@ -944,13 +951,13 @@
                                     <Button Style="{StaticResource PlayPauseButtonStyle}"
                                             Width="38" Height="38" CornerRadius="19"
                                             Background="{ThemeResource PrimaryText}"
-                                            Foreground="{ThemeResource IslandBackground}"
+                                            Foreground="{ThemeResource IslandSolidSurface}"
                                             Command="{Binding ToggleFocusTimerCommand}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
                                             ToolTipService.ToolTip="Başlat / Duraklat">
                                         <FontIcon Glyph="{Binding FocusPlayPauseGlyph}" FontSize="14"
-                                                  Foreground="{ThemeResource IslandBackground}" />
+                                                  Foreground="{ThemeResource IslandSolidSurface}" />
                                     </Button>
                                 </StackPanel>
                             </Grid>
@@ -1038,8 +1045,8 @@
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Background="{ThemeResource IslandBackground}"
-                BorderBrush="Transparent"
-                BorderThickness="0"
+                BorderBrush="{ThemeResource IslandBorder}"
+                BorderThickness="1"
                 Opacity="0"
                 Visibility="Collapsed"
                 PointerEntered="OnDetachedPillPointerEntered"
@@ -1048,20 +1055,35 @@
                 PointerReleased="OnDetachedPillPointerReleased"
                 ToolTipService.ToolTip="{Binding DetachedToolTip}">
 
-            <StackPanel Orientation="Horizontal" Spacing="3"
-                        HorizontalAlignment="Center" VerticalAlignment="Center"
-                        Padding="4,0,4,0">
-                <FontIcon Glyph="{Binding DetachedGlyph}"
-                          FontSize="11"
-                          Foreground="{ThemeResource PrimaryText}"
-                          VerticalAlignment="Center" />
-                <TextBlock Text="{Binding DetachedBadgeText}"
-                           FontSize="10.5"
-                           FontWeight="SemiBold"
-                           Foreground="{ThemeResource PrimaryText}"
-                           VerticalAlignment="Center"
-                           MaxLines="1" />
-            </StackPanel>
+            <Grid CornerRadius="{Binding CornerRadius, ElementName=DetachedPill}">
+                <Rectangle x:Name="DetachedFrostSheen"
+                           Height="16"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Top"
+                           IsHitTestVisible="False">
+                    <Rectangle.Fill>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                            <GradientStop x:Name="DetachedFrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
+                            <GradientStop Color="#00FFFFFF" Offset="1" />
+                        </LinearGradientBrush>
+                    </Rectangle.Fill>
+                </Rectangle>
+
+                <StackPanel Orientation="Horizontal" Spacing="3"
+                            HorizontalAlignment="Center" VerticalAlignment="Center"
+                            Padding="4,0,4,0">
+                    <FontIcon Glyph="{Binding DetachedGlyph}"
+                              FontSize="11"
+                              Foreground="{ThemeResource PrimaryText}"
+                              VerticalAlignment="Center" />
+                    <TextBlock Text="{Binding DetachedBadgeText}"
+                               FontSize="10.5"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource PrimaryText}"
+                               VerticalAlignment="Center"
+                               MaxLines="1" />
+                </StackPanel>
+            </Grid>
         </Border>
     </Grid>
 </Window>

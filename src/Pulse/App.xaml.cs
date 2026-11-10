@@ -43,9 +43,16 @@ public partial class App : Application
 
     private const string InstanceMutexName = "Local\\PulseDynamicIslandInstance";
     private const string ShowIslandEventName = "Local\\PulseShowIslandSignal";
+    private const string ShowSettingsEventName = "Local\\PulseShowSettingsSignal";
     private static Mutex? _instanceMutex;
     private EventWaitHandle? _showIslandSignal;
     private RegisteredWaitHandle? _showIslandRegistration;
+    private EventWaitHandle? _showSettingsSignal;
+    private RegisteredWaitHandle? _showSettingsRegistration;
+
+    private static bool HasSettingsLaunchArg()
+        => Environment.GetCommandLineArgs().Any(arg =>
+            string.Equals(arg, "--settings", StringComparison.OrdinalIgnoreCase));
 
     public App()
     {
@@ -55,10 +62,11 @@ public partial class App : Application
         {
             try
             {
-                if (EventWaitHandle.TryOpenExisting(ShowIslandEventName, out var showEvent))
+                var targetSignal = HasSettingsLaunchArg() ? ShowSettingsEventName : ShowIslandEventName;
+                if (EventWaitHandle.TryOpenExisting(targetSignal, out var signalEvent))
                 {
-                    showEvent.Set();
-                    showEvent.Dispose();
+                    signalEvent.Set();
+                    signalEvent.Dispose();
                 }
             }
             catch
@@ -200,7 +208,20 @@ public partial class App : Application
             Timeout.Infinite,
             executeOnlyOnce: false);
 
+        _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsEventName);
+        _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
+            _showSettingsSignal,
+            (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty)),
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: false);
+
         _taskbarFlyoutWindow = new TaskbarFlyoutWindow(_mediaViewModel);
+
+        if (HasSettingsLaunchArg())
+        {
+            islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
+        }
 
         try
         {
@@ -238,16 +259,30 @@ public partial class App : Application
 
         var viewModel = new SettingsViewModel(_settingsService, _startupService, _locationService);
         _activeSettingsViewModel = viewModel;
-        _settingsWindow = new SettingsWindow(viewModel);
-        _settingsWindow.Closed += (_, _) =>
+        try
+        {
+            var window = new SettingsWindow(viewModel);
+            _settingsWindow = window;
+            window.Closed += (_, _) =>
+            {
+                _settingsWindow = null;
+                if (ReferenceEquals(_activeSettingsViewModel, viewModel))
+                {
+                    _activeSettingsViewModel = null;
+                }
+            };
+            BringToFront(window);
+        }
+        catch (Exception ex)
         {
             _settingsWindow = null;
             if (ReferenceEquals(_activeSettingsViewModel, viewModel))
             {
                 _activeSettingsViewModel = null;
             }
-        };
-        BringToFront(_settingsWindow);
+            viewModel.Dispose();
+            CrashLogger.Write("App.OnSettingsRequested", ex);
+        }
     }
 
     /// <summary>
@@ -360,6 +395,8 @@ public partial class App : Application
 
         _showIslandRegistration?.Unregister(null);
         _showIslandSignal?.Dispose();
+        _showSettingsRegistration?.Unregister(null);
+        _showSettingsSignal?.Dispose();
         _trayService?.Dispose();
         _settingsWindow?.Close();
         _taskbarFlyoutWindow?.Close();

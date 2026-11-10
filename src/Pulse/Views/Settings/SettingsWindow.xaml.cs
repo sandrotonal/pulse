@@ -1,33 +1,44 @@
+using System.ComponentModel;
+using System.Runtime.InteropServices;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using System.ComponentModel;
-using System.Runtime.InteropServices;
+using Pulse.Core.Services;
+using Pulse.Services.Glass;
 using Pulse.ViewModels;
-using WinUIEx;
 using Windows.Graphics;
 
 namespace Pulse.Views.Settings;
 
 public sealed partial class SettingsWindow : Window
 {
+    private const uint DwmwaUseImmersiveDarkMode = 20;
+    private readonly IntPtr _hwnd;
+
     public SettingsWindow(SettingsViewModel viewModel)
     {
         InitializeComponent();
         SettingsRoot.DataContext = viewModel;
+        _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+
         FitToWorkArea();
-        AppWindow.TitleBar.ExtendsContentIntoTitleBar = true;
-        AppWindow.TitleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
-        SetTitleBar(TitleBarDragRegion);
+        ConfigureTitleBarChrome();
+
         try
         {
-            var iconPath = System.IO.Path.Combine(System.AppContext.BaseDirectory, "Assets", "AppIcon.ico");
-            if (System.IO.File.Exists(iconPath))
+            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+            if (File.Exists(iconPath))
             {
                 AppWindow.SetIcon(iconPath);
             }
         }
-        catch { }
+        catch
+        {
+            // Non-fatal if icon asset is unavailable.
+        }
+
+        ApplyTheme(viewModel.ThemeIndex);
+
         viewModel.PropertyChanged += OnSettingsPropertyChanged;
         SettingsRoot.ActualThemeChanged += OnActualThemeChanged;
         Closed += (_, _) =>
@@ -38,9 +49,27 @@ public sealed partial class SettingsWindow : Window
         };
         Activated += async (_, _) =>
         {
-            await viewModel.InitializeAsync();
-            ApplyTheme(viewModel.ThemeIndex);
+            try
+            {
+                await viewModel.InitializeAsync();
+                ApplyTheme(viewModel.ThemeIndex);
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("SettingsWindow.Activated", ex);
+            }
         };
+    }
+
+    private void ConfigureTitleBarChrome()
+    {
+        var titleBar = AppWindow.TitleBar;
+        titleBar.ExtendsContentIntoTitleBar = true;
+        titleBar.BackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.InactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        SetTitleBar(TitleBarDragRegion);
     }
 
     private static async Task FlushAndDisposeAsync(SettingsViewModel viewModel)
@@ -48,6 +77,10 @@ public sealed partial class SettingsWindow : Window
         try
         {
             await viewModel.FlushPendingSaveAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("SettingsWindow.FlushAndDisposeAsync", ex);
         }
         finally
         {
@@ -57,8 +90,7 @@ public sealed partial class SettingsWindow : Window
 
     private void FitToWorkArea()
     {
-        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var dpiScale = Math.Max(1u, GetDpiForWindow(hwnd)) / 96.0;
+        var dpiScale = Math.Max(1u, GetDpiForWindow(_hwnd)) / 96.0;
         var workArea = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Primary).WorkArea;
         var margin = (int)Math.Round(16 * dpiScale);
 
@@ -75,9 +107,6 @@ public sealed partial class SettingsWindow : Window
         var y = workArea.Y + Math.Max(margin, (workArea.Height - height) / 2);
         AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
     }
-
-    [DllImport("user32.dll")]
-    private static extern uint GetDpiForWindow(IntPtr hwnd);
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
@@ -98,6 +127,10 @@ public sealed partial class SettingsWindow : Window
         try
         {
             await viewModel.SaveNowAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("SettingsWindow.OnSaveClick", ex);
         }
         finally
         {
@@ -120,6 +153,7 @@ public sealed partial class SettingsWindow : Window
         var dialog = new ContentDialog
         {
             XamlRoot = SettingsRoot.XamlRoot,
+            RequestedTheme = SettingsRoot.ActualTheme,
             Title = "Varsayılana dönülsün mü?",
             Content = "Tüm ayarlar ilk kurulum değerlerine sıfırlanacak. Bu işlem geri alınamaz.",
             PrimaryButtonText = "Sıfırla",
@@ -127,15 +161,19 @@ public sealed partial class SettingsWindow : Window
             DefaultButton = ContentDialogButton.Primary
         };
 
-        if (await dialog.ShowAsync() != ContentDialogResult.Primary)
-        {
-            return;
-        }
-
         button.IsEnabled = false;
         try
         {
+            if (await dialog.ShowAsync() != ContentDialogResult.Primary)
+            {
+                return;
+            }
+
             await viewModel.RestoreDefaultsAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("SettingsWindow.OnRestoreDefaultsClick", ex);
         }
         finally
         {
@@ -145,61 +183,59 @@ public sealed partial class SettingsWindow : Window
 
     private void ApplyTheme(int themeIndex)
     {
-        SettingsRoot.RequestedTheme = themeIndex switch
+        var requestedTheme = themeIndex switch
         {
             1 => ElementTheme.Dark,
             2 => ElementTheme.Light,
             _ => ElementTheme.Default
         };
 
+        // ResolveLight state cleanly from OS when System (0) is chosen so scalars & caption chrome stay synced.
         var isLight = themeIndex switch
         {
             1 => false,
             2 => true,
-            _ => SettingsRoot.ActualTheme != ElementTheme.Dark
+            _ => DesktopFrostService.IsSystemLightTheme()
         };
-        // The settings sheet is intentionally opaque: Mica/desktop bleed-through
-        // made cards and descriptions hard to read on some sessions.
-        SettingsRoot.Background = Brush(isLight ? 0xFFF2F2F7u : 0xFF1C1C1Eu);
-        SettingsRoot.Resources["SettingsText"] = Brush(isLight ? 0xFF1C1C1E : 0xFFF5F5F7);
-        SettingsRoot.Resources["SettingsSecondary"] = Brush(isLight ? 0xFF68686E : 0xFFAEAEB2);
-        var accent = isLight ? 0xFF248A3Du : 0xFF30D158u;
-        SettingsRoot.Resources["SettingsAccent"] = Brush(accent);
-        SettingsRoot.Resources["SettingsPrimaryButtonForeground"] = Brush(isLight ? 0xFFFFFFFFu : 0xFF1C1C1Eu);
-        SettingsRoot.Resources["SystemAccentColor"] = Color(accent);
-        SettingsRoot.Resources["SystemAccentColorLight1"] = Color(Mix(accent, 0xFFFFFFFFu, 0.25));
-        SettingsRoot.Resources["SystemAccentColorLight2"] = Color(Mix(accent, 0xFFFFFFFFu, 0.45));
-        SettingsRoot.Resources["SystemAccentColorLight3"] = Color(Mix(accent, 0xFFFFFFFFu, 0.65));
-        SettingsRoot.Resources["SystemAccentColorDark1"] = Color(Mix(accent, 0xFF000000u, 0.25));
-        SettingsRoot.Resources["SystemAccentColorDark2"] = Color(Mix(accent, 0xFF000000u, 0.45));
-        SettingsRoot.Resources["SystemAccentColorDark3"] = Color(Mix(accent, 0xFF000000u, 0.65));
-        SettingsRoot.Resources["SettingsDivider"] = Brush(isLight ? 0x26000000u : 0x26FFFFFFu);
-        SettingsRoot.Resources["SettingsCard"] = Brush(isLight ? 0x0D808080u : 0x14FFFFFFu);
-        var neutral = Brush(isLight ? 0xFFE5E5EAu : 0xFF3A3A3Cu);
-        var knob = Brush(isLight ? 0xFFFFFFFFu : 0xFFF5F5F7u);
-        SettingsRoot.Resources["AccentFillColorDefaultBrush"] = Brush(accent);
-        SettingsRoot.Resources["AccentFillColorSecondaryBrush"] = Brush(isLight ? 0xFF1F7A36u : 0xFF28C74F);
-        SettingsRoot.Resources["AccentFillColorTertiaryBrush"] = Brush(isLight ? 0xFF19662Du : 0xFF22B847u);
-        SettingsRoot.Resources["SliderTrackValueFill"] = Brush(accent);
-        SettingsRoot.Resources["SliderTrackValueFillPointerOver"] = Brush(accent);
-        SettingsRoot.Resources["SliderTrackValueFillPressed"] = Brush(accent);
-        SettingsRoot.Resources["SliderTrackValueFillDisabled"] = neutral;
-        SettingsRoot.Resources["SliderTrackFill"] = neutral;
-        SettingsRoot.Resources["SliderThumbBackground"] = knob;
-        SettingsRoot.Resources["SliderThumbBackgroundPointerOver"] = knob;
-        SettingsRoot.Resources["SliderThumbBackgroundPressed"] = knob;
-        SettingsRoot.Resources["ToggleSwitchFillOn"] = Brush(accent);
-        SettingsRoot.Resources["ToggleSwitchFillOnPointerOver"] = Brush(accent);
-        SettingsRoot.Resources["ToggleSwitchFillOnPressed"] = Brush(accent);
-        SettingsRoot.Resources["ToggleSwitchKnobFillOn"] = knob;
-        SettingsRoot.Resources["ToggleSwitchKnobFillOff"] = knob;
-        SettingsRoot.Resources["ToggleSwitchFillOff"] = neutral;
-        SettingsRoot.Resources["ToggleSwitchFillOffPointerOver"] = neutral;
-        SettingsRoot.Resources["ToggleSwitchFillOffPressed"] = neutral;
+
+        var accent = isLight ? 0xFF1E7E34u : 0xFF30D158u;
+        SettingsRoot.Resources["SystemAccentColor"] = DesktopFrostService.ToColor(accent);
+        SettingsRoot.Resources["SystemAccentColorLight1"] = DesktopFrostService.ToColor(LiquidGlassEngine.BlendRgb(accent, 0xFFFFFFFFu, 0.25));
+        SettingsRoot.Resources["SystemAccentColorLight2"] = DesktopFrostService.ToColor(LiquidGlassEngine.BlendRgb(accent, 0xFFFFFFFFu, 0.45));
+        SettingsRoot.Resources["SystemAccentColorLight3"] = DesktopFrostService.ToColor(LiquidGlassEngine.BlendRgb(accent, 0xFFFFFFFFu, 0.65));
+        SettingsRoot.Resources["SystemAccentColorDark1"] = DesktopFrostService.ToColor(LiquidGlassEngine.BlendRgb(accent, 0xFF000000u, 0.25));
+        SettingsRoot.Resources["SystemAccentColorDark2"] = DesktopFrostService.ToColor(LiquidGlassEngine.BlendRgb(accent, 0xFF000000u, 0.45));
+        SettingsRoot.Resources["SystemAccentColorDark3"] = DesktopFrostService.ToColor(LiquidGlassEngine.BlendRgb(accent, 0xFF000000u, 0.65));
+
+        // Flip RequestedTheme AFTER ThemeDictionaries/SystemAccentColor are ready so WinUI's
+        // native ThemeResource engine walks all bindings cleanly in a single pass.
+        if (SettingsRoot.RequestedTheme != requestedTheme)
+        {
+            SettingsRoot.RequestedTheme = requestedTheme;
+        }
+
+        UpdateTitleBarChrome(isLight);
+    }
+
+    private void UpdateTitleBarChrome(bool isLight)
+    {
         var titleBar = AppWindow.TitleBar;
-        titleBar.ButtonForegroundColor = Color(isLight ? 0xFF1C1C1Eu : 0xFFF5F5F7u);
-        titleBar.ButtonHoverBackgroundColor = Color(isLight ? 0xFFE5E5EAu : 0xFF3A3A3Cu);
-        titleBar.ButtonPressedBackgroundColor = Color(isLight ? 0xFFD1D1D6u : 0xFF48484Au);
+        titleBar.BackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.InactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.ButtonBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.ButtonInactiveBackgroundColor = Microsoft.UI.Colors.Transparent;
+        titleBar.ButtonForegroundColor = DesktopFrostService.ToColor(isLight ? 0xFF1C1C1Eu : 0xFFF5F5F7u);
+        titleBar.ButtonInactiveForegroundColor = DesktopFrostService.ToColor(isLight ? 0xFF5A5A60u : 0xFFA6AAB4u);
+        titleBar.ButtonHoverBackgroundColor = DesktopFrostService.ToColor(isLight ? 0x1A000000u : 0x1FFFFFFFu);
+        titleBar.ButtonHoverForegroundColor = DesktopFrostService.ToColor(isLight ? 0xFF000000u : 0xFFFFFFFFu);
+        titleBar.ButtonPressedBackgroundColor = DesktopFrostService.ToColor(isLight ? 0x29000000u : 0x33FFFFFFu);
+        titleBar.ButtonPressedForegroundColor = DesktopFrostService.ToColor(isLight ? 0xFF000000u : 0xFFFFFFFFu);
+
+        if (_hwnd != IntPtr.Zero)
+        {
+            var useDarkMode = isLight ? 0 : 1;
+            _ = DwmSetWindowAttribute(_hwnd, DwmwaUseImmersiveDarkMode, ref useDarkMode, sizeof(int));
+        }
     }
 
     private void OnActualThemeChanged(FrameworkElement sender, object args)
@@ -210,20 +246,9 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
-    private static Microsoft.UI.Xaml.Media.SolidColorBrush Brush(uint color)
-        => new() { Color = Color(color) };
+    [DllImport("user32.dll")]
+    private static extern uint GetDpiForWindow(IntPtr hwnd);
 
-    private static uint Mix(uint from, uint to, double t)
-    {
-        double fromR = (from >> 16) & 0xFF, toR = (to >> 16) & 0xFF;
-        double fromG = (from >> 8) & 0xFF, toG = (to >> 8) & 0xFF;
-        double fromB = from & 0xFF, toB = to & 0xFF;
-        uint R = (uint)Math.Round(fromR + (toR - fromR) * t);
-        uint G = (uint)Math.Round(fromG + (toG - fromG) * t);
-        uint B = (uint)Math.Round(fromB + (toB - fromB) * t);
-        return 0xFF000000u | (R << 16) | (G << 8) | B;
-    }
-
-    private static Windows.UI.Color Color(uint color)
-        => Windows.UI.Color.FromArgb((byte)(color >> 24), (byte)(color >> 16), (byte)(color >> 8), (byte)color);
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, uint dwAttribute, ref int pvAttribute, int cbAttribute);
 }
