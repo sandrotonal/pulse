@@ -53,8 +53,6 @@ public sealed record AppSettings
     public string CompactClickAction { get; init; } = "Expand";
     /// <summary>Hover action in compact mode: "Preview" or "ExpandCard".</summary>
     public string HoverAction { get; init; } = "Preview";
-    /// <summary>Scroll wheel behavior: "Smart", "Volume", or "PageSwitch".</summary>
-    public string ScrollWheelAction { get; init; } = "Smart";
     public bool Use24HourClock { get; init; } = true;
     /// <summary>"C" for Celsius, "F" for Fahrenheit.</summary>
     public string TemperatureUnit { get; init; } = "C";

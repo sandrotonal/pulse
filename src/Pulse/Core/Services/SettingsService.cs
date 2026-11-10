@@ -251,7 +251,6 @@ public sealed class SettingsService : ISettingsService, IDisposable
             AutoCollapseDelayMs = Math.Clamp(settings.AutoCollapseDelayMs, 300, 3000),
             CompactClickAction = NormalizeCompactClickAction(settings.CompactClickAction),
             HoverAction = NormalizeHoverAction(settings.HoverAction),
-            ScrollWheelAction = NormalizeScrollWheelAction(settings.ScrollWheelAction),
             TemperatureUnit = string.Equals(settings.TemperatureUnit?.Trim(), "F", StringComparison.OrdinalIgnoreCase) ? "F" : "C",
             FocusDefaultMinutes = Math.Clamp(settings.FocusDefaultMinutes, 1, 180),
             FocusBreakMinutes = Math.Clamp(settings.FocusBreakMinutes, 1, 60),
@@ -287,13 +286,6 @@ public sealed class SettingsService : ISettingsService, IDisposable
 
     private static string NormalizeHoverAction(string? action) =>
         string.Equals(action, "ExpandCard", StringComparison.OrdinalIgnoreCase) ? "ExpandCard" : "Preview";
-
-    private static string NormalizeScrollWheelAction(string? action)
-    {
-        if (string.Equals(action, "Volume", StringComparison.OrdinalIgnoreCase)) return "Volume";
-        if (string.Equals(action, "PageSwitch", StringComparison.OrdinalIgnoreCase)) return "PageSwitch";
-        return "Smart";
-    }
 
     public void Dispose()
     {

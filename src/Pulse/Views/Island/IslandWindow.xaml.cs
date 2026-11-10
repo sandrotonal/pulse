@@ -3122,18 +3122,7 @@ public sealed partial class IslandWindow : Window
 
     private void OnSurfacePointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
-        if (_isIslandHidden)
-        {
-            return;
-        }
-
-        var action = _viewModel.ScrollWheelAction;
-        var isVolumeMode = string.Equals(action, "Volume", StringComparison.OrdinalIgnoreCase) ||
-                           (string.Equals(action, "Smart", StringComparison.OrdinalIgnoreCase) &&
-                            ((!_viewModel.IsExpanded && _viewModel.HasTrack) ||
-                             (_viewModel.IsExpanded && _viewModel.SelectedPageIndex == 0 && _viewModel.HasTrack)));
-
-        if (!isVolumeMode && !_viewModel.IsExpanded)
+        if (_isIslandHidden || !_viewModel.IsExpanded)
         {
             return;
         }
@@ -3148,25 +3137,16 @@ public sealed partial class IslandWindow : Window
         }
 
         _collapseDelayTimer.Stop();
-        e.Handled = true;
-
-        if (isVolumeMode)
-        {
-            _viewModel.AdjustMasterVolume(step * 4);
-            if (_viewModel.IsExpanded && !_isPointerOverSurface && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
-            {
-                RestartCollapseDelayTimer();
-            }
-            return;
-        }
 
         var now = DateTime.UtcNow.Ticks;
         if (now - _lastWheelNavTicks < WheelDebounceTicks)
         {
+            e.Handled = true;
             return;
         }
 
         _lastWheelNavTicks = now;
+        e.Handled = true;
 
         int currentIndex = _viewModel.SelectedPageIndex;
         if (step < 0)

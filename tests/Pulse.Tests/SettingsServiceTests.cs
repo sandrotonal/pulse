@@ -370,7 +370,6 @@ public sealed class SettingsServiceTests
         Assert.Equal(600, settings.AutoCollapseDelayMs);
         Assert.Equal("Expand", settings.CompactClickAction);
         Assert.Equal("Preview", settings.HoverAction);
-        Assert.Equal("Smart", settings.ScrollWheelAction);
         Assert.True(settings.Use24HourClock);
         Assert.Equal("C", settings.TemperatureUnit);
         Assert.True(settings.ShowLyrics);
@@ -396,7 +395,6 @@ public sealed class SettingsServiceTests
                 AutoCollapseDelayMs = 1250,
                 CompactClickAction = "activateapp",
                 HoverAction = "expandcard",
-                ScrollWheelAction = "volume",
                 Use24HourClock = false,
                 TemperatureUnit = "f",
                 ShowLyrics = false,
@@ -417,7 +415,6 @@ public sealed class SettingsServiceTests
             Assert.Equal(1250, second.Current.AutoCollapseDelayMs);
             Assert.Equal("ActivateApp", second.Current.CompactClickAction);
             Assert.Equal("ExpandCard", second.Current.HoverAction);
-            Assert.Equal("Volume", second.Current.ScrollWheelAction);
             Assert.False(second.Current.Use24HourClock);
             Assert.Equal("F", second.Current.TemperatureUnit);
             Assert.False(second.Current.ShowLyrics);
@@ -451,7 +448,6 @@ public sealed class SettingsServiceTests
                 AutoCollapseDelayMs = 50,
                 CompactClickAction = "Unknown",
                 HoverAction = "Unknown",
-                ScrollWheelAction = "Unknown",
                 TemperatureUnit = "K",
                 FocusDefaultMinutes = 0,
                 FocusBreakMinutes = 999,
@@ -463,11 +459,41 @@ public sealed class SettingsServiceTests
             Assert.Equal(300, service.Current.AutoCollapseDelayMs);
             Assert.Equal("Expand", service.Current.CompactClickAction);
             Assert.Equal("Preview", service.Current.HoverAction);
-            Assert.Equal("Smart", service.Current.ScrollWheelAction);
             Assert.Equal("C", service.Current.TemperatureUnit);
             Assert.Equal(1, service.Current.FocusDefaultMinutes);
             Assert.Equal(60, service.Current.FocusBreakMinutes);
             Assert.Equal(180, service.Current.FocusCustomMinutes);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task LegacyRemovedScrollWheelSettingIsIgnoredGracefully()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var settingsPath = Path.Combine(directory, "settings.json");
+            await File.WriteAllTextAsync(settingsPath, """
+            {
+              "TopOffset": 18,
+              "ScrollWheelAction": "Volume",
+              "Theme": "Dark"
+            }
+            """);
+
+            using var service = new SettingsService(directory);
+            await service.LoadAsync();
+
+            Assert.Equal(18, service.Current.TopOffset);
+            Assert.Equal("Dark", service.Current.Theme);
         }
         finally
         {

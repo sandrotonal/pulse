@@ -202,7 +202,6 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public int AutoCollapseDelayMs => _settingsService.Current.AutoCollapseDelayMs;
     public string CompactClickAction => _settingsService.Current.CompactClickAction;
     public string HoverAction => _settingsService.Current.HoverAction;
-    public string ScrollWheelAction => _settingsService.Current.ScrollWheelAction;
     public bool Use24HourClock => _settingsService.Current.Use24HourClock;
     public string TemperatureUnit => _settingsService.Current.TemperatureUnit;
     public bool ShowLyrics => _settingsService.Current.ShowLyrics;
@@ -673,7 +672,6 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(AutoCollapseDelayMs));
         OnPropertyChanged(nameof(CompactClickAction));
         OnPropertyChanged(nameof(HoverAction));
-        OnPropertyChanged(nameof(ScrollWheelAction));
         OnPropertyChanged(nameof(Use24HourClock));
         OnPropertyChanged(nameof(TemperatureUnit));
         OnPropertyChanged(nameof(ShowLyrics));

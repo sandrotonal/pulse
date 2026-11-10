@@ -349,23 +349,6 @@
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
-                        <!-- Scroll Wheel Action -->
-                        <Grid MinHeight="54">
-                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="168" /></Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
-                                <TextBlock Text="Kaydırma tekerleği davranışı" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Ada üzerinde fare tekerleği çevrildiğinde sistem sesi veya sayfalar arasında geçiş yapar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
-                            </StackPanel>
-                            <ComboBox Grid.Column="1" SelectedIndex="{Binding ScrollWheelActionIndex, Mode=TwoWay}"
-                                      AutomationProperties.Name="Kaydırma tekerleği davranışı"
-                                      HorizontalAlignment="Stretch" VerticalAlignment="Center">
-                                <ComboBoxItem Content="Akıllı (Ses + Sayfa)" />
-                                <ComboBoxItem Content="Sistem sesi" />
-                                <ComboBoxItem Content="Sayfa değiştir" />
-                            </ComboBox>
-                        </Grid>
-                        <Border Style="{StaticResource DividerStyle}" />
-
                         <!-- Auto Collapse -->
                         <Grid MinHeight="54">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>

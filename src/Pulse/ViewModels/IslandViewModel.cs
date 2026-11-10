@@ -321,11 +321,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     }
     public string MasterVolumeLabel => $"%{_masterVolume}";
 
-    public void AdjustMasterVolume(int deltaPercent)
-    {
-        MasterVolume = _masterVolume + deltaPercent;
-    }
-
     public bool IsSystemMuted => _systemMuted;
     public string SystemMuteGlyph => _systemMuted ? "\uE74F" : "\uE995";
 
@@ -817,7 +812,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public int AutoCollapseDelayMs => _media.AutoCollapseDelayMs;
     public string CompactClickAction => _media.CompactClickAction;
     public string HoverAction => _media.HoverAction;
-    public string ScrollWheelAction => _media.ScrollWheelAction;
     public bool Use24HourClock => _media.Use24HourClock;
     public string TemperatureUnit => _media.TemperatureUnit;
     public bool ShowLyrics => _media.ShowLyrics;

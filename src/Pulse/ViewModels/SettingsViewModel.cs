@@ -32,7 +32,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private double _autoCollapseDelayMs = 600;
     private int _compactClickActionIndex;
     private int _hoverActionIndex;
-    private int _scrollWheelActionIndex;
     private bool _autoHideOnFullscreen = true;
     private bool _dynamicColorTint = true;
     private bool _showEqualizer = true;
@@ -165,7 +164,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     public string AutoCollapseDelayLabel => $"{(int)Math.Round(AutoCollapseDelayMs)} ms";
     public int CompactClickActionIndex { get => _compactClickActionIndex; set { if (SetProperty(ref _compactClickActionIndex, value)) Save(); } }
     public int HoverActionIndex { get => _hoverActionIndex; set { if (SetProperty(ref _hoverActionIndex, value)) Save(); } }
-    public int ScrollWheelActionIndex { get => _scrollWheelActionIndex; set { if (SetProperty(ref _scrollWheelActionIndex, value)) Save(); } }
     public bool AutoHideOnFullscreen { get => _autoHideOnFullscreen; set { if (SetProperty(ref _autoHideOnFullscreen, value)) Save(); } }
     public bool DynamicColorTint { get => _dynamicColorTint; set { if (SetProperty(ref _dynamicColorTint, value)) Save(); } }
     public bool ShowEqualizer { get => _showEqualizer; set { if (SetProperty(ref _showEqualizer, value)) Save(); } }
@@ -499,7 +497,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         AutoCollapseDelayMs = settings.AutoCollapseDelayMs;
         CompactClickActionIndex = settings.CompactClickAction switch { "ActivateApp" => 1, "PlayPause" => 2, _ => 0 };
         HoverActionIndex = settings.HoverAction == "ExpandCard" ? 1 : 0;
-        ScrollWheelActionIndex = settings.ScrollWheelAction switch { "Volume" => 1, "PageSwitch" => 2, _ => 0 };
         AutoHideOnFullscreen = settings.AutoHideOnFullscreen;
         DynamicColorTint = settings.DynamicColorTint;
         ShowEqualizer = settings.ShowEqualizer;
@@ -874,7 +871,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             AutoCollapseDelayMs = (int)Math.Round(AutoCollapseDelayMs),
             CompactClickAction = CompactClickActionIndex switch { 1 => "ActivateApp", 2 => "PlayPause", _ => "Expand" },
             HoverAction = HoverActionIndex == 1 ? "ExpandCard" : "Preview",
-            ScrollWheelAction = ScrollWheelActionIndex switch { 1 => "Volume", 2 => "PageSwitch", _ => "Smart" },
             AutoHideOnFullscreen = AutoHideOnFullscreen,
             DynamicColorTint = DynamicColorTint,
             ShowEqualizer = ShowEqualizer,
