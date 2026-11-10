@@ -4,6 +4,9 @@ public static class IslandSurfaceLayout
 {
     public const double DefaultHostWidthDip = 560.0;
     public const double DefaultHostHeightDip = 300.0;
+    public const double SurfaceTopInsetDip = 3.0;
+    public const double RegionAntialiasMarginDip = 3.0;
+    public const double DefaultHostWindowHeightDip = DefaultHostHeightDip + (SurfaceTopInsetDip * 2.0);
     public const double SplitGapDip = 10.0;
     public const double DetachedPillWidthDip = 66.0;
     public const double DetachedPillHeightDip = 40.0;
@@ -11,6 +14,8 @@ public static class IslandSurfaceLayout
     public const double HiddenAnchorHeightDip = 16.0;
     public const double HitTestPaddingDip = 4.0;
     public const double ExpansionOvershootPaddingDip = 40.0;
+
+    public readonly record struct PixelRgnRect(int Left, int Top, int Right, int Bottom, int CornerDiameter);
 
     public readonly record struct DipRect(double Left, double Top, double Right, double Bottom)
     {
@@ -106,6 +111,41 @@ public static class IslandSurfaceLayout
         int screenX = unchecked((short)(raw & 0xFFFF));
         int screenY = unchecked((short)((raw >> 16) & 0xFFFF));
         return (screenX, screenY);
+    }
+
+    /// <summary>
+    /// Computes an outward-padded, concentrically rounded GDI Win32 HRGN rectangle so 1-bit
+    /// SetWindowRgn hit/clip boundaries sit outside DirectComposition's antialiased perimeter
+    /// without jagged subpixel staircases.
+    /// </summary>
+    public static PixelRgnRect ComputePaddedPixelRegion(
+        DipRect boundsDip,
+        double verticalInsetDip,
+        double cornerRadiusDip,
+        double regionMarginDip,
+        double dpiScale,
+        int maxPixelWidth,
+        int maxPixelHeight)
+    {
+        double safeDpi = dpiScale > 0.0 ? dpiScale : 1.0;
+        int padPx = regionMarginDip > 0.0
+            ? Math.Max(2, (int)Math.Ceiling(regionMarginDip * safeDpi))
+            : 0;
+
+        int safeMaxW = Math.Max(1, maxPixelWidth);
+        int safeMaxH = Math.Max(1, maxPixelHeight);
+
+        int left = Math.Clamp((int)Math.Floor(boundsDip.Left * safeDpi) - padPx, 0, safeMaxW - 1);
+        int top = Math.Clamp((int)Math.Floor((verticalInsetDip + boundsDip.Top) * safeDpi) - padPx, 0, safeMaxH - 1);
+        int right = Math.Clamp((int)Math.Ceiling(boundsDip.Right * safeDpi) + padPx, left + 1, safeMaxW);
+        int bottom = Math.Clamp((int)Math.Ceiling((verticalInsetDip + boundsDip.Bottom) * safeDpi) + padPx, top + 1, safeMaxH);
+
+        int width = Math.Max(1, right - left);
+        int height = Math.Max(1, bottom - top);
+        int rawCornerDiameter = (int)Math.Round(Math.Max(2.0, cornerRadiusDip * 2.0) * safeDpi) + (padPx * 2);
+        int cornerDiameter = Math.Clamp(rawCornerDiameter, 2, Math.Min(width, height));
+
+        return new PixelRgnRect(left, top, right, bottom, cornerDiameter);
     }
 }
 

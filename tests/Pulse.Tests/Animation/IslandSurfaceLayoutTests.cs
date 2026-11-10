@@ -113,5 +113,51 @@ public sealed class IslandSurfaceLayoutTests
         Assert.True(width >= 384.0 + 32.0);
         Assert.True(width <= 560.0);
     }
+
+    [Theory]
+    [InlineData(1.0)]
+    [InlineData(1.25)]
+    [InlineData(1.5)]
+    public void ComputePaddedPixelRegionLeavesAntialiasingMarginAndPreservesSplitGap(double dpiScale)
+    {
+        int hostPixelW = (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * dpiScale);
+        int hostPixelH = (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * dpiScale);
+
+        var (leadOffX, trailOffX) = IslandSurfaceLayout.ComputeSplitOffsets(196.0);
+        var leadBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, 196.0, 40.0, leadOffX);
+        var detachBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, 66.0, 40.0, trailOffX);
+
+        var leadRgn = IslandSurfaceLayout.ComputePaddedPixelRegion(
+            leadBounds,
+            IslandSurfaceLayout.SurfaceTopInsetDip,
+            cornerRadiusDip: 20.0,
+            IslandSurfaceLayout.RegionAntialiasMarginDip,
+            dpiScale,
+            hostPixelW,
+            hostPixelH);
+
+        var detachRgn = IslandSurfaceLayout.ComputePaddedPixelRegion(
+            detachBounds,
+            IslandSurfaceLayout.SurfaceTopInsetDip,
+            cornerRadiusDip: 20.0,
+            IslandSurfaceLayout.RegionAntialiasMarginDip,
+            dpiScale,
+            hostPixelW,
+            hostPixelH);
+
+        int visualLeadTop = (int)Math.Floor(IslandSurfaceLayout.SurfaceTopInsetDip * dpiScale);
+        int visualLeadBottom = (int)Math.Ceiling((IslandSurfaceLayout.SurfaceTopInsetDip + 40.0) * dpiScale);
+        int visualLeadLeft = (int)Math.Floor(leadBounds.Left * dpiScale);
+        int visualLeadRight = (int)Math.Ceiling(leadBounds.Right * dpiScale);
+
+        Assert.True(leadRgn.Top <= visualLeadTop - 3);
+        Assert.True(leadRgn.Bottom >= visualLeadBottom + 3);
+        Assert.True(leadRgn.Left <= visualLeadLeft - 3);
+        Assert.True(leadRgn.Right >= visualLeadRight + 3);
+        Assert.Equal(leadRgn.Bottom - leadRgn.Top, leadRgn.CornerDiameter);
+
+        // Even with 3 DIP outward AA margin on each capsule, the 10 DIP split gap stays unmerged.
+        Assert.True(detachRgn.Left > leadRgn.Right);
+    }
 }
 

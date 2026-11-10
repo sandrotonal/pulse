@@ -56,6 +56,7 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _pillMaskVisual;
     private readonly Visual _frostSheenVisual;
     private CompositionRoundedRectangleGeometry? _surfaceClipGeometry;
+    private CompositionRoundedRectangleGeometry? _frostRimGeometry;
     private CompositionSpriteShape? _frostRimShape;
     private ShapeVisual? _frostRimVisual;
     private readonly Visual _compactVisual;
@@ -821,9 +822,9 @@ public sealed partial class IslandWindow : Window
     private double _hostPillHeight = 40;
 
     /// <summary>
-    /// Fixed transparent host footprint (560x300 DIP): big enough for expanded/split capsules
-    /// and dynamic spring overshoot at any pill scale. Transitions never resize the native HWND;
-    /// SetWindowRgn + WM_NCHITTEST crop input/hit-testing to the visible pill bounds.
+    /// Fixed transparent host footprint (560x306 DIP): includes a 3 DIP perimeter antialiasing
+    /// margin around the 560x300 pill surface so GDI SetWindowRgn never slices DirectComposition's
+    /// curved subpixel edges or top specular rim.
     /// </summary>
     private void ApplyHostWindowSize(double pillWidth, double pillHeight)
     {
@@ -845,10 +846,10 @@ public sealed partial class IslandWindow : Window
         _hostPillHeight = Math.Max(36.0, pillHeight);
 
         var winWidth = (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * _dpiScale);
-        var winHeight = (int)Math.Round(IslandSurfaceLayout.DefaultHostHeightDip * _dpiScale);
+        var winHeight = (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * _dpiScale);
 
         var x = workArea.Left + Math.Max(0, (workArea.Right - workArea.Left - winWidth) / 2);
-        var effectiveTopOffset = Math.Max(BaseWindowTopGap, _viewModel.TopOffset + BaseWindowTopGap);
+        var effectiveTopOffset = Math.Max(0.0, _viewModel.TopOffset + BaseWindowTopGap - IslandSurfaceLayout.SurfaceTopInsetDip);
         var y = workArea.Top + (int)Math.Round(effectiveTopOffset * _dpiScale);
 
         // Startup / DPI / display / settings changes only; transitions never resize the native window.
@@ -860,16 +861,21 @@ public sealed partial class IslandWindow : Window
         _hostResizeGuardTicks = System.Diagnostics.Stopwatch.GetTimestamp();
     }
 
+    private static IntPtr CreatePaddedRoundRectRgn(IslandSurfaceLayout.PixelRgnRect r)
+        => CreateRoundRectRgn(r.Left, r.Top, r.Right, r.Bottom, r.CornerDiameter, r.CornerDiameter);
+
     /// <summary>
-    /// Crops the native window to the current pill with a Win32 region. Areas outside the
-    /// region are not part of the window, so clicks pass through to whatever is below -
-    /// while the window itself keeps a fixed size and never causes resize hitches.
+    /// Crops the native window around the current pill with an outward-padded Win32 region.
+    /// Areas outside the region remain click-through, while DirectComposition owns the visible
+    /// rounded edge with full hardware subpixel antialiasing inside the 3 DIP region margin.
     /// </summary>
     private void UpdateWindowRegion(double pillWidth, double pillHeight, double cornerRadius, bool includeOvershootPadding = false, bool forceRedraw = false)
     {
         if (_hwnd == IntPtr.Zero) return;
 
         var dpi = _dpiScale > 0 ? _dpiScale : 1.0;
+        int hostPixelW = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * dpi));
+        int hostPixelH = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * dpi));
 
         if (_isIslandHidden)
         {
@@ -888,16 +894,20 @@ public sealed partial class IslandWindow : Window
                 IslandSurfaceLayout.DefaultHostWidthDip,
                 IslandSurfaceLayout.HiddenAnchorWidthDip,
                 IslandSurfaceLayout.HiddenAnchorHeightDip);
-            int aLeft = (int)Math.Round(anchorBounds.Left * dpi);
-            int aRight = (int)Math.Round(anchorBounds.Right * dpi);
-            int aBottom = (int)Math.Round(anchorBounds.Bottom * dpi);
-            int aCorner = (int)Math.Round(12.0 * dpi);
+            var anchorRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                anchorBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                cornerRadiusDip: 6.0,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
 
-            var anchorKey = (aLeft, 0, aRight + 1, aBottom + 1, aCorner, 0, 0, 0, 0, 0);
+            var anchorKey = (anchorRgnRect.Left, anchorRgnRect.Top, anchorRgnRect.Right, anchorRgnRect.Bottom, anchorRgnRect.CornerDiameter, 0, 0, 0, 0, 0);
             if (_lastWindowRegion == anchorKey) return;
             _lastWindowRegion = anchorKey;
 
-            var anchorRgn = CreateRoundRectRgn(aLeft, 0, aRight + 1, aBottom + 1, aCorner, aCorner);
+            var anchorRgn = CreatePaddedRoundRectRgn(anchorRgnRect);
             if (anchorRgn != IntPtr.Zero)
             {
                 _ = SetWindowRgn(_hwnd, anchorRgn, forceRedraw);
@@ -929,16 +939,20 @@ public sealed partial class IslandWindow : Window
             var regionWidth = Math.Min(IslandSurfaceLayout.DefaultHostWidthDip, Math.Max(effectiveWidth, splitTotalSpan + (includeOvershootPadding ? 16.0 : 0.0)));
             var regionHeight = Math.Min(IslandSurfaceLayout.DefaultHostHeightDip, Math.Max(effectiveHeight, detachedH));
             var spanBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, regionWidth, regionHeight);
-            var spanLeft = (int)Math.Round(spanBounds.Left * dpi);
-            var spanRight = (int)Math.Round(spanBounds.Right * dpi);
-            var spanBottom = (int)Math.Round(spanBounds.Bottom * dpi);
-            var cornerD = (int)Math.Round(Math.Max(2.0, cornerRadius * 2.0) * dpi);
+            var spanRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                spanBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                cornerRadius,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
 
-            var spanKey = (spanLeft, 0, spanRight + 1, spanBottom + 1, cornerD, 0, 0, 0, 0, 0);
+            var spanKey = (spanRgnRect.Left, spanRgnRect.Top, spanRgnRect.Right, spanRgnRect.Bottom, spanRgnRect.CornerDiameter, 0, 0, 0, 0, 0);
             if (_lastWindowRegion == spanKey) return;
             _lastWindowRegion = spanKey;
 
-            var spanRgn = CreateRoundRectRgn(spanLeft, 0, spanRight + 1, spanBottom + 1, cornerD, cornerD);
+            var spanRgn = CreatePaddedRoundRectRgn(spanRgnRect);
             if (spanRgn != IntPtr.Zero)
             {
                 _ = SetWindowRgn(_hwnd, spanRgn, forceRedraw);
@@ -954,23 +968,31 @@ public sealed partial class IslandWindow : Window
             var leadBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, leadingW, leadingH, leadOffX);
             var detachBounds = IslandSurfaceLayout.ComputeCenteredPillBounds(IslandSurfaceLayout.DefaultHostWidthDip, detachedW, detachedH, trailOffX);
 
-            var surfaceLeft = (int)Math.Round(leadBounds.Left * dpi);
-            var surfaceRight = (int)Math.Round(leadBounds.Right * dpi);
-            var surfaceBottom = (int)Math.Round(leadBounds.Bottom * dpi);
-            var cornerDiameter = (int)Math.Round(Math.Max(2.0, cornerRadius * 2.0) * dpi);
+            var leadRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                leadBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                cornerRadius,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
+            var detachRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+                detachBounds,
+                IslandSurfaceLayout.SurfaceTopInsetDip,
+                detachedH * 0.5,
+                IslandSurfaceLayout.RegionAntialiasMarginDip,
+                dpi,
+                hostPixelW,
+                hostPixelH);
 
-            var detachedLeft = (int)Math.Round(detachBounds.Left * dpi);
-            var detachedRight = (int)Math.Round(detachBounds.Right * dpi);
-            var detachedBottom = (int)Math.Round(detachBounds.Bottom * dpi);
-            var detachedCornerDiameter = (int)Math.Round(Math.Max(2.0, detachedH) * dpi);
-
-            var splitKey = (surfaceLeft, 0, surfaceRight + 1, surfaceBottom + 1, cornerDiameter,
-                            detachedLeft, 0, detachedRight + 1, detachedBottom + 1, detachedCornerDiameter);
+            var splitKey = (
+                leadRgnRect.Left, leadRgnRect.Top, leadRgnRect.Right, leadRgnRect.Bottom, leadRgnRect.CornerDiameter,
+                detachRgnRect.Left, detachRgnRect.Top, detachRgnRect.Right, detachRgnRect.Bottom, detachRgnRect.CornerDiameter);
             if (_lastWindowRegion == splitKey) return;
             _lastWindowRegion = splitKey;
 
-            var rgn = CreateRoundRectRgn(surfaceLeft, 0, surfaceRight + 1, surfaceBottom + 1, cornerDiameter, cornerDiameter);
-            var detachedRgn = CreateRoundRectRgn(detachedLeft, 0, detachedRight + 1, detachedBottom + 1, detachedCornerDiameter, detachedCornerDiameter);
+            var rgn = CreatePaddedRoundRectRgn(leadRgnRect);
+            var detachedRgn = CreatePaddedRoundRectRgn(detachRgnRect);
 
             if (rgn != IntPtr.Zero && detachedRgn != IntPtr.Zero)
             {
@@ -994,17 +1016,20 @@ public sealed partial class IslandWindow : Window
             effectiveWidth,
             effectiveHeight,
             surfaceOffset);
-        var left = (int)Math.Round(normalBounds.Left * dpi);
-        var top = 0;
-        var right = (int)Math.Round(normalBounds.Right * dpi);
-        var bottom = (int)Math.Round(normalBounds.Bottom * dpi);
-        var cornerDiam = (int)Math.Round(Math.Max(2.0, cornerRadius * 2.0) * dpi);
+        var normalRgnRect = IslandSurfaceLayout.ComputePaddedPixelRegion(
+            normalBounds,
+            IslandSurfaceLayout.SurfaceTopInsetDip,
+            cornerRadius,
+            IslandSurfaceLayout.RegionAntialiasMarginDip,
+            dpi,
+            hostPixelW,
+            hostPixelH);
 
-        var normalKey = (left, top, right + 1, bottom + 1, cornerDiam, 0, 0, 0, 0, 0);
+        var normalKey = (normalRgnRect.Left, normalRgnRect.Top, normalRgnRect.Right, normalRgnRect.Bottom, normalRgnRect.CornerDiameter, 0, 0, 0, 0, 0);
         if (_lastWindowRegion == normalKey) return;
         _lastWindowRegion = normalKey;
 
-        var normalRgn = CreateRoundRectRgn(left, top, right + 1, bottom + 1, cornerDiam, cornerDiam);
+        var normalRgn = CreatePaddedRoundRectRgn(normalRgnRect);
         if (normalRgn != IntPtr.Zero)
         {
             _ = SetWindowRgn(_hwnd, normalRgn, forceRedraw);
@@ -1234,6 +1259,9 @@ public sealed partial class IslandWindow : Window
         }
     }
 
+    private const float RimStrokeThicknessDip = 1.0f;
+    private const float RimCenterInsetDip = RimStrokeThicknessDip * 0.5f;
+
     private void EnsureSurfaceClipAndRim()
     {
         var compositor = _pillMaskVisual.Compositor;
@@ -1245,8 +1273,9 @@ public sealed partial class IslandWindow : Window
 
         if (_frostRimVisual is null && FrostRimHost is not null)
         {
-            _frostRimShape = compositor.CreateSpriteShape(_surfaceClipGeometry);
-            _frostRimShape.StrokeThickness = 1.15f;
+            _frostRimGeometry = compositor.CreateRoundedRectangleGeometry();
+            _frostRimShape = compositor.CreateSpriteShape(_frostRimGeometry);
+            _frostRimShape.StrokeThickness = RimStrokeThicknessDip;
             _frostRimShape.StrokeBrush = DesktopFrostService.CreateCompositionVerticalGradient(
                 compositor,
                 0x46FFFFFFu,
@@ -1279,6 +1308,17 @@ public sealed partial class IslandWindow : Window
             _surfaceClipGeometry!.Offset = new Vector2(offsetX, 0f);
             _surfaceClipGeometry.Size = new Vector2((float)clampedWidth, (float)clampedHeight);
             _surfaceClipGeometry.CornerRadius = new Vector2(clampedRadius, clampedRadius);
+
+            // Center the 1 DIP stroke half inside the geometric clip so outer antialiasing never gets cropped.
+            if (_frostRimGeometry is not null)
+            {
+                float rimWidth = Math.Max(1f, (float)clampedWidth - (RimCenterInsetDip * 2f));
+                float rimHeight = Math.Max(1f, (float)clampedHeight - (RimCenterInsetDip * 2f));
+                float rimRadius = Math.Max(0f, clampedRadius - RimCenterInsetDip);
+                _frostRimGeometry.Offset = new Vector2(offsetX + RimCenterInsetDip, RimCenterInsetDip);
+                _frostRimGeometry.Size = new Vector2(rimWidth, rimHeight);
+                _frostRimGeometry.CornerRadius = new Vector2(rimRadius, rimRadius);
+            }
         }
 
         if (_frostSheenVisual is not null && height > 0)
@@ -2861,17 +2901,20 @@ public sealed partial class IslandWindow : Window
             GetClientRect(_hwnd, out var crc);
             var pt = new Win32Point();
             _ = ClientToScreen(_hwnd, ref pt);
+            var dpiScale = _dpiScale > 0 ? _dpiScale : 1.0;
+            var surfaceInsetPx = (int)Math.Round(IslandSurfaceLayout.SurfaceTopInsetDip * dpiScale);
             var screenX = pt.X;
-            var screenY = pt.Y;
+            var screenY = pt.Y + surfaceInsetPx;
             var clientW = Math.Max(16, crc.Right - crc.Left);
-            var clientH = Math.Max(16, crc.Bottom - crc.Top);
+            var remainingH = Math.Max(16, (crc.Bottom - crc.Top) - surfaceInsetPx);
+            var targetSurfaceH = (int)Math.Round(IslandSurfaceLayout.DefaultHostHeightDip * dpiScale);
+            var clientH = Math.Max(16, Math.Min(remainingH, targetSurfaceH));
 
             if (clientW < 16 || clientH < 16)
             {
                 return;
             }
 
-            var dpiScale = _dpiScale > 0 ? _dpiScale : 1.0;
             var pngBytes = await Task.Run(() =>
             {
                 using var bmp = CaptureDesktopSample(screenX, screenY, clientW, clientH);
@@ -3163,7 +3206,7 @@ public sealed partial class IslandWindow : Window
         if (_dpiScale <= 0) _dpiScale = 1.0;
 
         double localDipX = (screenX - winRect.Left) / _dpiScale;
-        double localDipY = (screenY - winRect.Top) / _dpiScale;
+        double localDipY = ((screenY - winRect.Top) / _dpiScale) - IslandSurfaceLayout.SurfaceTopInsetDip;
 
         bool isSplit = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
         double pillWidth = _currentPillWidth > 0 ? _currentPillWidth : 216.0;

@@ -12,7 +12,7 @@
     </Window.SystemBackdrop>
 
     <Grid x:Name="WindowRoot"
-          Width="560" Height="300"
+          Width="560" Height="306"
           Background="{x:Null}"
           HorizontalAlignment="Center"
           VerticalAlignment="Top">
@@ -133,7 +133,7 @@
                 CornerRadius="3"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
-                Margin="0,2,0,0"
+                Margin="0,5,0,0"
                 Background="{ThemeResource IslandBorder}"
                 Opacity="0.6"
                 Visibility="Collapsed"
@@ -147,6 +147,7 @@
         <!-- Dynamic Island Surface Pill / Card (fixed host bounds; GPU Composition clip shapes the pill with zero XAML reflow) -->
         <Grid x:Name="Surface"
               Width="560" Height="300"
+              Margin="0,3,0,0"
               HorizontalAlignment="Center"
               VerticalAlignment="Top"
               Background="{x:Null}"
@@ -1042,6 +1043,7 @@
         <Border x:Name="DetachedPill"
                 Width="66" Height="40"
                 CornerRadius="20"
+                Margin="0,3,0,0"
                 HorizontalAlignment="Center"
                 VerticalAlignment="Top"
                 Background="{ThemeResource IslandBackground}"
