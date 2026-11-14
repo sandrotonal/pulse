@@ -38,6 +38,8 @@ public sealed class TrayService : IDisposable
     private int _retryAttempts;
     private bool _startupEnabled;
     private bool _notificationsPaused;
+    private bool _doNotDisturb;
+    private bool _hotkeysEnabled = true;
     private bool _disposed;
 
     public event EventHandler? ShowRequested;
@@ -46,6 +48,7 @@ public sealed class TrayService : IDisposable
     public event EventHandler? ExitRequested;
     public event EventHandler<bool>? StartupRequested;
     public event EventHandler<bool>? NotificationsPauseRequested;
+    public event EventHandler<bool>? DoNotDisturbRequested;
     public event EventHandler? AboutRequested;
 
     public TrayService(string iconPath, bool startWithWindows)
@@ -63,42 +66,62 @@ public sealed class TrayService : IDisposable
             WindowProcedure = Marshal.GetFunctionPointerForDelegate(_windowProcedure)
         };
 
-        if (RegisterClassEx(ref windowClass) == 0)
+        try
         {
-            throw new InvalidOperationException($"Tray message window registration failed ({Marshal.GetLastWin32Error()}).");
-        }
-
-        // Top-level hidden tool window (IntPtr.Zero parent, NOT HWND_MESSAGE) so Explorer
-        // broadcasts ("TaskbarCreated") arrive on Explorer restart or delayed logon shell init.
-        _windowHandle = CreateWindowEx(WsExToolWindow, _windowClassName, "PulseTray", 0, 0, 0, 0, 0,
-            IntPtr.Zero, IntPtr.Zero, instance, IntPtr.Zero);
-        if (_windowHandle == IntPtr.Zero)
-        {
-            throw new InvalidOperationException($"Tray message window creation failed ({Marshal.GetLastWin32Error()}).");
-        }
-
-        _iconHandle = LoadImage(IntPtr.Zero, iconPath, ImageIcon, 0, 0, LrLoadFromFile | LrDefaultSize);
-        if (_iconHandle == IntPtr.Zero)
-        {
-            throw new FileNotFoundException("Pulse tray icon could not be loaded.", iconPath);
-        }
-
-        if (!TryAddTrayIcon(deleteOrphanFirst: true))
-        {
-            // During Windows startup logon, Explorer tray may not exist yet for a few seconds.
-            var dispatcher = DispatcherQueue.GetForCurrentThread();
-            if (dispatcher is not null)
+            if (RegisterClassEx(ref windowClass) == 0)
             {
-                _retryAddTimer = dispatcher.CreateTimer();
-                _retryAddTimer.Interval = TimeSpan.FromMilliseconds(1500);
-                _retryAddTimer.Tick += OnRetryAddTimerTick;
-                _retryAddTimer.Start();
+                throw new InvalidOperationException($"Tray message window registration failed ({Marshal.GetLastWin32Error()}).");
             }
+
+            // Top-level hidden tool window (IntPtr.Zero parent, NOT HWND_MESSAGE) so Explorer
+            // broadcasts ("TaskbarCreated") arrive on Explorer restart or delayed logon shell init.
+            _windowHandle = CreateWindowEx(WsExToolWindow, _windowClassName, "PulseTray", 0, 0, 0, 0, 0,
+                IntPtr.Zero, IntPtr.Zero, instance, IntPtr.Zero);
+            if (_windowHandle == IntPtr.Zero)
+            {
+                throw new InvalidOperationException($"Tray message window creation failed ({Marshal.GetLastWin32Error()}).");
+            }
+
+            _iconHandle = LoadImage(IntPtr.Zero, iconPath, ImageIcon, 0, 0, LrLoadFromFile | LrDefaultSize);
+            if (_iconHandle == IntPtr.Zero)
+            {
+                throw new FileNotFoundException("Pulse tray icon could not be loaded.", iconPath);
+            }
+
+            if (!TryAddTrayIcon(deleteOrphanFirst: true))
+            {
+                // During Windows startup logon, Explorer tray may not exist yet for a few seconds.
+                var dispatcher = DispatcherQueue.GetForCurrentThread();
+                if (dispatcher is not null)
+                {
+                    _retryAddTimer = dispatcher.CreateTimer();
+                    _retryAddTimer.Interval = TimeSpan.FromMilliseconds(1500);
+                    _retryAddTimer.Tick += OnRetryAddTimerTick;
+                    _retryAddTimer.Start();
+                }
+            }
+        }
+        catch
+        {
+            if (_iconHandle != IntPtr.Zero)
+            {
+                _ = DestroyIcon(_iconHandle);
+            }
+
+            if (_windowHandle != IntPtr.Zero)
+            {
+                _ = DestroyWindow(_windowHandle);
+            }
+
+            _ = UnregisterClass(_windowClassName, instance);
+            throw;
         }
     }
 
     public void SetStartupEnabled(bool enabled) => _startupEnabled = enabled;
     public void SetNotificationsPaused(bool paused) => _notificationsPaused = paused;
+    public void SetDoNotDisturb(bool enabled) => _doNotDisturb = enabled;
+    public void SetHotkeysEnabled(bool enabled) => _hotkeysEnabled = enabled;
 
     private void OnRetryAddTimerTick(DispatcherQueueTimer sender, object args)
     {
@@ -187,41 +210,54 @@ public sealed class TrayService : IDisposable
             return;
         }
 
-        AppendMenu(menu, MfString, 1, "Dynamic Island'ı Genişlet / Daralt");
-        AppendMenu(menu, MfString, 7, "Dynamic Island'ı Gizle / Göster");
-        AppendMenu(menu, MfString, 2, "Ayarlar");
-        AppendMenu(menu, MfSeparator, 0, null);
-        AppendMenu(menu, MfString | (_startupEnabled ? MfChecked : 0), 3, "Windows ile başlat");
-        AppendMenu(menu, MfString | (_notificationsPaused ? MfChecked : 0), 4, "Parça değişimlerini duraklat");
-        AppendMenu(menu, MfSeparator, 0, null);
-        AppendMenu(menu, MfString, 5, "Hakkında");
-        AppendMenu(menu, MfString, 6, "Çıkış");
-
-        if (GetCursorPos(out var cursor))
+        try
         {
-            SetForegroundWindow(_windowHandle);
-            var command = TrackPopupMenu(menu, TpmReturnCommand | TpmRightButton, cursor.X, cursor.Y, 0, _windowHandle, IntPtr.Zero);
-            switch (command)
+            var toggleHideText = _hotkeysEnabled
+                ? "Dynamic Island'ı Gizle / Göster\tWin+Alt+I"
+                : "Dynamic Island'ı Gizle / Göster";
+            AppendMenu(menu, MfString, 1, "Dynamic Island'ı Genişlet / Daralt");
+            AppendMenu(menu, MfString, 7, toggleHideText);
+            AppendMenu(menu, MfString, 2, "Ayarlar");
+            AppendMenu(menu, MfSeparator, 0, null);
+            AppendMenu(menu, MfString | (_startupEnabled ? MfChecked : 0), 3, "Windows ile başlat");
+            AppendMenu(menu, MfString | (_notificationsPaused ? MfChecked : 0), 4, "Parça değişimlerini duraklat");
+            AppendMenu(menu, MfString | (_doNotDisturb ? MfChecked : 0), 8, "Rahatsız Etmeyin");
+            AppendMenu(menu, MfSeparator, 0, null);
+            AppendMenu(menu, MfString, 5, "Hakkında");
+            AppendMenu(menu, MfString, 6, "Çıkış");
+
+            if (GetCursorPos(out var cursor))
             {
-                case 1: ShowRequested?.Invoke(this, EventArgs.Empty); break;
-                case 7: IslandToggleRequested?.Invoke(this, EventArgs.Empty); break;
-                case 2: SettingsRequested?.Invoke(this, EventArgs.Empty); break;
-                case 3:
-                    _startupEnabled = !_startupEnabled;
-                    StartupRequested?.Invoke(this, _startupEnabled);
-                    break;
-                case 4:
-                    _notificationsPaused = !_notificationsPaused;
-                    NotificationsPauseRequested?.Invoke(this, _notificationsPaused);
-                    break;
-                case 5: AboutRequested?.Invoke(this, EventArgs.Empty); break;
-                case 6: ExitRequested?.Invoke(this, EventArgs.Empty); break;
+                SetForegroundWindow(_windowHandle);
+                var command = TrackPopupMenu(menu, TpmReturnCommand | TpmRightButton, cursor.X, cursor.Y, 0, _windowHandle, IntPtr.Zero);
+                switch (command)
+                {
+                    case 1: ShowRequested?.Invoke(this, EventArgs.Empty); break;
+                    case 7: IslandToggleRequested?.Invoke(this, EventArgs.Empty); break;
+                    case 2: SettingsRequested?.Invoke(this, EventArgs.Empty); break;
+                    case 3:
+                        _startupEnabled = !_startupEnabled;
+                        StartupRequested?.Invoke(this, _startupEnabled);
+                        break;
+                    case 4:
+                        _notificationsPaused = !_notificationsPaused;
+                        NotificationsPauseRequested?.Invoke(this, _notificationsPaused);
+                        break;
+                    case 8:
+                        _doNotDisturb = !_doNotDisturb;
+                        DoNotDisturbRequested?.Invoke(this, _doNotDisturb);
+                        break;
+                    case 5: AboutRequested?.Invoke(this, EventArgs.Empty); break;
+                    case 6: ExitRequested?.Invoke(this, EventArgs.Empty); break;
+                }
+
+                PostMessage(_windowHandle, 0, IntPtr.Zero, IntPtr.Zero);
             }
-
-            PostMessage(_windowHandle, 0, IntPtr.Zero, IntPtr.Zero);
         }
-
-        DestroyMenu(menu);
+        finally
+        {
+            DestroyMenu(menu);
+        }
     }
 
     private NotifyIconData CreateIconData() => new()
@@ -244,11 +280,22 @@ public sealed class TrayService : IDisposable
         }
 
         _disposed = true;
-        _retryAddTimer?.Stop();
+        if (_retryAddTimer is not null)
+        {
+            _retryAddTimer.Tick -= OnRetryAddTimerTick;
+            _retryAddTimer.Stop();
+        }
         var data = CreateIconData();
         Shell_NotifyIcon(NimDelete, ref data);
-        DestroyIcon(_iconHandle);
-        DestroyWindow(_windowHandle);
+        if (_iconHandle != IntPtr.Zero)
+        {
+            DestroyIcon(_iconHandle);
+        }
+        if (_windowHandle != IntPtr.Zero)
+        {
+            DestroyWindow(_windowHandle);
+        }
+        UnregisterClass(_windowClassName, GetModuleHandle(null));
         GC.KeepAlive(_windowProcedure);
     }
 
@@ -295,6 +342,7 @@ public sealed class TrayService : IDisposable
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool Shell_NotifyIcon(uint message, ref NotifyIconData data);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern uint RegisterWindowMessage(string lpString);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern ushort RegisterClassEx(ref WindowClassEx windowClass);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool UnregisterClass(string lpClassName, IntPtr hInstance);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)] private static extern IntPtr CreateWindowEx(uint exStyle, string className, string windowName, uint style, int x, int y, int width, int height, IntPtr parent, IntPtr menu, IntPtr instance, IntPtr parameter);
     [DllImport("user32.dll")] private static extern IntPtr DefWindowProc(IntPtr hwnd, uint message, IntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] private static extern bool DestroyWindow(IntPtr hwnd);

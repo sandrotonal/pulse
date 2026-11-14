@@ -48,5 +48,21 @@ public sealed class LiquidGlassBitmapProcessorTests
         Assert.True(spreadAfter > spreadBefore, $"Expected chroma spread {spreadAfter} > {spreadBefore}");
         Assert.Equal(255, boosted[3]);
     }
+
+    [Fact]
+    public void ProcessBgra8_ValidatesDimensionsHandlesZeroBlurAndDeterministicGrain()
+    {
+        Assert.Throws<ArgumentOutOfRangeException>(() => LiquidGlassBitmapProcessor.ProcessBgra8(new byte[16], 0, 4));
+        Assert.Throws<ArgumentException>(() => LiquidGlassBitmapProcessor.ProcessBgra8(new byte[4], 4, 4));
+
+        var src = new byte[4 * 4 * 4];
+        Array.Fill<byte>(src, 128);
+        var noBlur = LiquidGlassBitmapProcessor.ProcessBgra8(src, 4, 4, blurRadius: 0, vibrancyBoost: 1.0, addFrostGrain: false);
+        Assert.Equal(src, noBlur);
+
+        var grain1 = LiquidGlassBitmapProcessor.ProcessBgra8(src, 4, 4, blurRadius: 2, vibrancyBoost: 2.5, addFrostGrain: true);
+        var grain2 = LiquidGlassBitmapProcessor.ProcessBgra8(src, 4, 4, blurRadius: 99, vibrancyBoost: 2.5, addFrostGrain: true);
+        Assert.Equal(grain1, grain2);
+    }
 }
 

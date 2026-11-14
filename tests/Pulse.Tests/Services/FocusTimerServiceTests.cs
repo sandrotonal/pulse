@@ -77,4 +77,48 @@ public sealed class FocusTimerServiceTests
         Assert.True(timerService.IsBreak);
         Assert.Equal(TimeSpan.FromMinutes(5), timerService.TotalDuration);
     }
+
+    [Fact]
+    public void NonPositiveDurationsFallbackToDefaults()
+    {
+        using var router = new EventRouter();
+        using var timerService = new FocusTimerService(router);
+
+        timerService.Start(TimeSpan.Zero, TimeSpan.FromMinutes(-3));
+
+        Assert.Equal(TimeSpan.FromMinutes(25), timerService.TotalDuration);
+        timerService.SkipToNextSession();
+        Assert.Equal(TimeSpan.FromMinutes(5), timerService.TotalDuration);
+    }
+
+    [Fact]
+    public void RestartResetsFullWorkSession()
+    {
+        using var router = new EventRouter();
+        using var timerService = new FocusTimerService(router);
+
+        timerService.Start(TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(3));
+        timerService.SkipToNextSession();
+        Assert.True(timerService.IsBreak);
+
+        timerService.Restart();
+        Assert.False(timerService.IsBreak);
+        Assert.Equal(FocusTimerState.Running, timerService.State);
+        Assert.Equal(TimeSpan.FromMinutes(15), timerService.TotalDuration);
+    }
+
+    [Fact]
+    public void OperationsAfterDisposeAreNoOps()
+    {
+        using var router = new EventRouter();
+        var timerService = new FocusTimerService(router);
+        timerService.Dispose();
+
+        timerService.Start(TimeSpan.FromMinutes(10), TimeSpan.FromMinutes(2));
+        timerService.Pause();
+        timerService.Resume();
+        timerService.SkipToNextSession();
+
+        Assert.Null(router.CurrentActiveEvent);
+    }
 }

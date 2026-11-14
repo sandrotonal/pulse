@@ -26,7 +26,7 @@ internal sealed partial class WeatherCacheJsonContext : JsonSerializerContext
 /// Open-Meteo client with a short-lived disk cache. No API key is required.
 /// On a transient failure the last cached snapshot is returned as stale for up to six hours.
 /// </summary>
-public sealed class OpenMeteoWeatherService : IWeatherService
+public sealed class OpenMeteoWeatherService : IWeatherService, IDisposable
 {
     private static readonly TimeSpan FreshTtl = TimeSpan.FromMinutes(15);
     private static readonly TimeSpan StaleTtl = TimeSpan.FromHours(6);
@@ -37,6 +37,7 @@ public sealed class OpenMeteoWeatherService : IWeatherService
     private readonly string _cachePath;
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _cacheGate = new(1, 1);
+    private volatile bool _disposed;
 
     public OpenMeteoWeatherService(
         HttpClient httpClient,
@@ -91,9 +92,9 @@ public sealed class OpenMeteoWeatherService : IWeatherService
         {
             // Request timeout: fall through to the cached snapshot.
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or ObjectDisposedException)
         {
-            // Network or malformed payload: fall through to the cached snapshot.
+            // Network, malformed payload, or disposed client during shutdown: fall through to the cached snapshot.
         }
 
         if (matches && now - cached!.RetrievedAtUtc <= StaleTtl)
@@ -160,9 +161,17 @@ public sealed class OpenMeteoWeatherService : IWeatherService
 
     private async Task<WeatherCacheEntry?> ReadCacheAsync(CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            return null;
+        }
+
+        var acquired = false;
         try
         {
-            if (!File.Exists(_cachePath))
+            await _cacheGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            acquired = true;
+            if (_disposed || !File.Exists(_cachePath))
             {
                 return null;
             }
@@ -172,36 +181,78 @@ public sealed class OpenMeteoWeatherService : IWeatherService
                 .DeserializeAsync(stream, WeatherCacheJsonContext.Default.WeatherCacheEntry, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or ObjectDisposedException)
         {
             return null;
+        }
+        finally
+        {
+            if (acquired)
+            {
+                try { _cacheGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
     }
 
     private async Task WriteCacheAsync(WeatherCacheEntry entry, CancellationToken cancellationToken)
     {
-        await _cacheGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (_disposed)
+        {
+            return;
+        }
+
+        var acquired = false;
+        var temporaryPath = _cachePath + ".tmp";
         try
         {
+            await _cacheGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            acquired = true;
+            if (_disposed)
+            {
+                return;
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(_cachePath)!);
-            var temporaryPath = _cachePath + ".tmp";
             await using (var stream = File.Create(temporaryPath))
             {
                 await JsonSerializer
-                    .SerializeAsync(stream, entry, WeatherCacheJsonContext.Default.WeatherCacheEntry, cancellationToken)
+                    .SerializeAsync(stream, entry, WeatherCacheJsonContext.Default.WeatherCacheEntry, CancellationToken.None)
                     .ConfigureAwait(false);
             }
 
             File.Move(temporaryPath, _cachePath, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or ObjectDisposedException or OperationCanceledException)
         {
-            // Weather is best-effort; a cache write failure must never break the island.
+            try
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
+            catch
+            {
+            }
         }
         finally
         {
-            _cacheGate.Release();
+            if (acquired)
+            {
+                try { _cacheGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _cacheGate.Dispose();
     }
 
     private static bool Matches(WeatherCacheEntry cache, GeoLocation location) =>

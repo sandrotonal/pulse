@@ -46,7 +46,20 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private string _lastIdleLocationKey = string.Empty;
     private bool _lastShowIdleWeather;
     private bool _idleMonitoringStarted;
-    private bool _disposed;
+    private bool _powerEventsSubscribed;
+    private bool _isSessionLocked;
+    private volatile bool _disposed;
+
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryChargingDarkBrush = MakeBrush(0xFF30D158u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryChargingLightBrush = MakeBrush(0xFF1E7E34u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryLowDarkBrush = MakeBrush(0xFFFF453Au);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryLowLightBrush = MakeBrush(0xFFD70015u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryNeutralDarkBrush = MakeBrush(0xFFFFFFFFu);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush BatteryNeutralLightBrush = MakeBrush(0xFF141518u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FocusLightActiveBrush = MakeBrush(0x33000000u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FocusLightInactiveBrush = MakeBrush(0x0F000000u);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FocusDarkActiveBrush = MakeBrush(0x40FFFFFFu);
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush FocusDarkInactiveBrush = MakeBrush(0x14FFFFFFu);
 
     public IslandViewModel(
         MediaViewModel media,
@@ -89,9 +102,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _focusTimer.Tick += OnFocusTimerTick;
         _focusTimer.SessionCompleted += OnFocusSessionCompleted;
 
+        _customFocusMinutes = Math.Clamp(_settingsService?.Current.FocusCustomMinutes ?? 45, 1, 180);
+
         StartFocusTimerCommand = new RelayCommand(() =>
         {
-            _focusTimer.Start(TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5));
+            _focusTimer.Start(DefaultFocusDuration, DefaultBreakDuration);
             NotifySplitStateChanged();
         });
         ToggleFocusTimerCommand = new RelayCommand(() =>
@@ -118,6 +133,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             NotifyFocusTick();
             NotifySplitStateChanged();
         });
+        SkipFocusSessionCommand = new RelayCommand(() =>
+        {
+            _focusTimer.SkipToNextSession();
+            NotifyFocusTick();
+            NotifySplitStateChanged();
+        });
 
         ToggleDemoTrackCommand = new RelayCommand(() =>
         {
@@ -135,7 +156,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 }
                 if (!_focusTimer.IsRunning && _focusTimer.State != FocusTimerState.Running)
                 {
-                    _focusTimer.Start(TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5));
+                    _focusTimer.Start(DefaultFocusDuration, DefaultBreakDuration);
                 }
                 _isSplitDemoForced = true;
                 _media.Collapse();
@@ -159,10 +180,15 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
 
-        TakeScreenshotCommand = new RelayCommand(() =>
+        TakeScreenshotCommand = new AsyncCommand(async () =>
         {
-            var path = _systemControl?.CaptureScreenshot() ?? string.Empty;
-            if (!string.IsNullOrEmpty(path))
+            if (_disposed || _systemControl is null)
+            {
+                return;
+            }
+
+            var path = await _systemControl.CaptureScreenshotAsync();
+            if (!_disposed && !string.IsNullOrEmpty(path))
             {
                 _systemEvents.ReportScreenshotSaved(path);
             }
@@ -202,21 +228,22 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         });
 
         // Presets for Focus Timer (keyed so the UI can highlight the active preset)
-        SetFocusTimer25Command = new RelayCommand(() => StartFocusPreset("25", TimeSpan.FromMinutes(25), TimeSpan.FromMinutes(5)));
-        SetFocusTimer50Command = new RelayCommand(() => StartFocusPreset("50", TimeSpan.FromMinutes(50), TimeSpan.FromMinutes(10)));
-        SetBreakTimer5Command = new RelayCommand(() => StartFocusPreset("5", TimeSpan.FromMinutes(5), TimeSpan.FromMinutes(5)));
-        SetBreakTimer15Command = new RelayCommand(() => StartFocusPreset("15", TimeSpan.FromMinutes(15), TimeSpan.FromMinutes(5)));
+        SetFocusTimer25Command = new RelayCommand(() => StartFocusPreset("25", TimeSpan.FromMinutes(25), DefaultBreakDuration));
+        SetFocusTimer50Command = new RelayCommand(() => StartFocusPreset("50", TimeSpan.FromMinutes(50), DefaultBreakDuration));
+        SetBreakTimer5Command = new RelayCommand(() => StartFocusPreset("5", TimeSpan.FromMinutes(5), DefaultBreakDuration));
+        SetBreakTimer15Command = new RelayCommand(() => StartFocusPreset("15", TimeSpan.FromMinutes(15), DefaultBreakDuration));
         ToggleCustomFocusEditorCommand = new RelayCommand(() => IsCustomFocusEditing = !IsCustomFocusEditing);
-        CustomFocusPlusCommand = new RelayCommand(() => CustomFocusMinutes += 5);
-        CustomFocusMinusCommand = new RelayCommand(() => CustomFocusMinutes -= 5);
+        CustomFocusPlusCommand = new RelayCommand(() => AdjustAndPersistCustomFocusMinutes(CustomFocusMinutes + 5));
+        CustomFocusMinusCommand = new RelayCommand(() => AdjustAndPersistCustomFocusMinutes(CustomFocusMinutes - 5));
         StartCustomFocusCommand = new RelayCommand(() =>
         {
             IsCustomFocusEditing = false;
-            StartFocusPreset("custom", TimeSpan.FromMinutes(CustomFocusMinutes), TimeSpan.FromMinutes(5));
+            StartFocusPreset("custom", TimeSpan.FromMinutes(CustomFocusMinutes), DefaultBreakDuration);
         });
 
         _activeEvent = _eventRouter.CurrentActiveEvent;
         RefreshBattery();
+        SubscribePowerEvents();
         StartSystemPolling();
     }
 
@@ -237,6 +264,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(IsFocusPageSelected));
                 OnPropertyChanged(nameof(IsSystemPageSelected));
                 OnPropertyChanged(nameof(MediaPageVisibility));
+                OnPropertyChanged(nameof(SpotifyBadgeVisibility));
+                OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
                 OnPropertyChanged(nameof(FocusPageVisibility));
                 OnPropertyChanged(nameof(SystemPageVisibility));
                 OnPropertyChanged(nameof(ExpandedHeaderTitle));
@@ -254,6 +283,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsFocusPageSelected => _selectedPageIndex == 1;
     public bool IsSystemPageSelected => _selectedPageIndex == 2;
     public Microsoft.UI.Xaml.Visibility MediaPageVisibility => SelectedPageIndex == 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility SpotifyBadgeVisibility => (MediaPageVisibility == Microsoft.UI.Xaml.Visibility.Visible && IsSpotify)
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility GenericMediaBadgeVisibility => (MediaPageVisibility == Microsoft.UI.Xaml.Visibility.Visible && !IsSpotify)
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FocusPageVisibility => SelectedPageIndex == 1 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SystemPageVisibility => SelectedPageIndex == 2 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
@@ -323,9 +358,31 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Microsoft.UI.Xaml.Visibility BatteryChargingVisibility => _batteryIsCharging
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryStatusBrush => MakeBrush(_batteryIsCharging
-        ? 0xFF30D158u
-        : 0xFFFF453Au);
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryStatusBrush
+    {
+        get
+        {
+            var isLight = DesktopFrostService.ResolveIsLightTheme(_media.Theme);
+            return _batteryIsCharging
+                ? (isLight ? BatteryChargingLightBrush : BatteryChargingDarkBrush)
+                : (isLight ? BatteryLowLightBrush : BatteryLowDarkBrush);
+        }
+    }
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush BatteryIconBrush
+    {
+        get
+        {
+            if (_batteryIsCharging || _batteryIsLow)
+            {
+                return BatteryStatusBrush;
+            }
+
+            return DesktopFrostService.ResolveIsLightTheme(_media.Theme)
+                ? BatteryNeutralLightBrush
+                : BatteryNeutralDarkBrush;
+        }
+    }
 
     private void RefreshBattery(bool notify = false)
     {
@@ -379,6 +436,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(BatteryStatusVisibility));
         OnPropertyChanged(nameof(BatteryChargingVisibility));
         OnPropertyChanged(nameof(BatteryStatusBrush));
+        OnPropertyChanged(nameof(BatteryIconBrush));
     }
 
     public MediaViewModel Media => _media;
@@ -391,6 +449,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand StartFocusTimerCommand { get; }
     public RelayCommand ToggleFocusTimerCommand { get; }
     public RelayCommand ResetFocusTimerCommand { get; }
+    public RelayCommand SkipFocusSessionCommand { get; }
     public RelayCommand DismissActiveEventCommand { get; }
     public RelayCommand SetFocusTimer25Command { get; }
     public RelayCommand SetFocusTimer50Command { get; }
@@ -400,7 +459,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public RelayCommand ToggleCustomFocusEditorCommand { get; }
     public RelayCommand CustomFocusPlusCommand { get; }
     public RelayCommand CustomFocusMinusCommand { get; }
-    public RelayCommand TakeScreenshotCommand { get; }
+    public AsyncCommand TakeScreenshotCommand { get; }
     public RelayCommand TestBatteryNotificationCommand { get; }
     public RelayCommand TestBluetoothNotificationCommand { get; }
     public RelayCommand TestScreenshotNotificationCommand { get; }
@@ -432,7 +491,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public string NotificationGlyph => (_activeEvent as SystemNotificationEvent)?.IconGlyph ?? "\uE7E7";
     public bool IsNotificationWarning => (_activeEvent as SystemNotificationEvent)?.Priority == EventPriority.Warning;
 
-    public bool IsFocusTimerActive => _activeEvent is FocusTimerEvent || _focusTimer.IsRunning;
+    public bool IsFocusTimerActive => _activeEvent is FocusTimerEvent || _focusTimer.IsRunning || (_focusTimer.State == FocusTimerState.Paused && _focusTimer.RemainingTime > TimeSpan.Zero && _focusTimer.RemainingTime < _focusTimer.TotalDuration);
     public string FocusTimerText
     {
         get
@@ -492,6 +551,37 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         : Math.Clamp(1.0 - (_focusTimer.RemainingTime.TotalSeconds / _focusTimer.TotalDuration.TotalSeconds), 0, 1);
     public bool PreserveFocusPanel => _focusTimer.IsRunning && _selectedPageIndex == 1;
 
+    private TimeSpan DefaultFocusDuration => TimeSpan.FromMinutes(Math.Clamp(_settingsService?.Current.FocusDefaultMinutes ?? 25, 1, 180));
+    private TimeSpan DefaultBreakDuration => TimeSpan.FromMinutes(Math.Clamp(_settingsService?.Current.FocusBreakMinutes ?? 5, 1, 60));
+
+    private void AdjustAndPersistCustomFocusMinutes(double minutes)
+    {
+        var prev = _customFocusMinutes;
+        CustomFocusMinutes = minutes;
+        if (Math.Abs(_customFocusMinutes - prev) >= 0.5 && _settingsService is not null && !_disposed)
+        {
+            _ = PersistCustomFocusMinutesAsync((int)Math.Round(_customFocusMinutes));
+        }
+    }
+
+    private async Task PersistCustomFocusMinutesAsync(int minutes)
+    {
+        if (_settingsService is null || _disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _settingsService.SaveAsync(_settingsService.Current with { FocusCustomMinutes = minutes });
+            await _settingsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.PersistCustomFocusMinutesAsync", ex);
+        }
+    }
+
     private void StartFocusPreset(string key, TimeSpan focus, TimeSpan breakTime)
     {
         _focusPresetKey = key;
@@ -512,14 +602,17 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         var isLight = DesktopFrostService.ResolveIsLightTheme(_media.Theme);
 
         // Keep the focus panel monochrome so it reads as part of the same glass surface.
-        var color = isLight
-            ? (isActive ? 0x33000000u : 0x0F000000u)
-            : (isActive ? 0x40FFFFFFu : 0x14FFFFFFu);
-
-        return MakeBrush(color);
+        return isLight
+            ? (isActive ? FocusLightActiveBrush : FocusLightInactiveBrush)
+            : (isActive ? FocusDarkActiveBrush : FocusDarkInactiveBrush);
     }
 
-    public void RefreshThemeResources() => NotifyFocusBrushes();
+    public void RefreshThemeResources()
+    {
+        NotifyFocusBrushes();
+        OnPropertyChanged(nameof(BatteryStatusBrush));
+        OnPropertyChanged(nameof(BatteryIconBrush));
+    }
 
     private static Microsoft.UI.Xaml.Media.SolidColorBrush MakeBrush(uint value)
     {
@@ -547,7 +640,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return evt.Status switch
             {
                 FileOperationStatus.InProgress => $"%{evt.ProgressPercentage:F0} Tamamlandı",
-                FileOperationStatus.Completed => "İndirme Tamamlandı",
+                FileOperationStatus.Completed => "Tamamlandı",
                 FileOperationStatus.Failed => evt.ErrorMessage ?? "Başarısız Oldu",
                 _ => string.Empty
             };
@@ -590,9 +683,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private bool ShowIdleClock => _settingsService?.Current.ShowIdleClock ?? true;
     private bool ShowIdleDate => _settingsService?.Current.ShowIdleDate ?? true;
-    private bool ShowIdleWeather => _settingsService?.Current.ShowIdleWeather ?? false;
+    private bool ShowIdleWeather => _settingsService?.Current.ShowIdleWeather ?? true;
+    private bool Use24HourClockSetting => _settingsService?.Current.Use24HourClock ?? true;
+    private string TemperatureUnitSetting => _settingsService?.Current.TemperatureUnit ?? "C";
 
-    public string IdleClockText => WeatherFormatter.FormatClock(DateTimeOffset.Now);
+    public string IdleClockText => WeatherFormatter.FormatClock(DateTimeOffset.Now, Use24HourClockSetting);
     public string IdleDateText => WeatherFormatter.FormatDate(DateTimeOffset.Now);
 
     public string IdleWeatherGlyph => _idleWeather is null
@@ -604,8 +699,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         : WeatherCodeMapper.Map(_idleWeather.WeatherCode, _idleWeather.IsDay).IconKind;
 
     public string IdleWeatherTemperature => _idleWeather is null
-        ? "--°"
-        : WeatherFormatter.FormatTemperature(_idleWeather.TemperatureC);
+        ? (string.Equals(TemperatureUnitSetting, "F", StringComparison.OrdinalIgnoreCase) ? "--°F" : "--°")
+        : WeatherFormatter.FormatTemperature(_idleWeather.TemperatureC, TemperatureUnitSetting);
 
     public string IdleWeatherCity => _idleLocation?.City ?? string.Empty;
 
@@ -625,7 +720,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 _idleWeather.TemperatureC,
                 _idleWeather.ApparentTemperatureC,
                 _idleWeatherStale,
-                _idleWeather.RetrievedAtUtc);
+                _idleWeather.RetrievedAtUtc,
+                TemperatureUnitSetting,
+                Use24HourClockSetting);
         }
     }
 
@@ -671,6 +768,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _idleMonitoringStarted = true;
         _lastIdleLocationKey = BuildIdleLocationKey(_settingsService.Current);
         _lastShowIdleWeather = _settingsService.Current.ShowIdleWeather;
+
         NotifyIdleClock();
         NotifyIdleWeather();
         RefreshIdlePresentation();
@@ -709,13 +807,30 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public double IslandScale => _media.IslandScale;
     public string AnimationIntensity => _media.AnimationIntensity;
     public string Theme => _media.Theme;
+    public string PreferredMonitorDeviceName => _media.PreferredMonitorDeviceName;
+    public int HorizontalOffset => _media.HorizontalOffset;
+    public int AutoCollapseDelayMs => _media.AutoCollapseDelayMs;
+    public string CompactClickAction => _media.CompactClickAction;
+    public string HoverAction => _media.HoverAction;
+    public bool Use24HourClock => _media.Use24HourClock;
+    public string TemperatureUnit => _media.TemperatureUnit;
+    public bool ShowLyrics => _media.ShowLyrics;
+    public int FocusDefaultMinutes => _media.FocusDefaultMinutes;
+    public int FocusBreakMinutes => _media.FocusBreakMinutes;
+    public int FocusCustomMinutes => _media.FocusCustomMinutes;
+    public bool EnableGlobalHotkeys => _media.EnableGlobalHotkeys;
+    public bool ScreenshotNotifications => _media.ScreenshotNotifications;
+    public bool DoNotDisturb => _media.DoNotDisturb;
     public bool CanTogglePlayback => _media.CanTogglePlayback;
     public bool CanGoNext => _media.CanGoNext;
     public bool CanGoPrevious => _media.CanGoPrevious;
-    public BitmapImage? ArtworkImage => _media.ArtworkImage;
+    public Microsoft.UI.Xaml.Media.ImageSource? ArtworkImage => _media.ArtworkImage;
+    public Microsoft.UI.Xaml.Media.ImageSource? CompactArtworkImage => _media.CompactArtworkImage;
+    public bool HasArtwork => _media.HasArtwork;
+    public Microsoft.UI.Xaml.Visibility ArtworkFallbackVisibility => _media.ArtworkFallbackVisibility;
     public uint ArtworkAccentColor => _media.ArtworkAccentColor;
     public bool HasLyrics => _media.HasLyrics;
-    public Microsoft.UI.Xaml.Visibility LyricsVisibility => HasLyrics
+    public Microsoft.UI.Xaml.Visibility LyricsVisibility => ShowLyrics && HasLyrics
         ? Microsoft.UI.Xaml.Visibility.Visible
         : Microsoft.UI.Xaml.Visibility.Collapsed;
     public string CurrentLyricLine => _media.CurrentLyricLine;
@@ -762,7 +877,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     }
 
     /// <summary>Opens the destination related to the active event (screenshot file, download folder...).</summary>
-    public void ActivateActiveEventTarget()
+    public bool ActivateActiveEventTarget()
     {
         var target = _activeEvent switch
         {
@@ -771,22 +886,36 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _ => null
         };
 
-        if (!string.IsNullOrWhiteSpace(target))
+        if (string.IsNullOrWhiteSpace(target))
         {
-            _systemControl?.TryOpenPath(target);
+            return false;
+        }
+
+        _systemControl?.TryOpenPath(target);
+        return true;
+    }
+
+    public async Task SetDoNotDisturbAsync(bool enabled)
+    {
+        if (_settingsService is null || _disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await _settingsService.SaveAsync(_settingsService.Current with { DoNotDisturb = enabled });
+            await _settingsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.SetDoNotDisturbAsync", ex);
         }
     }
 
     private void OnActiveEventChanged(object? sender, IslandEvent? newEvent)
     {
-        if (_dispatcherQueue.HasThreadAccess)
-        {
-            ApplyActiveEvent(newEvent);
-        }
-        else
-        {
-            _dispatcherQueue.TryEnqueue(() => ApplyActiveEvent(newEvent));
-        }
+        ApplyOnUi(() => ApplyActiveEvent(newEvent));
     }
 
     private void ApplyActiveEvent(IslandEvent? newEvent)
@@ -833,14 +962,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private void OnFocusSessionCompleted(object? sender, FocusTimerEvent e)
     {
         // Raised from the timer thread; PropertyChanged must run on the UI thread.
-        if (_dispatcherQueue.HasThreadAccess)
-        {
-            CompleteFocusSession();
-        }
-        else
-        {
-            _dispatcherQueue.TryEnqueue(CompleteFocusSession);
-        }
+        ApplyOnUi(CompleteFocusSession);
     }
 
     private void CompleteFocusSession()
@@ -869,14 +991,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnFocusTimerTick(object? sender, FocusTimerEvent e)
     {
-        if (_dispatcherQueue.HasThreadAccess)
-        {
-            NotifyFocusTick();
-        }
-        else
-        {
-            _dispatcherQueue.TryEnqueue(NotifyFocusTick);
-        }
+        ApplyOnUi(NotifyFocusTick);
     }
 
     private void NotifyFocusTick()
@@ -888,6 +1003,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(FocusProgress));
         OnPropertyChanged(nameof(PreserveFocusPanel));
         OnPropertyChanged(nameof(DetachedBadgeText));
+        OnPropertyChanged(nameof(IsFocusTimerActive));
+        OnPropertyChanged(nameof(FocusTimerVisibility));
     }
 
     private bool _lastSplitModeActive;
@@ -1099,6 +1216,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             }
         }
 
+        if (Math.Abs(_customFocusMinutes - Math.Clamp(settings.FocusCustomMinutes, 1, 180)) >= 0.5)
+        {
+            CustomFocusMinutes = settings.FocusCustomMinutes;
+        }
+
         NotifyIdleClock();
         NotifyIdleWeather();
         RefreshIdlePresentation();
@@ -1290,17 +1412,98 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private void ApplyOnUi(Action action)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         if (_dispatcherQueue.HasThreadAccess)
         {
             action();
         }
         else
         {
-            _dispatcherQueue.TryEnqueue(() => action());
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_disposed)
+                {
+                    action();
+                }
+            });
         }
     }
 
     private DispatcherTimer? _systemPollTimer;
+
+    private void SubscribePowerEvents()
+    {
+        if (_systemControl is null || _powerEventsSubscribed)
+        {
+            return;
+        }
+
+        try
+        {
+            global::Windows.System.Power.PowerManager.BatteryStatusChanged += OnPowerManagerChanged;
+            global::Windows.System.Power.PowerManager.RemainingChargePercentChanged += OnPowerManagerChanged;
+            global::Windows.System.Power.PowerManager.PowerSupplyStatusChanged += OnPowerManagerChanged;
+            _powerEventsSubscribed = true;
+        }
+        catch
+        {
+            // PowerManager events may be unavailable on desktop SKUs without battery telemetry.
+        }
+    }
+
+    private void UnsubscribePowerEvents()
+    {
+        if (!_powerEventsSubscribed)
+        {
+            return;
+        }
+
+        _powerEventsSubscribed = false;
+        try
+        {
+            global::Windows.System.Power.PowerManager.BatteryStatusChanged -= OnPowerManagerChanged;
+            global::Windows.System.Power.PowerManager.RemainingChargePercentChanged -= OnPowerManagerChanged;
+            global::Windows.System.Power.PowerManager.PowerSupplyStatusChanged -= OnPowerManagerChanged;
+        }
+        catch
+        {
+        }
+    }
+
+    private void OnPowerManagerChanged(object? sender, object e)
+    {
+        ApplyOnUi(() => RefreshBattery(notify: true));
+    }
+
+    public void SetSessionLocked(bool isLocked)
+    {
+        if (_disposed || _isSessionLocked == isLocked)
+        {
+            return;
+        }
+
+        _isSessionLocked = isLocked;
+        if (isLocked)
+        {
+            _systemPollTimer?.Stop();
+            _idleClockTimer?.Stop();
+            _idleWeatherTimer?.Stop();
+        }
+        else
+        {
+            if (_systemPollTimer is not null && !_systemPollTimer.IsEnabled)
+            {
+                _systemPollTimer.Start();
+            }
+
+            RefreshIdlePresentation();
+            _ = RefreshExternalStatesAsync();
+        }
+    }
 
     private void StartSystemPolling()
     {
@@ -1309,14 +1512,15 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        _systemPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
+        // PowerManager events + WASAPI callbacks deliver immediate updates; slow fallback poll catches silent endpoint drift.
+        _systemPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
         _systemPollTimer.Tick += (_, _) => PollSystemState();
         _systemPollTimer.Start();
     }
 
     private void PollSystemState()
     {
-        if (_systemControl is null)
+        if (_disposed || _isSessionLocked || _systemControl is null)
         {
             return;
         }
@@ -1421,15 +1625,22 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         OnPropertyChanged(e.PropertyName);
 
-        if (e.PropertyName == nameof(MediaViewModel.HasLyrics))
+        if (e.PropertyName is nameof(MediaViewModel.HasLyrics) or nameof(MediaViewModel.ShowLyrics))
         {
             OnPropertyChanged(nameof(LyricsVisibility));
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.IsSpotify))
+        {
+            OnPropertyChanged(nameof(SpotifyBadgeVisibility));
+            OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
         }
         else if (e.PropertyName == nameof(MediaViewModel.HasTrack) || e.PropertyName == nameof(MediaViewModel.CurrentTrack))
         {
             OnPropertyChanged(nameof(IsMediaActive));
             OnPropertyChanged(nameof(TrackContentVisibility));
             OnPropertyChanged(nameof(CustomIdleVisibility));
+            OnPropertyChanged(nameof(SpotifyBadgeVisibility));
+            OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
             NotifySplitStateChanged();
         }
         else if (e.PropertyName is nameof(MediaViewModel.CurrentIslandState) or nameof(MediaViewModel.CompactVisibility) or nameof(MediaViewModel.IdleVisibility))
@@ -1440,7 +1651,17 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) or nameof(MediaViewModel.ArtworkAccentColor) or nameof(MediaViewModel.DynamicColorTint))
         {
-            NotifyFocusBrushes();
+            RefreshThemeResources();
+            OnPropertyChanged(nameof(ArtworkAccentColor));
+            OnPropertyChanged(nameof(DynamicColorTint));
+        }
+        else if (e.PropertyName is nameof(MediaViewModel.ArtworkImage) or nameof(MediaViewModel.CompactArtworkImage) or nameof(MediaViewModel.HasArtwork))
+        {
+            OnPropertyChanged(nameof(ArtworkImage));
+            OnPropertyChanged(nameof(CompactArtworkImage));
+            OnPropertyChanged(nameof(HasArtwork));
+            OnPropertyChanged(nameof(ArtworkFallbackVisibility));
+            OnPropertyChanged(nameof(ArtworkAccentColor));
         }
     }
 
@@ -1457,6 +1678,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _disposed = true;
+        UnsubscribePowerEvents();
         _systemPollTimer?.Stop();
         _systemPollTimer = null;
 

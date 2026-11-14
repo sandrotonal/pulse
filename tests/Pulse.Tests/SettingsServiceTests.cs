@@ -271,4 +271,236 @@ public sealed class SettingsServiceTests
             }
         }
     }
+
+    [Fact]
+    public async Task MalformedSinglePropertyFallsBackOnlyThatFieldWithoutWipingValidSettings()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), """
+                {
+                  "Theme": "Light",
+                  "IslandScale": 110,
+                  "IdleLocationCity": "Ankara",
+                  "TopOffset": "not-an-integer",
+                  "UseTransparency": 12345,
+                  "PowerNotifications": "invalid-bool"
+                }
+                """);
+
+            using var service = new SettingsService(directory);
+            await service.LoadAsync();
+
+            Assert.Equal("Light", service.Current.Theme);
+            Assert.Equal(110, service.Current.IslandScale);
+            Assert.Equal("Ankara", service.Current.IdleLocationCity);
+            Assert.Equal(14, service.Current.TopOffset);
+            Assert.False(service.Current.UseTransparency);
+            Assert.True(service.Current.PowerNotifications);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("dark", "Dark")]
+    [InlineData("LIGHT", "Light")]
+    [InlineData("system", "System")]
+    [InlineData("Neon", "System")]
+    public async Task ThemeNormalizationIsCaseInsensitive(string input, string expected)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var service = new SettingsService(directory);
+            await service.SaveAsync(new AppSettings { Theme = input });
+
+            Assert.Equal(expected, service.Current.Theme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Theory]
+    [InlineData("{bad")]
+    [InlineData("null")]
+    [InlineData("[]")]
+    [InlineData("")]
+    public async Task CorruptOrNonObjectJsonFallsBackToDefaults(string payload)
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "settings.json"), payload);
+
+            using var service = new SettingsService(directory);
+            await service.LoadAsync();
+
+            Assert.Equal(new AppSettings(), service.Current);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void PersonalizationDefaultsMatchExpectedValues()
+    {
+        var settings = new AppSettings();
+
+        Assert.Equal(string.Empty, settings.PreferredMonitorDeviceName);
+        Assert.Equal(0, settings.HorizontalOffset);
+        Assert.Equal(600, settings.AutoCollapseDelayMs);
+        Assert.Equal("Expand", settings.CompactClickAction);
+        Assert.Equal("Preview", settings.HoverAction);
+        Assert.True(settings.Use24HourClock);
+        Assert.Equal("C", settings.TemperatureUnit);
+        Assert.True(settings.ShowLyrics);
+        Assert.Equal(25, settings.FocusDefaultMinutes);
+        Assert.Equal(5, settings.FocusBreakMinutes);
+        Assert.Equal(45, settings.FocusCustomMinutes);
+        Assert.True(settings.EnableGlobalHotkeys);
+        Assert.True(settings.ScreenshotNotifications);
+        Assert.False(settings.DoNotDisturb);
+    }
+
+    [Fact]
+    public async Task PersonalizationSettingsRoundTripAndNormalize()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var first = new SettingsService(directory);
+            await first.SaveAsync(new AppSettings
+            {
+                PreferredMonitorDeviceName = "  \\\\.\\DISPLAY2  ",
+                HorizontalOffset = -120,
+                AutoCollapseDelayMs = 1250,
+                CompactClickAction = "activateapp",
+                HoverAction = "expandcard",
+                Use24HourClock = false,
+                TemperatureUnit = "f",
+                ShowLyrics = false,
+                FocusDefaultMinutes = 50,
+                FocusBreakMinutes = 10,
+                FocusCustomMinutes = 65,
+                EnableGlobalHotkeys = false,
+                ScreenshotNotifications = false,
+                DoNotDisturb = true
+            });
+            await first.FlushAsync();
+
+            using var second = new SettingsService(directory);
+            await second.LoadAsync();
+
+            Assert.Equal(@"\\.\DISPLAY2", second.Current.PreferredMonitorDeviceName);
+            Assert.Equal(-120, second.Current.HorizontalOffset);
+            Assert.Equal(1250, second.Current.AutoCollapseDelayMs);
+            Assert.Equal("ActivateApp", second.Current.CompactClickAction);
+            Assert.Equal("ExpandCard", second.Current.HoverAction);
+            Assert.False(second.Current.Use24HourClock);
+            Assert.Equal("F", second.Current.TemperatureUnit);
+            Assert.False(second.Current.ShowLyrics);
+            Assert.Equal(50, second.Current.FocusDefaultMinutes);
+            Assert.Equal(10, second.Current.FocusBreakMinutes);
+            Assert.Equal(65, second.Current.FocusCustomMinutes);
+            Assert.False(second.Current.EnableGlobalHotkeys);
+            Assert.False(second.Current.ScreenshotNotifications);
+            Assert.True(second.Current.DoNotDisturb);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task InvalidPersonalizationValuesAreClampedAndFallbackCleanly()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            using var service = new SettingsService(directory);
+            await service.SaveAsync(new AppSettings
+            {
+                PreferredMonitorDeviceName = new string('M', 200),
+                HorizontalOffset = -999,
+                AutoCollapseDelayMs = 50,
+                CompactClickAction = "Unknown",
+                HoverAction = "Unknown",
+                TemperatureUnit = "K",
+                FocusDefaultMinutes = 0,
+                FocusBreakMinutes = 999,
+                FocusCustomMinutes = 300
+            });
+
+            Assert.Equal(128, service.Current.PreferredMonitorDeviceName.Length);
+            Assert.Equal(-400, service.Current.HorizontalOffset);
+            Assert.Equal(300, service.Current.AutoCollapseDelayMs);
+            Assert.Equal("Expand", service.Current.CompactClickAction);
+            Assert.Equal("Preview", service.Current.HoverAction);
+            Assert.Equal("C", service.Current.TemperatureUnit);
+            Assert.Equal(1, service.Current.FocusDefaultMinutes);
+            Assert.Equal(60, service.Current.FocusBreakMinutes);
+            Assert.Equal(180, service.Current.FocusCustomMinutes);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public async Task LegacyRemovedScrollWheelSettingIsIgnoredGracefully()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "PulseTests", Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(directory);
+            var settingsPath = Path.Combine(directory, "settings.json");
+            await File.WriteAllTextAsync(settingsPath, """
+            {
+              "TopOffset": 18,
+              "ScrollWheelAction": "Volume",
+              "Theme": "Dark"
+            }
+            """);
+
+            using var service = new SettingsService(directory);
+            await service.LoadAsync();
+
+            Assert.Equal(18, service.Current.TopOffset);
+            Assert.Equal("Dark", service.Current.Theme);
+        }
+        finally
+        {
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
 }

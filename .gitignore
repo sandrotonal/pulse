@@ -25,6 +25,7 @@ Desktop.ini
 ## Antigravity / IDE / OS metadata
 .DS_Store
 .idea/
+.opencode/
 *.log
 scratch/
 

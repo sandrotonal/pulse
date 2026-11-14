@@ -18,8 +18,10 @@ public sealed class DampedSpringOscillator
 
     public DampedSpringOscillator(double dampingRatio = 0.82, double responseSeconds = 0.35)
     {
-        DampingRatio = Math.Clamp(dampingRatio, 0.01, 2.0);
-        FrequencyResponse = Math.Max(0.01, responseSeconds);
+        double safeDamping = double.IsFinite(dampingRatio) ? dampingRatio : 0.82;
+        double safeResponse = double.IsFinite(responseSeconds) ? responseSeconds : 0.35;
+        DampingRatio = Math.Clamp(safeDamping, 0.01, 2.0);
+        FrequencyResponse = Math.Max(0.01, safeResponse);
 
         _omega0 = (2.0 * Math.PI) / FrequencyResponse;
 
@@ -50,6 +52,26 @@ public sealed class DampedSpringOscillator
         return Math.Clamp(rawDeltaSeconds, MinFrameDeltaSeconds, MaxFrameDeltaSeconds);
     }
 
+    public static double ConvertToScreenVelocity(double springVelocity, double activeTimeScale)
+    {
+        if (!double.IsFinite(springVelocity) || !double.IsFinite(activeTimeScale) || activeTimeScale <= 0.0)
+        {
+            return 0.0;
+        }
+
+        return springVelocity * activeTimeScale;
+    }
+
+    public static double NormalizeScaledVelocity(double screenVelocity, double targetTimeScale)
+    {
+        if (!double.IsFinite(screenVelocity) || !double.IsFinite(targetTimeScale) || targetTimeScale <= 0.0)
+        {
+            return 0.0;
+        }
+
+        return screenVelocity / targetTimeScale;
+    }
+
     public SpringState Evaluate(
         double elapsedSeconds,
         double start,
@@ -58,17 +80,27 @@ public sealed class DampedSpringOscillator
         double positionTolerance = DefaultPositionTolerance,
         double velocityTolerance = DefaultVelocityTolerance)
     {
-        double delta = start - target;
+        if (!double.IsFinite(target))
+        {
+            return new SpringState(0.0, 0.0, true);
+        }
 
-        if (Math.Abs(delta) < Math.Min(0.0001, positionTolerance * 0.01) &&
-            Math.Abs(initialVelocity) < Math.Min(0.0001, velocityTolerance * 0.01))
+        double safeStart = double.IsFinite(start) ? start : target;
+        double safeVelocity = double.IsFinite(initialVelocity) ? initialVelocity : 0.0;
+        double safePosTol = double.IsFinite(positionTolerance) && positionTolerance > 0.0 ? positionTolerance : DefaultPositionTolerance;
+        double safeVelTol = double.IsFinite(velocityTolerance) && velocityTolerance > 0.0 ? velocityTolerance : DefaultVelocityTolerance;
+
+        double delta = safeStart - target;
+
+        if (Math.Abs(delta) < Math.Min(0.0001, safePosTol * 0.01) &&
+            Math.Abs(safeVelocity) < Math.Min(0.0001, safeVelTol * 0.01))
         {
             return new SpringState(target, 0.0, true);
         }
 
-        if (elapsedSeconds <= 0.0)
+        if (!double.IsFinite(elapsedSeconds) || elapsedSeconds <= 0.0)
         {
-            return new SpringState(start, initialVelocity, false);
+            return new SpringState(safeStart, safeVelocity, false);
         }
 
         double position;
@@ -81,7 +113,7 @@ public sealed class DampedSpringOscillator
             double sin = Math.Sin(_omegaD * elapsedSeconds);
 
             double c1 = delta;
-            double c2 = (initialVelocity + (DampingRatio * _omega0 * delta)) / _omegaD;
+            double c2 = (safeVelocity + (DampingRatio * _omega0 * delta)) / _omegaD;
 
             double envelope = (c1 * cos) + (c2 * sin);
             position = target + (decay * envelope);
@@ -92,7 +124,7 @@ public sealed class DampedSpringOscillator
             double r1 = (-DampingRatio * _omega0) + _overdampedGamma;
             double r2 = (-DampingRatio * _omega0) - _overdampedGamma;
 
-            double c1 = (initialVelocity - (r2 * delta)) / (r1 - r2);
+            double c1 = (safeVelocity - (r2 * delta)) / (r1 - r2);
             double c2 = delta - c1;
 
             double e1 = Math.Exp(r1 * elapsedSeconds);
@@ -105,7 +137,7 @@ public sealed class DampedSpringOscillator
         {
             double decay = Math.Exp(-_omega0 * elapsedSeconds);
             double c1 = delta;
-            double c2 = initialVelocity + (_omega0 * delta);
+            double c2 = safeVelocity + (_omega0 * delta);
             double poly = c1 + (c2 * elapsedSeconds);
 
             position = target + (decay * poly);
@@ -113,8 +145,8 @@ public sealed class DampedSpringOscillator
         }
 
         bool hasSettled =
-            Math.Abs(position - target) <= positionTolerance &&
-            Math.Abs(velocity) <= velocityTolerance &&
+            Math.Abs(position - target) <= safePosTol &&
+            Math.Abs(velocity) <= safeVelTol &&
             elapsedSeconds >= FrequencyResponse * 0.7;
 
         return new SpringState(hasSettled ? target : position, hasSettled ? 0.0 : velocity, hasSettled);

@@ -18,6 +18,7 @@ public partial class App : Application
 {
     private readonly ISettingsService _settingsService;
     private readonly IStartupService _startupService;
+    private readonly ArtworkCacheService _artworkCacheService;
     private readonly IMediaSessionService _mediaSessionService;
     private readonly EventRouter _eventRouter;
     private readonly FocusTimerService _focusTimerService;
@@ -39,38 +40,86 @@ public partial class App : Application
     private TrayService? _trayService;
     private bool _exiting;
 
-    private const string InstanceMutexName = "Local\\PulseDynamicIslandInstance";
-    private const string ShowIslandEventName = "Local\\PulseShowIslandSignal";
-    private const string ShowSettingsEventName = "Local\\PulseShowSettingsSignal";
+    private readonly SingleInstanceNames _instanceNames;
     private static Mutex? _instanceMutex;
     private EventWaitHandle? _showIslandSignal;
     private RegisteredWaitHandle? _showIslandRegistration;
     private EventWaitHandle? _showSettingsSignal;
     private RegisteredWaitHandle? _showSettingsRegistration;
+    private int _pendingShowIslandSignal;
+    private int _pendingShowSettingsSignal;
 
     private static bool HasSettingsLaunchArg()
         => Environment.GetCommandLineArgs().Any(arg =>
             string.Equals(arg, "--settings", StringComparison.OrdinalIgnoreCase));
 
-    public App()
+    private static string? TryGetCurrentDesktopName()
     {
-        // Single-instance guard: a second launch must not boot a competing instance.
-        _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var createdNew);
-        if (!createdNew)
+        try
+        {
+            var desktop = GetThreadDesktop(GetCurrentThreadId());
+            if (desktop == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            const int uoiName = 2;
+            var buffer = new char[256];
+            if (!GetUserObjectInformation(desktop, uoiName, buffer, buffer.Length * sizeof(char), out var neededBytes) ||
+                neededBytes <= 0)
+            {
+                return null;
+            }
+
+            var charCount = Math.Min(buffer.Length, neededBytes / sizeof(char));
+            return new string(buffer, 0, charCount).TrimEnd('\0');
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TrySignalExistingInstance(string targetSignal)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
         {
             try
             {
-                var targetSignal = HasSettingsLaunchArg() ? ShowSettingsEventName : ShowIslandEventName;
                 if (EventWaitHandle.TryOpenExisting(targetSignal, out var signalEvent))
                 {
                     signalEvent.Set();
                     signalEvent.Dispose();
+                    return true;
                 }
             }
             catch
             {
-                // Existing instance may be shutting down; nothing to signal.
             }
+
+            if (attempt < 7)
+            {
+                Thread.Sleep(40);
+            }
+        }
+
+        return false;
+    }
+
+    public App()
+    {
+        _instanceNames = SingleInstanceNameResolver.Resolve(TryGetCurrentDesktopName());
+
+        // Single-instance guard: a second launch must not boot a competing instance.
+        // Note: on Windows, Local\ mutexes are session-wide across desktops, so resolving
+        // by desktop keeps isolated sandbox runs from blocking the interactive desktop.
+        _instanceMutex = new Mutex(initiallyOwned: true, _instanceNames.MutexName, out var createdNew);
+        if (!createdNew)
+        {
+            var targetSignal = HasSettingsLaunchArg()
+                ? _instanceNames.ShowSettingsEventName
+                : _instanceNames.ShowIslandEventName;
+            _ = TrySignalExistingInstance(targetSignal);
 
             Environment.Exit(0);
             return;
@@ -109,7 +158,8 @@ public partial class App : Application
         _settingsService = new SettingsService();
         _settingsService.SettingsChanged += OnSettingsChanged;
         _startupService = new StartupService();
-        _mediaSessionService = new WindowsMediaSessionService(new ArtworkCacheService());
+        _artworkCacheService = new ArtworkCacheService();
+        _mediaSessionService = new WindowsMediaSessionService(_artworkCacheService);
         var playbackController = new PlaybackController(_mediaSessionService);
         var dispatcherQueue = DispatcherQueue.GetForCurrentThread();
 
@@ -117,7 +167,7 @@ public partial class App : Application
         _focusTimerService = new FocusTimerService(_eventRouter);
         _systemEventService = new SystemEventService(_eventRouter, _settingsService);
         _fileOperationService = new FileOperationService(_eventRouter);
-        _systemControlService = new WindowsSystemControlService();
+        _systemControlService = new WindowsSystemControlService(dispatcherQueue);
         _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
         _windowsToastService = new WindowsToastNotificationService(_systemEventService, _settingsService);
         _bluetoothWatcherService = new BluetoothWatcherService(_systemEventService, _settingsService);
@@ -132,7 +182,8 @@ public partial class App : Application
             playbackController,
             _settingsService,
             dispatcherQueue,
-            _eventRouter);
+            _eventRouter,
+            _httpClient);
 
         _islandViewModel = new IslandViewModel(
             _mediaViewModel,
@@ -145,87 +196,187 @@ public partial class App : Application
             _settingsService,
             _weatherService,
             _locationService);
+
+        RegisterInstanceSignals(dispatcherQueue);
+    }
+
+    private void RegisterInstanceSignals(DispatcherQueue dispatcherQueue)
+    {
+        try
+        {
+            _showIslandSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowIslandEventName);
+            _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _showIslandSignal,
+                (_, _) =>
+                {
+                    if (_exiting)
+                    {
+                        return;
+                    }
+
+                    if (_islandWindow is { } window)
+                    {
+                        window.DispatcherQueue.TryEnqueue(() =>
+                            SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
+                    }
+                    else
+                    {
+                        Interlocked.Exchange(ref _pendingShowIslandSignal, 1);
+                        dispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (_islandWindow is not null &&
+                                Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
+                            {
+                                SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true);
+                            }
+                        });
+                    }
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowSettingsEventName);
+            _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _showSettingsSignal,
+                (_, _) =>
+                {
+                    if (_exiting)
+                    {
+                        return;
+                    }
+
+                    if (_islandWindow is { } window)
+                    {
+                        window.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
+                    }
+                    else
+                    {
+                        Interlocked.Exchange(ref _pendingShowSettingsSignal, 1);
+                        dispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (_islandWindow is not null &&
+                                Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
+                            {
+                                OnSettingsRequested(this, EventArgs.Empty);
+                            }
+                        });
+                    }
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.RegisterInstanceSignals", ex);
+        }
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
-        await _settingsService.LoadAsync();
-        var startupEnabled = await _startupService.ReconcileAsync(_settingsService.Current.StartWithWindows);
-        if (startupEnabled != _settingsService.Current.StartWithWindows)
-        {
-            await _settingsService.SaveAsync(_settingsService.Current with { StartWithWindows = startupEnabled });
-        }
-
-        await _mediaViewModel.InitializeAsync();
-
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-        {
-            if (Environment.ExitCode != 0)
-            {
-                CrashLogger.WriteMessage("AppDomain.ProcessExit", $"Abnormal exit code={Environment.ExitCode}");
-            }
-        };
-
-        _islandWindow = new IslandWindow(_islandViewModel);
-        _islandWindow.Closed += (_, _) =>
-        {
-            if (!_exiting)
-            {
-                CrashLogger.WriteMessage("IslandWindow.Closed", "IslandWindow closed unexpectedly before application exit.");
-            }
-        };
-        _islandWindow.SettingsRequested += OnSettingsRequested;
-        _islandWindow.Activate();
-        _islandWindow.ShowIsland();
-        _islandViewModel.StartIdleMonitoring();
-
-        // When a user launches Pulse again, surface the running instance instead of crashing.
-        var islandWindow = _islandWindow;
-        _showIslandSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowIslandEventName);
-        _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
-            _showIslandSignal,
-            (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() =>
-                SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true)),
-            null,
-            Timeout.Infinite,
-            executeOnlyOnce: false);
-
-        _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsEventName);
-        _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
-            _showSettingsSignal,
-            (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty)),
-            null,
-            Timeout.Infinite,
-            executeOnlyOnce: false);
-
-        if (HasSettingsLaunchArg())
-        {
-            islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
-        }
-
         try
         {
-            var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
-            _trayService = new TrayService(iconPath, startupEnabled);
-            _trayService.ShowRequested += (_, _) =>
-                SurfaceIsland(toggleIfAlreadyVisible: true, activateWindow: false);
-            _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
-            _trayService.SettingsRequested += OnSettingsRequested;
-            _trayService.AboutRequested += OnAboutRequested;
-            _trayService.ExitRequested += OnExitRequested;
-            _trayService.StartupRequested += OnStartupRequested;
-            _trayService.SetNotificationsPaused(_settingsService.Current.NotificationsPaused);
-            _trayService.NotificationsPauseRequested += OnNotificationsPauseRequested;
+            await _settingsService.LoadAsync();
+            if (_exiting)
+            {
+                return;
+            }
+
+            AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+            {
+                if (Environment.ExitCode != 0)
+                {
+                    CrashLogger.WriteMessage("AppDomain.ProcessExit", $"Abnormal exit code={Environment.ExitCode}");
+                }
+            };
+
+            _islandWindow = new IslandWindow(_islandViewModel);
+            _islandWindow.Closed += (_, _) =>
+            {
+                if (!_exiting)
+                {
+                    CrashLogger.WriteMessage("IslandWindow.Closed", "IslandWindow closed unexpectedly before application exit.");
+                }
+            };
+            _islandWindow.SettingsRequested += OnSettingsRequested;
+            _islandWindow.Activate();
+            _islandWindow.ShowIsland();
+            _islandViewModel.StartIdleMonitoring();
+
+            var mediaInitTask = _mediaViewModel.InitializeAsync();
+            var startupReconcileTask = ReconcileStartupAsync();
+
+            var islandWindow = _islandWindow;
+            if (Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
+            {
+                islandWindow.DispatcherQueue.TryEnqueue(() =>
+                    SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
+            }
+
+            if (HasSettingsLaunchArg() || Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
+            {
+                islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
+            }
+
+            var startupEnabled = await startupReconcileTask;
+            await mediaInitTask;
+
+            if (_exiting)
+            {
+                return;
+            }
+
+            try
+            {
+                var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
+                _trayService = new TrayService(iconPath, startupEnabled);
+                _trayService.ShowRequested += (_, _) =>
+                    SurfaceIsland(toggleIfAlreadyVisible: true, activateWindow: false);
+                _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
+                _trayService.SettingsRequested += OnSettingsRequested;
+                _trayService.AboutRequested += OnAboutRequested;
+                _trayService.ExitRequested += OnExitRequested;
+                _trayService.StartupRequested += OnStartupRequested;
+                _trayService.SetNotificationsPaused(_settingsService.Current.NotificationsPaused);
+                _trayService.SetDoNotDisturb(_settingsService.Current.DoNotDisturb);
+                _trayService.SetHotkeysEnabled(_settingsService.Current.EnableGlobalHotkeys);
+                _trayService.NotificationsPauseRequested += OnNotificationsPauseRequested;
+                _trayService.DoNotDisturbRequested += OnDoNotDisturbRequested;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("App.TrayService", ex);
+            }
         }
         catch (Exception ex)
         {
-            CrashLogger.Write("App.TrayService", ex);
+            CrashLogger.Write("App.OnLaunched", ex);
+        }
+    }
+
+    private async Task<bool> ReconcileStartupAsync()
+    {
+        try
+        {
+            var startupEnabled = await _startupService.ReconcileAsync(_settingsService.Current.StartWithWindows);
+            if (!_exiting && startupEnabled != _settingsService.Current.StartWithWindows)
+            {
+                await _settingsService.SaveAsync(_settingsService.Current with { StartWithWindows = startupEnabled });
+            }
+
+            return startupEnabled;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.ReconcileStartupAsync", ex);
+            return _settingsService.Current.StartWithWindows;
         }
     }
 
     private void SurfaceIsland(bool toggleIfAlreadyVisible, bool activateWindow)
     {
-        if (_islandWindow is not { } islandWindow)
+        if (_exiting || _islandWindow is not { } islandWindow)
         {
             return;
         }
@@ -238,6 +389,10 @@ public partial class App : Application
             if (wasHidden)
             {
                 islandWindow.ShowIsland();
+            }
+            else
+            {
+                islandWindow.EnsureNativeWindowVisible();
             }
 
             if (wasHidden || !toggleIfAlreadyVisible)
@@ -265,13 +420,22 @@ public partial class App : Application
 
     private void OnSettingsRequested(object? sender, EventArgs args)
     {
+        if (_exiting)
+        {
+            return;
+        }
+
         if (_settingsWindow is not null)
         {
             BringToFront(_settingsWindow);
             return;
         }
 
-        var viewModel = new SettingsViewModel(_settingsService, _startupService, _locationService);
+        var viewModel = new SettingsViewModel(
+            _settingsService,
+            _startupService,
+            _locationService,
+            () => _islandWindow?.HotkeyConflictWarning);
         _activeSettingsViewModel = viewModel;
         try
         {
@@ -329,6 +493,15 @@ public partial class App : Application
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetThreadDesktop(uint dwThreadId);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex, [System.Runtime.InteropServices.Out] char[]? pvInfo, int nLength, out int lpnLengthNeeded);
+
     private async void OnStartupRequested(object? sender, bool enabled)
     {
         try
@@ -362,27 +535,50 @@ public partial class App : Application
         }
     }
 
+    private async void OnDoNotDisturbRequested(object? sender, bool enabled)
+    {
+        try
+        {
+            await _settingsService.SaveAsync(_settingsService.Current with { DoNotDisturb = enabled });
+            await _settingsService.FlushAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.OnDoNotDisturbRequested", ex);
+        }
+    }
+
     private void OnSettingsChanged(object? sender, Pulse.Core.Models.AppSettings settings)
     {
         _trayService?.SetNotificationsPaused(settings.NotificationsPaused);
+        _trayService?.SetDoNotDisturb(settings.DoNotDisturb);
+        _trayService?.SetHotkeysEnabled(settings.EnableGlobalHotkeys);
         _trayService?.SetStartupEnabled(settings.StartWithWindows);
     }
 
     private async void OnAboutRequested(object? sender, EventArgs args)
     {
-        if (_islandWindow is null)
+        if (_exiting || _islandWindow is null)
         {
             return;
         }
 
-        var dialog = new ContentDialog
+        try
         {
-            Title = "Pulse",
-            Content = "Windows için yerel medya denetimi. Medya oturumları cihazında işlenir.\nSürüm 1.0.0",
-            CloseButtonText = "Kapat",
-            XamlRoot = _islandWindow.IslandXamlRoot
-        };
-        await dialog.ShowAsync();
+            var dialog = new ContentDialog
+            {
+                Title = "Pulse",
+                Content = "Windows için yerel medya denetimi. Medya oturumları cihazında işlenir.\nSürüm 1.0.0",
+                CloseButtonText = "Kapat",
+                XamlRoot = _islandWindow.IslandXamlRoot,
+                RequestedTheme = _islandWindow.IslandRequestedTheme
+            };
+            await dialog.ShowAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.OnAboutRequested", ex);
+        }
     }
 
     private async void OnExitRequested(object? sender, EventArgs args)
@@ -393,6 +589,8 @@ public partial class App : Application
         }
 
         _exiting = true;
+        _settingsService.SettingsChanged -= OnSettingsChanged;
+
         try
         {
             if (_activeSettingsViewModel is { } activeVm)
@@ -407,22 +605,34 @@ public partial class App : Application
             CrashLogger.Write("App.OnExitRequested.Flush", ex);
         }
 
-        _showIslandRegistration?.Unregister(null);
-        _showIslandSignal?.Dispose();
-        _showSettingsRegistration?.Unregister(null);
-        _showSettingsSignal?.Dispose();
-        _trayService?.Dispose();
-        _settingsWindow?.Close();
-        _islandWindow?.Close();
-        _islandViewModel.Dispose();
-        _httpClient.Dispose();
-        _downloadsWatcherService.Dispose();
-        _windowsToastService.Dispose();
-        _bluetoothWatcherService.Dispose();
-        _screenshotWatcherService.Dispose();
-        await _mediaViewModel.DisposeAsync();
-        await _mediaSessionService.DisposeAsync();
-        _systemControlService.Dispose();
+        try
+        {
+            _showIslandRegistration?.Unregister(null);
+            _showIslandSignal?.Dispose();
+            _showSettingsRegistration?.Unregister(null);
+            _showSettingsSignal?.Dispose();
+            _trayService?.Dispose();
+            _settingsWindow?.Close();
+            _islandWindow?.Close();
+            _islandViewModel.Dispose();
+            _downloadsWatcherService.Dispose();
+            _windowsToastService.Dispose();
+            _bluetoothWatcherService.Dispose();
+            _screenshotWatcherService.Dispose();
+            await _mediaViewModel.DisposeAsync();
+            await _mediaSessionService.DisposeAsync();
+            _artworkCacheService.Dispose();
+            _systemControlService.Dispose();
+            _weatherService.Dispose();
+            _locationService.Dispose();
+            (_settingsService as IDisposable)?.Dispose();
+            _httpClient.Dispose();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.OnExitRequested.Cleanup", ex);
+        }
+
         Exit();
     }
 }

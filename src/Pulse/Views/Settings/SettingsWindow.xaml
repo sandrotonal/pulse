@@ -13,6 +13,7 @@
                         <SolidColorBrush x:Key="SettingsText" Color="#FFFFFFFF" />
                         <SolidColorBrush x:Key="SettingsSecondary" Color="#FFA6AAB4" />
                         <SolidColorBrush x:Key="SettingsAccent" Color="#FF30D158" />
+                        <SolidColorBrush x:Key="SettingsWarning" Color="#FFFF9F0A" />
                         <SolidColorBrush x:Key="SettingsPrimaryButtonForeground" Color="#FF07150C" />
                         <SolidColorBrush x:Key="SettingsDivider" Color="#24FFFFFF" />
                         <SolidColorBrush x:Key="SettingsCard" Color="#FF1A1C22" />
@@ -42,10 +43,10 @@
                         <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF28C74F" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF22B847" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOnDisabled" Color="#FF20482C" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFF5F5F7" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFFFF" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFFFF" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnDisabled" Color="#FF9FA3AD" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FF07150C" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FF07150C" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FF07150C" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnDisabled" Color="#FF38473D" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="#FF343740" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="#FF3F434E" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOffPressed" Color="#FF4A4E5A" />
@@ -65,6 +66,7 @@
                         <SolidColorBrush x:Key="SettingsText" Color="#FF1C1C1E" />
                         <SolidColorBrush x:Key="SettingsSecondary" Color="#FF5A5A60" />
                         <SolidColorBrush x:Key="SettingsAccent" Color="#FF1E7E34" />
+                        <SolidColorBrush x:Key="SettingsWarning" Color="#FFB25000" />
                         <SolidColorBrush x:Key="SettingsPrimaryButtonForeground" Color="#FFFFFFFF" />
                         <SolidColorBrush x:Key="SettingsDivider" Color="#1F000000" />
                         <SolidColorBrush x:Key="SettingsCard" Color="#FFFFFFFF" />
@@ -85,10 +87,10 @@
                         <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="#FFD0D0D8" />
                         <SolidColorBrush x:Key="SliderTrackFillPressed" Color="#FFC6C6CE" />
                         <SolidColorBrush x:Key="SliderTrackFillDisabled" Color="#FFE8E8EE" />
-                        <SolidColorBrush x:Key="SliderThumbBackground" Color="#FFFFFFFF" />
-                        <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FFF8F8FA" />
-                        <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FFEFEFF4" />
-                        <SolidColorBrush x:Key="SliderThumbBackgroundDisabled" Color="#FFF2F2F7" />
+                        <SolidColorBrush x:Key="SliderThumbBackground" Color="#FF1C1C1E" />
+                        <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="#FF000000" />
+                        <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="#FF3A3A3C" />
+                        <SolidColorBrush x:Key="SliderThumbBackgroundDisabled" Color="#FFA6AAB4" />
 
                         <SolidColorBrush x:Key="ToggleSwitchFillOn" Color="#FF1E7E34" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF196B2C" />
@@ -106,9 +108,9 @@
                         <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPointerOver" Color="#FFFFFFFF" />
                         <SolidColorBrush x:Key="ToggleSwitchKnobFillOffPressed" Color="#FFFFFFFF" />
                         <SolidColorBrush x:Key="ToggleSwitchKnobFillOffDisabled" Color="#FFF8F8FA" />
-                        <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="#33000000" />
-                        <SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="#44000000" />
-                        <SolidColorBrush x:Key="ToggleSwitchStrokeOffPressed" Color="#55000000" />
+                        <SolidColorBrush x:Key="ToggleSwitchStrokeOff" Color="#59000000" />
+                        <SolidColorBrush x:Key="ToggleSwitchStrokeOffPointerOver" Color="#66000000" />
+                        <SolidColorBrush x:Key="ToggleSwitchStrokeOffPressed" Color="#77000000" />
                         <SolidColorBrush x:Key="ToggleSwitchStrokeOffDisabled" Color="#1F000000" />
                     </ResourceDictionary>
 
@@ -117,6 +119,7 @@
                         <SolidColorBrush x:Key="SettingsText" Color="#FFFFFFFF" />
                         <SolidColorBrush x:Key="SettingsSecondary" Color="#FFA6AAB4" />
                         <SolidColorBrush x:Key="SettingsAccent" Color="#FF30D158" />
+                        <SolidColorBrush x:Key="SettingsWarning" Color="#FFFF9F0A" />
                         <SolidColorBrush x:Key="SettingsPrimaryButtonForeground" Color="#FF07150C" />
                         <SolidColorBrush x:Key="SettingsDivider" Color="#24FFFFFF" />
                         <SolidColorBrush x:Key="SettingsCard" Color="#FF1A1C22" />
@@ -146,10 +149,10 @@
                         <SolidColorBrush x:Key="ToggleSwitchFillOnPointerOver" Color="#FF28C74F" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOnPressed" Color="#FF22B847" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOnDisabled" Color="#FF20482C" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FFF5F5F7" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FFFFFFFF" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FFFFFFFF" />
-                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnDisabled" Color="#FF9FA3AD" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOn" Color="#FF07150C" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPointerOver" Color="#FF07150C" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnPressed" Color="#FF07150C" />
+                        <SolidColorBrush x:Key="ToggleSwitchKnobFillOnDisabled" Color="#FF38473D" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOff" Color="#FF343740" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOffPointerOver" Color="#FF3F434E" />
                         <SolidColorBrush x:Key="ToggleSwitchFillOffPressed" Color="#FF4A4E5A" />
@@ -202,6 +205,11 @@
                                             BorderBrush="{TemplateBinding BorderBrush}"
                                             BorderThickness="{TemplateBinding BorderThickness}"
                                             CornerRadius="{TemplateBinding CornerRadius}" />
+                                    <Border x:Name="StateOverlay"
+                                            Background="{ThemeResource SettingsText}"
+                                            CornerRadius="{TemplateBinding CornerRadius}"
+                                            Opacity="0"
+                                            IsHitTestVisible="False" />
                                     <ContentPresenter x:Name="ButtonContent"
                                                       Content="{TemplateBinding Content}"
                                                       ContentTemplate="{TemplateBinding ContentTemplate}"
@@ -216,17 +224,17 @@
                                             <VisualState x:Name="Normal" />
                                             <VisualState x:Name="PointerOver">
                                                 <Storyboard>
-                                                    <DoubleAnimation Storyboard.TargetName="ButtonBackground"
+                                                    <DoubleAnimation Storyboard.TargetName="StateOverlay"
                                                                      Storyboard.TargetProperty="Opacity"
-                                                                     To="0.86"
+                                                                     To="0.06"
                                                                      Duration="0:0:0.08" />
                                                 </Storyboard>
                                             </VisualState>
                                             <VisualState x:Name="Pressed">
                                                 <Storyboard>
-                                                    <DoubleAnimation Storyboard.TargetName="ButtonBackground"
+                                                    <DoubleAnimation Storyboard.TargetName="StateOverlay"
                                                                      Storyboard.TargetProperty="Opacity"
-                                                                     To="0.72"
+                                                                     To="0.12"
                                                                      Duration="0:0:0.05" />
                                                 </Storyboard>
                                             </VisualState>
@@ -278,34 +286,67 @@
             <StackPanel Spacing="0">
                 <!-- 1. DİNAMİK ADA DAVRANIŞI -->
                 <TextBlock Text="DİNAMİK ADA DAVRANIŞI" Style="{StaticResource SectionTitleStyle}" Margin="0,6,0,8" />
-                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
                         <!-- Hover Expand -->
                         <Grid MinHeight="54">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
-                                <TextBlock Text="İmleç üzerine geldiğinde genişlet" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Kompakt adanın fareyle üzerine gelindiğinde akıcı genişlemesini sağlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="İmleç üzerine geldiğinde tepki ver" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Fare adanın üzerine geldiğinde önizleme veya otomatik genişleme davranışını etkinleştirir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding EnableHoverExpand, Mode=TwoWay}"
                                           AutomationProperties.Name="İmleç üzerine geldiğinde genişlet" />
                         </Grid>
 
+                        <!-- Hover Action -->
+                        <Grid MinHeight="52" Margin="0,2,0,6">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="168" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Üzerine gelme davranışı" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="İmleç beklediğinde dalga çubuğu mu göstersin yoksa kartı tam mı açsın." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding HoverActionIndex, Mode=TwoWay}"
+                                      IsEnabled="{Binding EnableHoverExpand}"
+                                      AutomationProperties.Name="Üzerine gelme davranışı"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                                <ComboBoxItem Content="Önizleme çubukları" />
+                                <ComboBoxItem Content="Kartı genişlet" />
+                            </ComboBox>
+                        </Grid>
+
                         <!-- Hover Delay -->
                         <StackPanel Spacing="4" Margin="0,2,0,12">
                             <Grid>
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                                <TextBlock Text="İmleç genişletme gecikmesi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="İmleç tepki gecikmesi" Style="{StaticResource SettingLabelStyle}" />
                                 <TextBlock Grid.Column="1" Text="{Binding HoverExpandDelayLabel}" FontSize="12" FontWeight="SemiBold"
                                            Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
                             </Grid>
-                            <TextBlock Text="Fare adanın üzerinde bu süre kadar durduktan sonra genişler. Kısa değerler daha hızlı tepki verir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
-                            <Slider Minimum="0" Maximum="800" StepFrequency="50" IsEnabled="{Binding EnableHoverExpand}"
+                            <TextBlock Text="Fare adanın üzerinde bu süre kadar durduktan sonra tepki verir. Kısa değerler daha hızlı açılır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="0" Maximum="1000" StepFrequency="50" IsEnabled="{Binding EnableHoverExpand}"
                                     Foreground="{ThemeResource SettingsAccent}"
                                     Value="{Binding HoverExpandDelayMs, Mode=TwoWay}"
                                     AutomationProperties.Name="İmleç genişletme gecikmesi" Margin="0,2,0,0" />
                         </StackPanel>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Compact Click Action -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="168" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Kompakt tıklama davranışı" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Kompakt adaya tıklandığında yapılacak varsayılan eylem. Uzun basma tamamlayıcı eylemi çalıştırır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding CompactClickActionIndex, Mode=TwoWay}"
+                                      AutomationProperties.Name="Kompakt tıklama davranışı"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                                <ComboBoxItem Content="Kartı genişlet" />
+                                <ComboBoxItem Content="Uygulamayı öne getir" />
+                                <ComboBoxItem Content="Oynat / Duraklat" />
+                            </ComboBox>
+                        </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
                         <!-- Auto Collapse -->
@@ -313,12 +354,27 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="İşlemden sonra otomatik küçült" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Fare çekildikten sonra adayı otomatik olarak kompakt moda alır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Fare çekildikten sonra adayı otomatik olarak kompakt moda alır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding AutoCollapse, Mode=TwoWay}"
                                           AutomationProperties.Name="İşlemden sonra otomatik küçült" />
                         </Grid>
+
+                        <!-- Auto Collapse Delay -->
+                        <StackPanel Spacing="4" Margin="0,2,0,12">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Otomatik küçültme gecikmesi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding AutoCollapseDelayLabel}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="İmleç adadan ayrıldıktan sonra kartın küçülmeden önce bekleyeceği süre." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="300" Maximum="3000" StepFrequency="100" IsEnabled="{Binding AutoCollapse}"
+                                    Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding AutoCollapseDelayMs, Mode=TwoWay}"
+                                    AutomationProperties.Name="Otomatik küçültme gecikmesi" Margin="0,2,0,0" />
+                        </StackPanel>
                         <Border Style="{StaticResource DividerStyle}" />
 
                         <!-- Fullscreen Auto Hide -->
@@ -326,7 +382,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Tam ekranda otomatik gizle" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Oyun, video veya sunum tam ekrana geçtiğinde adayı tamamen gizler; tam ekran bitince geri getirir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Oyun, video veya sunum tam ekrana geçtiğinde adayı tamamen gizler; tam ekran bitince geri getirir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding AutoHideOnFullscreen, Mode=TwoWay}"
@@ -339,7 +395,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Canlı ritim ekolayzırı" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Kompakt adada çalan parçanın ritmine uygun dalga barları gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Kompakt adada çalan parçanın ritmine uygun dalga barları gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding ShowEqualizer, Mode=TwoWay}"
@@ -350,18 +406,34 @@
 
                 <!-- 2. BOŞTA GÖRÜNÜM -->
                 <TextBlock Text="BOŞTA GÖRÜNÜM" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
                         <!-- Clock -->
                         <Grid MinHeight="54">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Saat" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Kompakt adada canlı saati gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Kompakt adada canlı saati gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding ShowIdleClock, Mode=TwoWay}"
                                           AutomationProperties.Name="Boşta saati göster" />
+                        </Grid>
+
+                        <!-- Clock Format -->
+                        <Grid MinHeight="48" Margin="0,0,0,6">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="152" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Saat biçimi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="24 saat veya AM/PM gösterimi." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding ClockFormatIndex, Mode=TwoWay}"
+                                      IsEnabled="{Binding ShowIdleClock}"
+                                      AutomationProperties.Name="Saat biçimi"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                                <ComboBoxItem Content="24 saat (14:05)" />
+                                <ComboBoxItem Content="12 saat (2:05 PM)" />
+                            </ComboBox>
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
@@ -370,7 +442,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Tarih" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Saatin altında gün ve tarihi gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Saatin altında gün ve tarihi gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding ShowIdleDate, Mode=TwoWay}"
@@ -383,11 +455,27 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Hava durumu" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Sıcaklık ve hava durumu simgesini gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Sıcaklık ve hava durumu simgesini gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding ShowIdleWeather, Mode=TwoWay}"
                                           AutomationProperties.Name="Boşta hava durumunu göster" />
+                        </Grid>
+
+                        <!-- Temperature Unit -->
+                        <Grid MinHeight="48" Margin="0,0,0,4">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="152" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Sıcaklık birimi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Derece göstergesi için °C veya °F." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding TemperatureUnitIndex, Mode=TwoWay}"
+                                      IsEnabled="{Binding ShowIdleWeather}"
+                                      AutomationProperties.Name="Sıcaklık birimi"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                                <ComboBoxItem Content="Santigrat (°C)" />
+                                <ComboBoxItem Content="Fahrenhayt (°F)" />
+                            </ComboBox>
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
@@ -397,7 +485,7 @@
                                 <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="152" /></Grid.ColumnDefinitions>
                                 <StackPanel VerticalAlignment="Center" Spacing="2">
                                     <TextBlock Text="Konum" Style="{StaticResource SettingLabelStyle}" />
-                                    <TextBlock Text="Hava durumu için konum kaynağı." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                    <TextBlock Text="Hava durumu için konum kaynağı." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                                 </StackPanel>
                                 <ComboBox Grid.Column="1" SelectedIndex="{Binding IdleLocationSourceIndex, Mode=TwoWay}"
                                           IsEnabled="{Binding ShowIdleWeather}"
@@ -413,12 +501,13 @@
                                 <TextBox Text="{Binding LocationCityDraft, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                                          PlaceholderText="Şehir adı (ör. İstanbul)"
                                          AutomationProperties.Name="Şehir adı"
-                                         IsEnabled="{Binding IsManualLocation}"
+                                         IsEnabled="{Binding CanEditManualLocation}"
+                                         KeyDown="OnLocationCityKeyDown"
                                          VerticalAlignment="Center" />
                                 <Button Grid.Column="1" Content="Şehri doğrula"
                                         Style="{StaticResource FooterActionButtonStyle}"
                                         Command="{Binding ApplyLocationCommand}"
-                                        IsEnabled="{Binding IsManualLocation}"
+                                        IsEnabled="{Binding CanEditManualLocation}"
                                         Margin="8,0,0,0" VerticalAlignment="Center" />
                             </Grid>
 
@@ -432,14 +521,14 @@
 
                 <!-- 3. MEDYA VE KONTROLLER -->
                 <TextBlock Text="MEDYA VE KONTROLLER" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
                         <!-- Dynamic Artwork Tint -->
                         <Grid MinHeight="54">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Albüm kapağına göre dinamik renk tonlaması" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Adanın arka planını ve butonlarını albüm kapağı renkleriyle canlandırır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Adanın arka planını ve butonlarını albüm kapağı renkleriyle canlandırır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding DynamicColorTint, Mode=TwoWay}"
@@ -464,11 +553,24 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="İleri ve geri sarma kontrolleri" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Oynatıcı kartında 15 saniye geri ve ileri atlama butonlarını gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Oynatıcı kartında 15 saniye geri ve ileri atlama butonlarını gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding ShowSeekControls, Mode=TwoWay}"
                                           AutomationProperties.Name="İleri ve geri sarma kontrollerini göster" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Synced Lyrics -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Şarkı sözlerini göster" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Genişletilmiş müzik kartında LRCLIB'den alınan senkronize şarkı sözlerini gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding ShowLyrics, Mode=TwoWay}"
+                                          AutomationProperties.Name="Şarkı sözlerini göster" />
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
@@ -477,7 +579,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Parça değişim bildirimleri" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Yeni parça başladığında adanın kısa bir bilgilendirme göstermesini sağlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Yeni parça başladığında adanın kısa bir bilgilendirme göstermesini sağlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding ShowTrackChangeNotifications, Mode=TwoWay}"
@@ -486,16 +588,73 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 3. BİLDİRİMLER -->
+                <!-- 4. ODAK SAYACI (POMODORO) -->
+                <TextBlock Text="ODAK SAYACI (POMODORO)" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
+                    <StackPanel Spacing="10" Margin="0,6,0,8">
+                        <!-- Default Focus Minutes -->
+                        <StackPanel Spacing="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Varsayılan odak süresi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding FocusDefaultMinutesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="Tepsi, sağ tık menüsü veya kısayoldan başlatılan odak oturumunun süresi." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="1" Maximum="180" StepFrequency="1" Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding FocusDefaultMinutes, Mode=TwoWay}" AutomationProperties.Name="Varsayılan odak süresi" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Break Minutes -->
+                        <StackPanel Spacing="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Mola süresi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding FocusBreakMinutesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="Odak oturumu tamamlandığında otomatik geçiş yapılan mola süresi." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="1" Maximum="60" StepFrequency="1" Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding FocusBreakMinutes, Mode=TwoWay}" AutomationProperties.Name="Mola süresi" Margin="0,2,0,0" />
+                        </StackPanel>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Custom Focus Minutes -->
+                        <StackPanel Spacing="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Özel sayaç süresi" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding FocusCustomMinutesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                            </Grid>
+                            <TextBlock Text="Odak panelinde saate tıklanarak düzenlenen özel çalışma süresi." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="1" Maximum="180" StepFrequency="1" Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding FocusCustomMinutes, Mode=TwoWay}" AutomationProperties.Name="Özel sayaç süresi" Margin="0,2,0,0" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- 5. BİLDİRİMLER -->
                 <TextBlock Text="BİLDİRİMLER" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
+                        <!-- Do Not Disturb -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Rahatsız Etmeyin" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Acil düşük pil uyarıları dışındaki bildirimleri, indirmeleri ve parça banner'larını susturur." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding DoNotDisturb, Mode=TwoWay}"
+                                          AutomationProperties.Name="Rahatsız Etmeyin" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
                         <!-- Audio HUD -->
                         <Grid MinHeight="54">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Ses değişimi göstergesi" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Ses donanım tuşlarıyla veya başka uygulamalardan değiştiğinde adada kısa bir gösterge çıkarır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Ses donanım tuşlarıyla veya başka uygulamalardan değiştiğinde adada kısa bir gösterge çıkarır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding AudioNotifications, Mode=TwoWay}"
@@ -508,7 +667,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Pil ve güç olayları" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Şarj bağlandığında ve pil azaldığında adada bildirim gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Şarj bağlandığında ve pil azaldığında adada bildirim gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding PowerNotifications, Mode=TwoWay}"
@@ -521,7 +680,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="İndirme bildirimleri" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="İndirilenler klasörüne tamamlanan her dosya için adada kısa bir bildirim gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="İndirilenler klasörüne tamamlanan her dosya için adada kısa bir bildirim gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding DownloadNotifications, Mode=TwoWay}"
@@ -534,7 +693,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Windows sistem bildirimleri" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="WhatsApp, Discord, tarayıcı ve Windows bildirimlerini canlı olarak adada gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="WhatsApp, Discord, tarayıcı ve Windows bildirimlerini canlı olarak adada gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding SystemToastNotifications, Mode=TwoWay}"
@@ -547,11 +706,24 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Bluetooth cihaz bildirimleri" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Bluetooth kulaklık veya çevre birimleri bağlandığında bilgi gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Bluetooth kulaklık veya çevre birimleri bağlandığında bilgi gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding BluetoothNotifications, Mode=TwoWay}"
                                           AutomationProperties.Name="Bluetooth cihaz bildirimleri" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Screenshot Notifications -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Ekran görüntüsü bildirimleri" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Yeni ekran görüntüsü kaydedildiğinde adada hızlı açma bildirimi gösterir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding ScreenshotNotifications, Mode=TwoWay}"
+                                          AutomationProperties.Name="Ekran görüntüsü bildirimleri" />
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
@@ -560,7 +732,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Sayaç bitince ses çal" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Odak veya mola süresi dolduğunda kısa bir sistem bildirim sesi çalar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Odak veya mola süresi dolduğunda kısa bir sistem bildirim sesi çalar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding FocusCompletionSound, Mode=TwoWay}"
@@ -568,18 +740,20 @@
                         </Grid>
                     </StackPanel>
                 </Border>
-                <!-- 4. GÖRÜNÜM VE ANİMASYON -->
+                <!-- 6. GÖRÜNÜM VE ANİMASYON -->
                 <TextBlock Text="GÖRÜNÜM VE ANİMASYON" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,6,16,6" Margin="0,0,0,16">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
                     <StackPanel Spacing="0">
                         <!-- Theme -->
                         <Grid MinHeight="52">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="152" /></Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Görünüm teması" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Arayüz renk temasını seçin." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Arayüz renk temasını seçin." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
-                            <ComboBox Grid.Column="1" SelectedIndex="{Binding ThemeIndex, Mode=TwoWay}" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding ThemeIndex, Mode=TwoWay}"
+                                      AutomationProperties.Name="Görünüm teması"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center">
                                 <ComboBoxItem Content="Sistem" /><ComboBoxItem Content="Koyu" /><ComboBoxItem Content="Açık" />
                             </ComboBox>
                         </Grid>
@@ -588,11 +762,13 @@
                         <!-- Motion -->
                         <Grid MinHeight="52">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="152" /></Grid.ColumnDefinitions>
-                            <StackPanel VerticalAlignment="Center" Spacing="2">
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Hareket akıcılığı" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Geçiş ve yaylanma animasyonlarının dinamizmi." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Geçiş ve yaylanma animasyonlarının dinamizmi." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
-                            <ComboBox Grid.Column="1" SelectedIndex="{Binding AnimationIndex, Mode=TwoWay}" HorizontalAlignment="Stretch" VerticalAlignment="Center">
+                            <ComboBox Grid.Column="1" SelectedIndex="{Binding AnimationIndex, Mode=TwoWay}"
+                                      AutomationProperties.Name="Hareket akıcılığı"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center">
                                 <ComboBoxItem Content="Az" /><ComboBoxItem Content="Dengeli" /><ComboBoxItem Content="Akıcı" />
                             </ComboBox>
                         </Grid>
@@ -615,7 +791,7 @@
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
                             <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
                                 <TextBlock Text="Cam efekti (Glassmorphism)" Style="{StaticResource SettingLabelStyle}" />
-                                <TextBlock Text="Adanın arkasındaki masaüstünü yakalayıp bulanıklaştırarak gerçek cam (frost) efekti uygular." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                                <TextBlock Text="Adanın arkasındaki masaüstünü yakalayıp bulanıklaştırarak gerçek cam (frost) efekti uygular." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             </StackPanel>
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding UseTransparency, Mode=TwoWay}"
@@ -636,10 +812,26 @@
                     </StackPanel>
                 </Border>
 
-                <!-- 5. KONUM VE BOYUT -->
+                <!-- 7. KONUM VE BOYUT -->
                 <TextBlock Text="KONUM VE BOYUT" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,10,16,12" Margin="0,0,0,16">
-                    <StackPanel Spacing="10">
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
+                    <StackPanel Spacing="10" Margin="0,6,0,8">
+                        <!-- Preferred Monitor -->
+                        <Grid MinHeight="48">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="196" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Hedef ekran" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Çoklu monitör düzeninde adanın görüneceği ekran." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ComboBox Grid.Column="1"
+                                      ItemsSource="{Binding MonitorOptions}"
+                                      DisplayMemberPath="DisplayName"
+                                      SelectedIndex="{Binding SelectedMonitorIndex, Mode=TwoWay}"
+                                      AutomationProperties.Name="Hedef ekran"
+                                      HorizontalAlignment="Stretch" VerticalAlignment="Center" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
                         <!-- Top Offset -->
                         <StackPanel Spacing="4">
                             <Grid>
@@ -647,9 +839,28 @@
                                 <TextBlock Text="Ekran üst kenar boşluğu (Floating Gap)" Style="{StaticResource SettingLabelStyle}" />
                                 <TextBlock Grid.Column="1" Text="{Binding TopOffsetLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
                             </Grid>
-                            <TextBlock Text="Adanın ekranın üst kenarından olan mesafesini canlı olarak ayarlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
-                            <Slider Minimum="0" Maximum="80" StepFrequency="1" Foreground="{ThemeResource SettingsAccent}"
+                            <TextBlock Text="Adanın ekranın üst kenarından olan mesafesini canlı olarak ayarlar. 0 px tam tepeye sabitler." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="0" Maximum="120" StepFrequency="1" Foreground="{ThemeResource SettingsAccent}"
                                     Value="{Binding TopOffset, Mode=TwoWay}" AutomationProperties.Name="Ekran üst kenar boşluğu" Margin="0,2,0,0" />
+                        </StackPanel>
+
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Horizontal Offset -->
+                        <StackPanel Spacing="4">
+                            <Grid>
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Yatay konum (Sola / Sağa kaydırma)" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Grid.Column="1" Text="{Binding HorizontalOffsetLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" Margin="0,0,8,0" />
+                                <Button Grid.Column="2" Content="Sıfırla"
+                                        Command="{Binding ResetHorizontalOffsetCommand}"
+                                        Style="{StaticResource FooterActionButtonStyle}"
+                                        Padding="10,4" MinHeight="26" FontSize="11.5"
+                                        AutomationProperties.Name="Yatay konumu sıfırla" />
+                            </Grid>
+                            <TextBlock Text="Kamera çentiği veya üst çubuk düzeni için adayı yatay eksende sağa ya da sola kaydırır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <Slider Minimum="-400" Maximum="400" StepFrequency="5" Foreground="{ThemeResource SettingsAccent}"
+                                    Value="{Binding HorizontalOffset, Mode=TwoWay}" AutomationProperties.Name="Yatay konum" Margin="0,2,0,0" />
                         </StackPanel>
 
                         <Border Style="{StaticResource DividerStyle}" />
@@ -661,26 +872,49 @@
                                 <TextBlock Text="Ada ölçeği" Style="{StaticResource SettingLabelStyle}" />
                                 <TextBlock Grid.Column="1" Text="{Binding IslandScaleLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
                             </Grid>
-                            <TextBlock Text="Dinamik adanın genel boyut oranını ayarlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                            <TextBlock Text="Dinamik adanın genel boyut oranını ayarlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                             <Slider Minimum="80" Maximum="125" StepFrequency="5" Foreground="{ThemeResource SettingsAccent}"
                                     Value="{Binding IslandScale, Mode=TwoWay}" AutomationProperties.Name="Ada boyutu" Margin="0,2,0,0" />
                         </StackPanel>
                     </StackPanel>
                 </Border>
 
-                <!-- 6. SİSTEM -->
+                <!-- 8. SİSTEM -->
                 <TextBlock Text="SİSTEM" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
-                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,2,16,2" Margin="0,0,0,16">
-                    <Grid MinHeight="54">
-                        <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
-                        <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
-                            <TextBlock Text="Windows ile başlat" Style="{StaticResource SettingLabelStyle}" />
-                            <TextBlock Text="Windows açıldığında Pulse otomatik olarak başlasın." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" />
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,4" Margin="0,0,0,16">
+                    <StackPanel Spacing="0">
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Windows ile başlat" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Windows açıldığında Pulse otomatik olarak başlasın." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding StartWithWindows, Mode=TwoWay}"
+                                          AutomationProperties.Name="Windows ile başlat" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Global Hotkeys -->
+                        <StackPanel Spacing="4" Margin="0,4,0,8">
+                            <Grid MinHeight="48">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                    <TextBlock Text="Genel klavye kısayolları (Win+Alt+I / Win+Shift+F)" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBlock Text="Win+Alt+I adayı gizler/gösterir, Win+Shift+F odak sayacını başlatır veya duraklatır." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                              OnContent="" OffContent="" IsOn="{Binding EnableGlobalHotkeys, Mode=TwoWay}"
+                                              AutomationProperties.Name="Genel klavye kısayolları" />
+                            </Grid>
+                            <TextBlock Text="{Binding HotkeyWarningMessage}"
+                                       Visibility="{Binding HotkeyWarningVisibility}"
+                                       Foreground="{ThemeResource SettingsWarning}"
+                                       FontSize="12"
+                                       TextWrapping="Wrap"
+                                       Margin="0,0,0,4" />
                         </StackPanel>
-                        <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
-                                      OnContent="" OffContent="" IsOn="{Binding StartWithWindows, Mode=TwoWay}"
-                                      AutomationProperties.Name="Windows ile başlat" />
-                    </Grid>
+                    </StackPanel>
                 </Border>
             </StackPanel>
         </ScrollViewer>

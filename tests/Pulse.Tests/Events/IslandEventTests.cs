@@ -13,6 +13,19 @@ public sealed class IslandEventTests
         Assert.True(EventPriority.Warning > EventPriority.Progress);
         Assert.True(EventPriority.Progress > EventPriority.Informational);
         Assert.True(EventPriority.Informational > EventPriority.Routine);
+        Assert.True(EventPriority.Routine > EventPriority.Ambient);
+    }
+
+    [Fact]
+    public void OngoingFocusTimerHasAmbientPriorityAndCompletedHasWarningPriority()
+    {
+        var running = new FocusTimerEvent("focus_timer", TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(25), false, FocusTimerState.Running);
+        var paused = new FocusTimerEvent("focus_timer", TimeSpan.FromMinutes(20), TimeSpan.FromMinutes(25), false, FocusTimerState.Paused);
+        var completed = new FocusTimerEvent("focus_timer", TimeSpan.Zero, TimeSpan.FromMinutes(25), false, FocusTimerState.Completed);
+
+        Assert.Equal(EventPriority.Ambient, running.Priority);
+        Assert.Equal(EventPriority.Ambient, paused.Priority);
+        Assert.Equal(EventPriority.Warning, completed.Priority);
     }
 
     [Fact]

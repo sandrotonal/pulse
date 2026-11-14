@@ -25,6 +25,9 @@ public interface ISystemControlService
     /// <summary>Captures the primary screen. Returns the saved file path, or empty on failure.</summary>
     string CaptureScreenshot();
 
+    /// <summary>Asynchronously captures the primary screen without blocking the UI thread.</summary>
+    Task<string> CaptureScreenshotAsync() => Task.FromResult(CaptureScreenshot());
+
     /// <summary>Returns battery charge percent, charging state and AC power state, or null when no battery exists.</summary>
     (int Percent, bool IsCharging, bool IsLow, bool IsOnAc)? GetBatteryStatus();
 

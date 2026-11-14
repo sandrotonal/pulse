@@ -11,4 +11,5 @@ public interface IEventRouter : IDisposable
     void Dismiss(string eventId);
     void LockUserInteraction();
     void UnlockUserInteraction();
+    void SetPresentationPaused(bool isPaused);
 }

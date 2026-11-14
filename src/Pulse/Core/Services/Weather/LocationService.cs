@@ -23,7 +23,7 @@ internal sealed partial class LocationCacheJsonContext : JsonSerializerContext
 /// Approximate IP geolocation with a 24-hour disk cache, plus Open-Meteo geocoding
 /// for the manual city override. No Windows location permission is required.
 /// </summary>
-public sealed class LocationService : ILocationService
+public sealed class LocationService : ILocationService, IDisposable
 {
     private static readonly TimeSpan CacheTtl = TimeSpan.FromHours(24);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(5);
@@ -34,6 +34,7 @@ public sealed class LocationService : ILocationService
     private readonly TimeProvider _timeProvider;
     private readonly SemaphoreSlim _cacheGate = new(1, 1);
     private readonly ConcurrentDictionary<string, GeoLocation> _geocodeCache = new(StringComparer.OrdinalIgnoreCase);
+    private volatile bool _disposed;
 
     public LocationService(
         HttpClient httpClient,
@@ -100,9 +101,9 @@ public sealed class LocationService : ILocationService
         {
             // Request timeout: fall back to the last known location.
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or ObjectDisposedException)
         {
-            // Network or malformed payload: fall back to the last known location.
+            // Network, malformed payload, or disposed client during shutdown: fall back to the last known location.
         }
 
         return cached is null ? null : ToGeoLocation(cached);
@@ -179,7 +180,7 @@ public sealed class LocationService : ILocationService
         {
             return null;
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or JsonException or ObjectDisposedException)
         {
             return null;
         }
@@ -240,9 +241,17 @@ public sealed class LocationService : ILocationService
 
     private async Task<LocationCacheEntry?> ReadCacheAsync(CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            return null;
+        }
+
+        var acquired = false;
         try
         {
-            if (!File.Exists(_cachePath))
+            await _cacheGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            acquired = true;
+            if (_disposed || !File.Exists(_cachePath))
             {
                 return null;
             }
@@ -252,36 +261,78 @@ public sealed class LocationService : ILocationService
                 .DeserializeAsync(stream, LocationCacheJsonContext.Default.LocationCacheEntry, cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or ObjectDisposedException)
         {
             return null;
+        }
+        finally
+        {
+            if (acquired)
+            {
+                try { _cacheGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
     }
 
     private async Task WriteCacheAsync(LocationCacheEntry entry, CancellationToken cancellationToken)
     {
-        await _cacheGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        if (_disposed)
+        {
+            return;
+        }
+
+        var acquired = false;
+        var temporaryPath = _cachePath + ".tmp";
         try
         {
+            await _cacheGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            acquired = true;
+            if (_disposed)
+            {
+                return;
+            }
+
             Directory.CreateDirectory(Path.GetDirectoryName(_cachePath)!);
-            var temporaryPath = _cachePath + ".tmp";
             await using (var stream = File.Create(temporaryPath))
             {
                 await JsonSerializer
-                    .SerializeAsync(stream, entry, LocationCacheJsonContext.Default.LocationCacheEntry, cancellationToken)
+                    .SerializeAsync(stream, entry, LocationCacheJsonContext.Default.LocationCacheEntry, CancellationToken.None)
                     .ConfigureAwait(false);
             }
 
             File.Move(temporaryPath, _cachePath, overwrite: true);
         }
-        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException)
+        catch (Exception ex) when (ex is IOException or JsonException or UnauthorizedAccessException or ObjectDisposedException or OperationCanceledException)
         {
-            // Location is best-effort; a cache write failure must never break the island.
+            try
+            {
+                if (File.Exists(temporaryPath))
+                {
+                    File.Delete(temporaryPath);
+                }
+            }
+            catch
+            {
+            }
         }
         finally
         {
-            _cacheGate.Release();
+            if (acquired)
+            {
+                try { _cacheGate.Release(); } catch (ObjectDisposedException) { }
+            }
         }
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        _cacheGate.Dispose();
     }
 
     private static GeoLocation ToGeoLocation(LocationCacheEntry cache) =>

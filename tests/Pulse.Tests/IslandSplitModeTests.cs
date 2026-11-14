@@ -70,4 +70,22 @@ public sealed class IslandSplitModeTests
         Assert.True(trackChangedWidth > compactWidth);
         Assert.True(notificationWidth >= 280);
     }
+
+    [Fact]
+    public void PolicyHandlesExpandedForcedSplitFocusAndFileOperations()
+    {
+        Assert.False(IslandPresentationPolicy.ShouldUseSplitMode(
+            isCompact: false, isSplitDemoForced: true, hasTrack: true, isFocusTimerActive: true, isNotificationActive: false, isFileOperationActive: false));
+
+        Assert.True(IslandPresentationPolicy.ShouldUseSplitMode(
+            isCompact: true, isSplitDemoForced: true, hasTrack: false, isFocusTimerActive: false, isNotificationActive: true, isFileOperationActive: false));
+
+        Assert.Equal(384, IslandPresentationPolicy.ComputeCompactTargetWidth(IslandState.Expanded, true, false, false, false, false));
+        Assert.Equal(196, IslandPresentationPolicy.ComputeCompactTargetWidth(IslandState.Hover, true, isSplit: true, false, false, false));
+        Assert.Equal(252, IslandPresentationPolicy.ComputeCompactTargetWidth(IslandState.Hover, hasTrack: true, isSplit: false, false, false, false));
+        Assert.Equal(216, IslandPresentationPolicy.ComputeCompactTargetWidth(IslandState.Hover, hasTrack: false, isSplit: false, false, false, false));
+        Assert.Equal(220, IslandPresentationPolicy.ComputeCompactTargetWidth(IslandState.Compact, hasTrack: false, isSplit: false, false, false, isFocusTimerActive: true));
+        Assert.Equal(288, IslandPresentationPolicy.ComputeCompactTargetWidth(IslandState.Compact, hasTrack: false, isSplit: false, false, isFileOperationActive: true, false));
+        Assert.Equal(216, IslandPresentationPolicy.ComputeCompactTargetWidth(IslandState.TrackChanged, hasTrack: false, isSplit: false, false, false, false));
+    }
 }

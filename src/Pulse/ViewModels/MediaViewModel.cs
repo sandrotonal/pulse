@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Pulse.Core.Events;
 using Pulse.Core.Interfaces;
@@ -19,13 +21,18 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly ISettingsService _settingsService;
     private readonly IEventRouter? _eventRouter;
-    private readonly LyricsService _lyricsService = new();
+    private readonly LyricsService _lyricsService;
     private readonly IslandStateMachine _stateMachine = new();
     private readonly DispatcherQueueTimer _stateTimer;
     private readonly DispatcherQueueTimer _playbackTicker;
+    private readonly Microsoft.UI.Xaml.Media.SolidColorBrush _shuffleActiveBrush = new(Microsoft.UI.ColorHelper.FromArgb(255, 0, 122, 255));
+    private readonly Microsoft.UI.Xaml.Media.SolidColorBrush _favoriteActiveBrush = new(Microsoft.UI.ColorHelper.FromArgb(255, 255, 59, 48));
+    private readonly Microsoft.UI.Xaml.Media.SolidColorBrush _controlInactiveBrush = new(Microsoft.UI.ColorHelper.FromArgb(255, 164, 171, 182));
     private DateTimeOffset _lastTickTime = DateTimeOffset.UtcNow;
+    private CancellationTokenSource? _lyricsCts;
     private MediaTrack? _currentTrack;
-    private BitmapImage? _artworkImage;
+    private ImageSource? _artworkImage;
+    private ImageSource? _compactArtworkImage;
     private uint _artworkAccentColor = 0xFF007AFFu;
     private LyricsResult? _lyrics;
     private string _currentLyricLine = "Sözler aranıyor";
@@ -34,19 +41,24 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private double? _seekPreviewPercent;
     private string? _seekStatus;
     private bool _isInitialized;
+    private bool _lastShowLyrics;
+    private volatile bool _disposed;
 
     public MediaViewModel(
         IMediaSessionService mediaSessionService,
         IPlaybackController playbackController,
         ISettingsService settingsService,
         DispatcherQueue dispatcherQueue,
-        IEventRouter? eventRouter = null)
+        IEventRouter? eventRouter = null,
+        HttpClient? httpClient = null)
     {
         _mediaSessionService = mediaSessionService;
         _playbackController = playbackController;
         _settingsService = settingsService;
+        _lastShowLyrics = _settingsService.Current.ShowLyrics;
         _dispatcherQueue = dispatcherQueue;
         _eventRouter = eventRouter;
+        _lyricsService = new LyricsService(httpClient);
         _stateTimer = dispatcherQueue.CreateTimer();
         _stateTimer.Interval = TimeSpan.FromSeconds(2.4);
         _stateTimer.Tick += OnStateTimerTick;
@@ -105,6 +117,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
                 OnPropertyChanged(nameof(PlaybackLabel));
                 OnPropertyChanged(nameof(PlayPauseGlyph));
                 OnPropertyChanged(nameof(AppDisplayName));
+                OnPropertyChanged(nameof(AppBadgeText));
                 OnPropertyChanged(nameof(IsSpotify));
                 OnPropertyChanged(nameof(PositionLabel));
                 OnPropertyChanged(nameof(DurationLabel));
@@ -150,7 +163,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     {
         "Spotify" => "S",
         "YouTube Music" => "YT",
-        "Apple Music" => "",
+        "Apple Music" => "AM",
         "Google Chrome" => "C",
         "Microsoft Edge" => "E",
         _ => "P"
@@ -187,11 +200,30 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public double IslandScale => _settingsService.Current.IslandScale / 100d;
     public string AnimationIntensity => _settingsService.Current.AnimationIntensity;
     public string Theme => _settingsService.Current.Theme;
+    public string PreferredMonitorDeviceName => _settingsService.Current.PreferredMonitorDeviceName;
+    public int HorizontalOffset => _settingsService.Current.HorizontalOffset;
+    public int AutoCollapseDelayMs => _settingsService.Current.AutoCollapseDelayMs;
+    public string CompactClickAction => _settingsService.Current.CompactClickAction;
+    public string HoverAction => _settingsService.Current.HoverAction;
+    public bool Use24HourClock => _settingsService.Current.Use24HourClock;
+    public string TemperatureUnit => _settingsService.Current.TemperatureUnit;
+    public bool ShowLyrics => _settingsService.Current.ShowLyrics;
+    public int FocusDefaultMinutes => _settingsService.Current.FocusDefaultMinutes;
+    public int FocusBreakMinutes => _settingsService.Current.FocusBreakMinutes;
+    public int FocusCustomMinutes => _settingsService.Current.FocusCustomMinutes;
+    public bool EnableGlobalHotkeys => _settingsService.Current.EnableGlobalHotkeys;
+    public bool ScreenshotNotifications => _settingsService.Current.ScreenshotNotifications;
+    public bool DoNotDisturb => _settingsService.Current.DoNotDisturb;
     public bool CanTogglePlayback => CurrentTrack is { CanPlay: true } or { CanPause: true };
     public string? SourceAppUserModelId => CurrentTrack?.SourceApplicationId;
     public bool CanGoNext => CurrentTrack?.CanNext == true;
     public bool CanGoPrevious => CurrentTrack?.CanPrevious == true;
-    public BitmapImage? ArtworkImage => _artworkImage;
+    public ImageSource? ArtworkImage => _artworkImage;
+    public ImageSource? CompactArtworkImage => _compactArtworkImage;
+    public bool HasArtwork => _artworkImage is not null;
+    public Microsoft.UI.Xaml.Visibility ArtworkFallbackVisibility => HasArtwork
+        ? Microsoft.UI.Xaml.Visibility.Collapsed
+        : Microsoft.UI.Xaml.Visibility.Visible;
     public uint ArtworkAccentColor => _artworkAccentColor;
     public bool HasLyrics => _lyrics?.HasLyrics == true;
     public string CurrentLyricLine => _currentLyricLine;
@@ -270,11 +302,9 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public string FavoriteGlyph => IsFavorite ? "\uEB52" : "\uEB51";
 
-    public Microsoft.UI.Xaml.Media.SolidColorBrush ShuffleBrush => new(
-        IsShuffleEnabled ? Microsoft.UI.ColorHelper.FromArgb(255, 0, 122, 255) : Microsoft.UI.ColorHelper.FromArgb(255, 164, 171, 182));
+    public Microsoft.UI.Xaml.Media.SolidColorBrush ShuffleBrush => IsShuffleEnabled ? _shuffleActiveBrush : _controlInactiveBrush;
 
-    public Microsoft.UI.Xaml.Media.SolidColorBrush FavoriteBrush => new(
-        IsFavorite ? Microsoft.UI.ColorHelper.FromArgb(255, 255, 59, 48) : Microsoft.UI.ColorHelper.FromArgb(255, 164, 171, 182));
+    public Microsoft.UI.Xaml.Media.SolidColorBrush FavoriteBrush => IsFavorite ? _favoriteActiveBrush : _controlInactiveBrush;
 
     public async Task InitializeAsync()
     {
@@ -433,27 +463,51 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     public ValueTask DisposeAsync()
     {
+        if (_disposed)
+        {
+            return ValueTask.CompletedTask;
+        }
+
+        _disposed = true;
         _mediaSessionService.CurrentTrackChanged -= OnCurrentTrackChanged;
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _stateMachine.StateChanged -= OnIslandStateChanged;
         _stateTimer.Stop();
         _playbackTicker.Stop();
+        try { _lyricsCts?.Cancel(); } catch (ObjectDisposedException) { }
+        _lyricsCts = null;
         return ValueTask.CompletedTask;
     }
 
     private void OnCurrentTrackChanged(object? sender, MediaTrack? track)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         if (_dispatcherQueue.HasThreadAccess)
         {
             ApplyTrackUpdate(track);
             return;
         }
 
-        _dispatcherQueue.TryEnqueue(() => ApplyTrackUpdate(track));
+        _dispatcherQueue.TryEnqueue(() =>
+        {
+            if (!_disposed)
+            {
+                ApplyTrackUpdate(track);
+            }
+        });
     }
 
     private void ApplyTrackUpdate(MediaTrack? track)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         var oldTrack = CurrentTrack;
         var changedTrack = track is not null && (oldTrack is null || track.Title != oldTrack.Title || track.Artist != oldTrack.Artist || track.SourceApplicationId != oldTrack.SourceApplicationId);
         CurrentTrack = track;
@@ -463,14 +517,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             _ = UpdateLyricsAsync(track);
         }
         _lastTickTime = DateTimeOffset.UtcNow;
-        if (track?.PlaybackStatus == PlaybackStatus.Playing)
-        {
-            _playbackTicker.Start();
-        }
-        else
-        {
-            _playbackTicker.Stop();
-        }
+        UpdatePlaybackTickerState();
 
         _stateMachine.SetHasMedia(track is not null);
         if (track is not null)
@@ -486,25 +533,47 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             _eventRouter?.Dismiss("active_media");
         }
 
-        if (changedTrack && !NotificationsPaused && _stateMachine.ShowTrackChanged())
+        if (changedTrack && !NotificationsPaused && !DoNotDisturb && _stateMachine.ShowTrackChanged())
         {
             _stateTimer.Interval = TimeSpan.FromSeconds(2.4);
             _stateTimer.Start();
         }
     }
 
-    private void OnPlaybackTickerTick(DispatcherQueueTimer sender, object args)
+    private void UpdatePlaybackTickerState()
     {
+        if (_disposed)
+        {
+            _playbackTicker.Stop();
+            return;
+        }
+
+        if (IsExpanded && CurrentTrack?.PlaybackStatus == PlaybackStatus.Playing)
+        {
+            AdvancePlaybackPositionFromClock();
+            if (!_playbackTicker.IsRunning)
+            {
+                _playbackTicker.Start();
+            }
+        }
+        else
+        {
+            _playbackTicker.Stop();
+        }
+    }
+
+    private void AdvancePlaybackPositionFromClock()
+    {
+        var now = DateTimeOffset.UtcNow;
+        var elapsed = now - _lastTickTime;
+        _lastTickTime = now;
+
         if (IsScrubbing || CurrentTrack is not { PlaybackStatus: PlaybackStatus.Playing, Duration: { Ticks: > 0 } duration } track)
         {
             return;
         }
 
-        var now = DateTimeOffset.UtcNow;
-        var elapsed = now - _lastTickTime;
-        _lastTickTime = now;
-
-        if (elapsed <= TimeSpan.Zero || elapsed > TimeSpan.FromSeconds(5))
+        if (elapsed <= TimeSpan.Zero || elapsed > TimeSpan.FromMinutes(30))
         {
             return;
         }
@@ -521,6 +590,17 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(SeekPercent));
     }
 
+    private void OnPlaybackTickerTick(DispatcherQueueTimer sender, object args)
+    {
+        if (_disposed || !IsExpanded)
+        {
+            sender.Stop();
+            return;
+        }
+
+        AdvancePlaybackPositionFromClock();
+    }
+
     private void OnStateTimerTick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
@@ -528,7 +608,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         // island the user opened: expanded presentations stay open until dismissed.
         if (CurrentIslandState is IslandState.TrackChanged or IslandState.Notification)
         {
-            _stateMachine.ReturnToCompact(HasTrack);
+            _stateMachine.ReturnToCompact(HasTrack, restoreHoverIfHovered: EnableHoverExpand);
         }
     }
 
@@ -544,6 +624,15 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void OnIslandStateChanged(object? sender, IslandState state)
     {
+        if (state == IslandState.Expanded)
+        {
+            _eventRouter?.LockUserInteraction();
+        }
+        else
+        {
+            _eventRouter?.UnlockUserInteraction();
+        }
+
         OnPropertyChanged(nameof(CurrentIslandState));
         OnPropertyChanged(nameof(IsIdle));
         OnPropertyChanged(nameof(IsExpanded));
@@ -551,9 +640,32 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(IdleVisibility));
         OnPropertyChanged(nameof(CompactVisibility));
         OnPropertyChanged(nameof(ExpandedVisibility));
+        UpdatePlaybackTickerState();
     }
 
     private void OnSettingsChanged(object? sender, AppSettings settings)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        if (!_dispatcherQueue.HasThreadAccess)
+        {
+            _dispatcherQueue.TryEnqueue(() =>
+            {
+                if (!_disposed)
+                {
+                    ApplySettingsChanged(settings);
+                }
+            });
+            return;
+        }
+
+        ApplySettingsChanged(settings);
+    }
+
+    private void ApplySettingsChanged(AppSettings settings)
     {
         OnPropertyChanged(nameof(ShowSeekControls));
         OnPropertyChanged(nameof(NotificationsPaused));
@@ -572,6 +684,27 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(IslandScale));
         OnPropertyChanged(nameof(AnimationIntensity));
         OnPropertyChanged(nameof(Theme));
+        OnPropertyChanged(nameof(PreferredMonitorDeviceName));
+        OnPropertyChanged(nameof(HorizontalOffset));
+        OnPropertyChanged(nameof(AutoCollapseDelayMs));
+        OnPropertyChanged(nameof(CompactClickAction));
+        OnPropertyChanged(nameof(HoverAction));
+        OnPropertyChanged(nameof(Use24HourClock));
+        OnPropertyChanged(nameof(TemperatureUnit));
+        OnPropertyChanged(nameof(ShowLyrics));
+        OnPropertyChanged(nameof(FocusDefaultMinutes));
+        OnPropertyChanged(nameof(FocusBreakMinutes));
+        OnPropertyChanged(nameof(FocusCustomMinutes));
+        OnPropertyChanged(nameof(EnableGlobalHotkeys));
+        OnPropertyChanged(nameof(ScreenshotNotifications));
+        OnPropertyChanged(nameof(DoNotDisturb));
+
+        if (_lastShowLyrics != settings.ShowLyrics)
+        {
+            _lastShowLyrics = settings.ShowLyrics;
+            _ = UpdateLyricsAsync(CurrentTrack);
+        }
+
         if (!settings.AutoCollapse)
         {
             _stateTimer.Stop();
@@ -580,27 +713,69 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task UpdateLyricsAsync(MediaTrack? track)
     {
-        var lookupKey = track is null ? null : string.Join("|", track.Title, track.Artist, track.Album, track.Duration?.TotalSeconds.ToString("0"));
-        _lyricsLookupKey = lookupKey;
-        _lyrics = null;
-        SetLyricLines("Sözler aranıyor", string.Empty);
-        OnPropertyChanged(nameof(HasLyrics));
-
-        if (track is null || string.IsNullOrWhiteSpace(track.Title) || string.IsNullOrWhiteSpace(track.Artist))
+        var prevCts = _lyricsCts;
+        if (!_settingsService.Current.ShowLyrics)
         {
-            SetLyricLines("Bu parça için söz bilgisi yok", string.Empty);
+            _lyricsCts = null;
+            if (prevCts is not null)
+            {
+                try { prevCts.Cancel(); } catch (ObjectDisposedException) { }
+            }
+
+            _lyricsLookupKey = null;
+            _lyrics = null;
+            SetLyricLines("Şarkı sözleri kapalı", string.Empty);
+            OnPropertyChanged(nameof(HasLyrics));
             return;
         }
 
-        var lyrics = await _lyricsService.FindLyricsAsync(track.Title, track.Artist, track.Album, track.Duration);
-        if (_lyricsLookupKey != lookupKey)
+        var cts = new CancellationTokenSource();
+        _lyricsCts = cts;
+        if (prevCts is not null)
         {
-            return;
+            try { prevCts.Cancel(); } catch (ObjectDisposedException) { }
         }
 
-        _lyrics = lyrics;
-        OnPropertyChanged(nameof(HasLyrics));
-        UpdateActiveLyric(track.Position);
+        try
+        {
+            var lookupKey = track is null ? null : string.Join("|", track.Title, track.Artist, track.Album, track.Duration?.TotalSeconds.ToString("0"));
+            _lyricsLookupKey = lookupKey;
+            _lyrics = null;
+            SetLyricLines("Sözler aranıyor", string.Empty);
+            OnPropertyChanged(nameof(HasLyrics));
+
+            if (track is null || string.IsNullOrWhiteSpace(track.Title) || string.IsNullOrWhiteSpace(track.Artist))
+            {
+                SetLyricLines("Bu parça için söz bilgisi yok", string.Empty);
+                return;
+            }
+
+            var lyrics = await _lyricsService.FindLyricsAsync(track.Title, track.Artist, track.Album, track.Duration, cts.Token);
+            if (_disposed || cts.IsCancellationRequested || _lyricsLookupKey != lookupKey)
+            {
+                return;
+            }
+
+            _lyrics = lyrics;
+            OnPropertyChanged(nameof(HasLyrics));
+            UpdateActiveLyric(track.Position);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("MediaViewModel.UpdateLyricsAsync", ex);
+        }
+        finally
+        {
+            if (ReferenceEquals(_lyricsCts, cts))
+            {
+                _lyricsCts = null;
+            }
+
+            cts.Dispose();
+        }
     }
 
     private void UpdateActiveLyric(TimeSpan position)
@@ -630,11 +805,8 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
-        var plainLines = _lyrics.PlainText?
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Take(2)
-            .ToArray();
-        SetLyricLines(plainLines?.FirstOrDefault() ?? "Söz bulundu", plainLines is { Length: > 1 } ? plainLines[1] : string.Empty);
+        var plainLines = _lyrics.PlainLines;
+        SetLyricLines(plainLines.Count > 0 ? plainLines[0] : "Söz bulundu", plainLines.Count > 1 ? plainLines[1] : string.Empty);
     }
 
     private void SetLyricLines(string current, string next)
@@ -654,116 +826,125 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private async Task UpdateArtworkAsync(byte[]? artwork)
     {
-        if (artwork is null || artwork.Length == 0)
+        var expectedKey = _lastArtworkKey;
+        if (_disposed || artwork is null || artwork.Length == 0)
         {
-            _artworkImage = null;
-            _artworkAccentColor = 0xFF007AFFu;
-            OnPropertyChanged(nameof(ArtworkImage));
-            OnPropertyChanged(nameof(ArtworkAccentColor));
+            SetArtworkState(null, null, 0xFF007AFFu);
             return;
         }
 
         try
         {
-            using var stream = new InMemoryRandomAccessStream();
-            using (var writer = new DataWriter(stream))
+            var processed = await DecodeAndProcessArtworkAsync(artwork);
+            if (_disposed || !string.Equals(_lastArtworkKey, expectedKey, StringComparison.Ordinal))
             {
-                writer.WriteBytes(artwork);
-                await writer.StoreAsync();
-                writer.DetachStream();
+                return;
             }
-            stream.Seek(0);
-            var image = new BitmapImage();
-            await image.SetSourceAsync(stream);
-            _artworkImage = image;
-            _artworkAccentColor = await ExtractArtworkAccentColorAsync(artwork);
-            OnPropertyChanged(nameof(ArtworkImage));
-            OnPropertyChanged(nameof(ArtworkAccentColor));
+
+            if (processed is null)
+            {
+                SetArtworkState(null, null, 0xFF007AFFu);
+                return;
+            }
+
+            var expandedBitmap = CreateWriteableBitmap(processed.Value.ExpandedBgra, ArtworkBitmapProcessor.ExpandedTargetSizePx);
+            var compactBitmap = CreateWriteableBitmap(processed.Value.CompactBgra, ArtworkBitmapProcessor.CompactTargetSizePx);
+            SetArtworkState(expandedBitmap, compactBitmap, processed.Value.AccentArgb);
         }
         catch (Exception)
         {
-            _artworkImage = null;
-            _artworkAccentColor = 0xFF007AFFu;
-            OnPropertyChanged(nameof(ArtworkImage));
-            OnPropertyChanged(nameof(ArtworkAccentColor));
+            if (_disposed || !string.Equals(_lastArtworkKey, expectedKey, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            SetArtworkState(null, null, 0xFF007AFFu);
         }
     }
 
-    private static async Task<uint> ExtractArtworkAccentColorAsync(byte[] artwork)
+    private void SetArtworkState(ImageSource? expanded, ImageSource? compact, uint accentColor)
     {
-        try
-        {
-            using var stream = new InMemoryRandomAccessStream();
-            using (var writer = new DataWriter(stream))
-            {
-                writer.WriteBytes(artwork);
-                await writer.StoreAsync();
-                writer.DetachStream();
-            }
-
-            stream.Seek(0);
-            var decoder = await BitmapDecoder.CreateAsync(stream);
-            var transform = new BitmapTransform
-            {
-                ScaledWidth = Math.Min(48u, decoder.PixelWidth),
-                ScaledHeight = Math.Min(48u, decoder.PixelHeight),
-                InterpolationMode = BitmapInterpolationMode.Linear
-            };
-            var pixels = await decoder.GetPixelDataAsync(
-                BitmapPixelFormat.Rgba8,
-                BitmapAlphaMode.Premultiplied,
-                transform,
-                ExifOrientationMode.IgnoreExifOrientation,
-                ColorManagementMode.DoNotColorManage);
-            var data = pixels.DetachPixelData();
-            if (data.Length < 4)
-            {
-                return 0xFF007AFFu;
-            }
-
-            double totalWeight = 0;
-            double r = 0;
-            double g = 0;
-            double b = 0;
-            for (var i = 0; i + 3 < data.Length; i += 4)
-            {
-                var pr = data[i];
-                var pg = data[i + 1];
-                var pb = data[i + 2];
-                var max = Math.Max(pr, Math.Max(pg, pb));
-                var min = Math.Min(pr, Math.Min(pg, pb));
-                var saturation = (max - min) / 255d;
-                var brightness = max / 255d;
-                if (brightness < 0.12 || brightness > 0.95)
-                {
-                    continue;
-                }
-
-                var weight = 0.35 + saturation + (brightness * 0.35);
-                r += pr * weight;
-                g += pg * weight;
-                b += pb * weight;
-                totalWeight += weight;
-            }
-
-            if (totalWeight <= 0)
-            {
-                return 0xFF007AFFu;
-            }
-
-            var rr = NormalizeAccentChannel(r / totalWeight);
-            var gg = NormalizeAccentChannel(g / totalWeight);
-            var bb = NormalizeAccentChannel(b / totalWeight);
-            return 0xFF000000u | ((uint)rr << 16) | ((uint)gg << 8) | bb;
-        }
-        catch
-        {
-            return 0xFF007AFFu;
-        }
+        _artworkImage = expanded;
+        _compactArtworkImage = compact;
+        _artworkAccentColor = accentColor;
+        OnPropertyChanged(nameof(ArtworkImage));
+        OnPropertyChanged(nameof(CompactArtworkImage));
+        OnPropertyChanged(nameof(HasArtwork));
+        OnPropertyChanged(nameof(ArtworkFallbackVisibility));
+        OnPropertyChanged(nameof(ArtworkAccentColor));
     }
 
-    private static byte NormalizeAccentChannel(double value)
-        => (byte)Math.Clamp(Math.Round((value * 0.86) + 24), 32, 232);
+    private static async Task<(byte[] ExpandedBgra, byte[] CompactBgra, uint AccentArgb)?> DecodeAndProcessArtworkAsync(byte[] artwork)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        using (var writer = new DataWriter(stream))
+        {
+            writer.WriteBytes(artwork);
+            await writer.StoreAsync();
+            writer.DetachStream();
+        }
+
+        stream.Seek(0);
+        var decoder = await BitmapDecoder.CreateAsync(stream);
+        var (scaledW, scaledH) = ArtworkBitmapProcessor.ComputeDecodeDimensions(decoder.PixelWidth, decoder.PixelHeight);
+        if (scaledW == 0 || scaledH == 0)
+        {
+            return null;
+        }
+
+        var transform = new BitmapTransform
+        {
+            ScaledWidth = scaledW,
+            ScaledHeight = scaledH,
+            InterpolationMode = BitmapInterpolationMode.Fant
+        };
+        var pixels = await decoder.GetPixelDataAsync(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Straight,
+            transform,
+            ExifOrientationMode.RespectExifOrientation,
+            ColorManagementMode.DoNotColorManage);
+        var straightPixels = pixels.DetachPixelData();
+
+        var swappedAxes = decoder.OrientedPixelWidth != decoder.PixelWidth;
+        var pixelW = (int)(swappedAxes ? scaledH : scaledW);
+        var pixelH = (int)(swappedAxes ? scaledW : scaledH);
+        if (pixelW <= 0 || pixelH <= 0 || straightPixels.Length < checked(pixelW * pixelH * 4))
+        {
+            return null;
+        }
+
+        return await Task.Run(() =>
+        {
+            var accent = ArtworkBitmapProcessor.ExtractAccentColorFromBgra8(straightPixels, pixelW, pixelH);
+            var expandedBgra = ArtworkBitmapProcessor.CreateSoftEdgeSquarePremultipliedBgra8(
+                straightPixels,
+                pixelW,
+                pixelH,
+                ArtworkBitmapProcessor.ExpandedTargetSizePx,
+                ArtworkBitmapProcessor.ExpandedCornerRadiusRatio,
+                ArtworkBitmapProcessor.ExpandedFeatherRatio,
+                ArtworkBitmapProcessor.ExpandedOuterInsetRatio);
+            var compactBgra = ArtworkBitmapProcessor.CreateSoftEdgeSquarePremultipliedBgra8(
+                straightPixels,
+                pixelW,
+                pixelH,
+                ArtworkBitmapProcessor.CompactTargetSizePx,
+                ArtworkBitmapProcessor.CompactCornerRadiusRatio,
+                ArtworkBitmapProcessor.CompactFeatherRatio,
+                ArtworkBitmapProcessor.CompactOuterInsetRatio);
+            return ((byte[] ExpandedBgra, byte[] CompactBgra, uint AccentArgb)?)(expandedBgra, compactBgra, accent);
+        });
+    }
+
+    private static WriteableBitmap CreateWriteableBitmap(byte[] premultipliedBgra, int size)
+    {
+        var bitmap = new WriteableBitmap(size, size);
+        using var pixelStream = bitmap.PixelBuffer.AsStream();
+        pixelStream.Write(premultipliedBgra, 0, premultipliedBgra.Length);
+        bitmap.Invalidate();
+        return bitmap;
+    }
 
     private static string FormatTime(TimeSpan? value)
     {

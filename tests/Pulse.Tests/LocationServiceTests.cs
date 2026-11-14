@@ -161,13 +161,38 @@ public sealed class LocationServiceTests
         var handler = new StubHttpMessageHandler(_ =>
             StubHttpMessageHandler.Json("{}", HttpStatusCode.ServiceUnavailable));
         using var http = new HttpClient(handler);
-        var service = CreateService(http, out var directory);
+        using var service = CreateService(http, out var directory);
 
         try
         {
             var location = await service.GeocodeAsync("Istanbul");
 
             Assert.Null(location);
+        }
+        finally
+        {
+            Cleanup(directory);
+        }
+    }
+
+    [Fact]
+    public async Task ManualCityWithoutCoordinatesGeocodesAndRecoversFromCorruptCache()
+    {
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Json(GeocodeJson));
+        using var http = new HttpClient(handler);
+        using var service = CreateService(http, out var directory);
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "location-cache.json"), "{corrupt");
+
+            var resolved = await service.ResolveAsync(true, "Istanbul", null, null);
+
+            Assert.NotNull(resolved);
+            Assert.True(resolved!.IsManual);
+            Assert.Equal("İstanbul", resolved.City);
+            Assert.Null(await service.GeocodeAsync("   "));
         }
         finally
         {

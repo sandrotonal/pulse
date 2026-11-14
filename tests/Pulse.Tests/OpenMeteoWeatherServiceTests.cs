@@ -187,11 +187,60 @@ public sealed class OpenMeteoWeatherServiceTests
             var secondHandler = new StubHttpMessageHandler(_ =>
                 throw new InvalidOperationException("Fresh cache should avoid HTTP."));
             using var secondHttp = new HttpClient(secondHandler);
-            var second = new OpenMeteoWeatherService(secondHttp, directory, time);
+            using var second = new OpenMeteoWeatherService(secondHttp, directory, time);
             var result = await second.GetAsync(Istanbul);
 
             Assert.NotNull(result.Snapshot);
             Assert.Equal(0, secondHandler.CallCount);
+        }
+        finally
+        {
+            Cleanup(directory);
+        }
+    }
+
+    [Theory]
+    [InlineData(double.NaN, 28.95)]
+    [InlineData(95.0, 28.95)]
+    [InlineData(41.0, -185.0)]
+    public async Task OutOfRangeOrNonFiniteCoordinatesReturnEmptyWithoutHttp(double lat, double lon)
+    {
+        var handler = new StubHttpMessageHandler(_ =>
+            throw new InvalidOperationException("Invalid coordinates should not call HTTP."));
+        using var http = new HttpClient(handler);
+        using var service = CreateService(http, out var directory);
+
+        try
+        {
+            var result = await service.GetAsync(new GeoLocation(lat, lon, "Bad", "TR", ""));
+            Assert.Null(result.Snapshot);
+            Assert.Equal(0, handler.CallCount);
+        }
+        finally
+        {
+            Cleanup(directory);
+        }
+    }
+
+    [Fact]
+    public async Task MissingApparentTemperatureFallsBackToTemperatureAndCorruptDiskCacheRecovers()
+    {
+        var handler = new StubHttpMessageHandler(_ => StubHttpMessageHandler.Json(
+            """{"current":{"temperature_2m":17.5,"weather_code":1,"is_day":1}}"""));
+        using var http = new HttpClient(handler);
+        using var service = CreateService(http, out var directory);
+
+        try
+        {
+            Directory.CreateDirectory(directory);
+            await File.WriteAllTextAsync(Path.Combine(directory, "weather-cache.json"), "{corrupt");
+
+            var result = await service.GetAsync(Istanbul);
+
+            Assert.NotNull(result.Snapshot);
+            Assert.Equal(17.5, result.Snapshot!.TemperatureC);
+            Assert.Equal(17.5, result.Snapshot.ApparentTemperatureC);
+            Assert.Equal(string.Empty, result.Snapshot.TimeZoneId);
         }
         finally
         {
