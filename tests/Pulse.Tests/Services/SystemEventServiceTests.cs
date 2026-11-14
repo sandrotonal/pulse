@@ -180,4 +180,31 @@ public sealed class SystemEventServiceTests
         var audioEvt = Assert.IsType<SystemNotificationEvent>(routerB.CurrentActiveEvent);
         Assert.Equal(EventPriority.Routine, audioEvt.Priority);
     }
+
+    [Fact]
+    public void ReportAudioEndpointChanged_PublishesAudioEventWithDeviceNameAndGlyph()
+    {
+        using var router = new EventRouter();
+        var service = new SystemEventService(router);
+
+        service.ReportAudioEndpointChanged("Kulaklık (Realtek Audio)", "\uE7F6");
+
+        var active = Assert.IsType<SystemNotificationEvent>(router.CurrentActiveEvent);
+        Assert.Equal(EventCategory.Audio, active.Category);
+        Assert.Equal("Ses Çıkışı", active.Title);
+        Assert.Equal("Kulaklık (Realtek Audio)", active.Subtitle);
+        Assert.Equal("\uE7F6", active.IconGlyph);
+        Assert.Equal(EventPriority.Informational, active.Priority);
+    }
+
+    [Fact]
+    public void ReportAudioEndpointChanged_DisabledAudioNotifications_SuppressesEvent()
+    {
+        using var router = new EventRouter();
+        var service = new SystemEventService(router, new ToggleSettingsService());
+
+        service.ReportAudioEndpointChanged("Hoparlör", "\uE7F5");
+
+        Assert.Null(router.CurrentActiveEvent);
+    }
 }

@@ -1612,10 +1612,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                     OnPropertyChanged(nameof(ActiveAudioDeviceName));
                     OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
                     OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
+                    _systemEvents.ReportAudioEndpointChanged(newName, newGlyph);
                 }
             }
 
-            if (!e.IsSelfOriginated && (changed || e.IsDeviceSwitch))
+            if (!e.IsSelfOriginated && changed && !e.IsDeviceSwitch)
             {
                 _systemEvents.ReportAudioStatus(e.VolumePercent, e.IsMuted);
             }
