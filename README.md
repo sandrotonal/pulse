@@ -7,7 +7,7 @@
 [![NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![WinUI 3](https://img.shields.io/badge/WinUI-3.0-0078D4?style=for-the-badge&logo=windows11)](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/)
 [![Windows App SDK](https://img.shields.io/badge/WindowsAppSDK-2.5.1-0078D4?style=for-the-badge)](https://github.com/microsoft/windowsappsdk)
-[![Tests](https://img.shields.io/badge/Tests-172%20Passing-30D158?style=for-the-badge)](tests/Pulse.Tests)
+[![Tests](https://img.shields.io/badge/Tests-342%20Passing-30D158?style=for-the-badge)](tests/Pulse.Tests)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
 *Pulse brings a sleek, GPU-animated Liquid Glass Dynamic Island experience to Windows 11 — combining native system media control, synced lyrics, adaptive album-art frost, a monochrome Pomodoro focus timer, a matching system control panel, real-time OS notifications, and a smart idle strip for time, date and weather.*
@@ -17,14 +17,14 @@
 <p>
   <img src="docs/images/island-compact.png" width="340" alt="Pulse compact media pill capturing live Spotify playback with album art tint" />
 </p>
-<p><em><strong>Compact Media Pill:</strong> Live track artwork, artist/title metadata, play/pause toggle, and adaptive artwork color tinting inside a crisp GPU-clipped capsule.</em></p>
+<p><em><strong>Compact Media Pill:</strong> Live track artwork, artist/title metadata, play/pause toggle, and soft-blended artwork presentation without harsh borders inside a crisp GPU-clipped capsule.</em></p>
 
 <br />
 
 <p>
   <img src="docs/images/island-expanded-media.png" width="480" alt="Pulse expanded media dashboard with album artwork, seek bar, synced lyrics, and transport controls" />
 </p>
-<p><em><strong>Expanded Media Dashboard:</strong> Adaptive artwork frost tinting, drag-to-seek timeline, live synced <code>lrclib</code> lyrics (current + upcoming line), and transport controls. Tap the artwork to jump straight to the source app.</em></p>
+<p><em><strong>Expanded Media Dashboard:</strong> Adaptive artwork frost tinting, interactive drag-to-seek timeline with floating hover/scrub timestamp preview tooltip, live synced <code>lrclib</code> lyrics (current + upcoming line), transport controls, and an AirPlay-style audio route switcher button. Tap the artwork to jump straight to the source app.</em></p>
 
 <br />
 
@@ -38,7 +38,7 @@
 <p>
   <img src="docs/images/island-expanded-system.png" width="480" alt="Pulse system controls panel with volume slider, battery percentage, and screenshot capture" />
 </p>
-<p><em><strong>System &amp; Control Panel:</strong> Monochrome WASAPI master volume slider with mute toggle, semantic battery telemetry (green charging pulse, red low-battery warning), and one-click screenshot capture.</em></p>
+<p><em><strong>System &amp; Control Panel:</strong> Monochrome WASAPI master volume slider with mute toggle, semantic battery telemetry (green charging pulse, red low-battery warning), active Audio Output Endpoint switcher capsule (`Kulaklık / Hoparlör`), and one-click screenshot capture.</em></p>
 
 <br />
 
@@ -71,10 +71,10 @@
 - **Liquid-Glass Frost Engine**: Toggleable frosted glassmorphism (`LiquidGlassEngine` + `DesktopFrostService`) with a 0–100% transparency slider that samples and blurs the live desktop behind the island, adds an optical Fresnel highlight rim, and blends album-art accent tinting cleanly across Dark, Light, and System themes.
 - **Live Theme Switching (Dark / Light / System)**: Instant runtime `RequestedTheme` updates across the Island and Settings window without restarting the app.
 - **Smart Idle Strip**: When no media is playing, the compact pill displays a live clock, Turkish date, and Open-Meteo local weather (15-minute refresh, automatic `ipwho.is` IP lookup or manually verified city). Clock, date, and weather can each be toggled independently.
-- **Live Media Session Control**: Automatic integration with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC, and more — featuring dynamic artwork caching, seekable progress bar, ±15s skip controls, and synced lyrics powered by `lrclib`.
+- **Live Media Session Control**: Automatic integration with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC, and more — featuring dynamic artwork caching, seekable progress bar with floating timestamp tooltip preview, ±15s skip controls, synced lyrics powered by `lrclib`, and active audio route switching.
 - **Split Island**: Concurrent media playback and an active focus countdown automatically split into paired left/right capsules and merge seamlessly when either finishes.
 - **Focus Timer (Pomodoro)**: Monochrome preset chips (`25/50` work, `5/15` break), custom duration picker (`1–180` min), tabular countdown digits, session auto-switching, pinned capsule visibility, and optional completion chime.
-- **System & Control Panel**: Stepwise WASAPI master volume slider with neutral mute state, live battery & AC charging detection (green while charging with subtle pulse, red when low), and instant screenshot capture saved locally and copied to the clipboard.
+- **System & Control Panel**: Stepwise WASAPI master volume slider with neutral mute state, live audio output endpoint detection & quick switcher flyout, live battery & AC charging detection (green while charging with subtle pulse, red when low), and instant screenshot capture saved locally and copied to the clipboard.
 - **Real OS Event Awareness**:
   - **Windows Toast Listener**: Surfaces WhatsApp, Discord, browser, and system toast notifications directly inside the island.
   - **Bluetooth Device Alerts**: Announces headset and peripheral connections/battery level via Bluetooth radio monitoring.
@@ -82,7 +82,7 @@
 - **Apple-Style Alert Takeover & Deep Links**: Transient alerts briefly take over the pill and hand back to ongoing playback/focus cleanly; tapping artwork opens the source media app, and tapping alert capsules opens their file or folder.
 - **Fullscreen & Game Mode Recovery**: Automatically hides for exclusive and borderless fullscreen games (excluding normal maximized windows) and cleanly recovers island/playback state when exiting fullscreen.
 - **Single-Instance Guard & Tray Integration**: Re-launching Pulse brings up the existing instance, `--settings` routes directly to a single Settings window, global hotkeys (`Win+Alt+I`, `Win+Shift+F`), unstealable topmost `WM_WINDOWPOSCHANGING` handling, Windows Startup registry management, and full Reduced Motion compliance.
-- **Unit Tested Architecture**: Clean MVVM separation with platform-decoupled core state, animation layout, Liquid Glass math, and weather services (**172 automated xUnit tests**).
+- **Unit Tested Architecture**: Clean MVVM separation with platform-decoupled core state, animation layout, Liquid Glass math, and weather services (**342 automated xUnit tests**).
 
 ---
 
@@ -95,7 +95,7 @@
 - **Notifications & System APIs**: `UserNotificationListener` (Windows toasts), Bluetooth radio/device watcher, WASAPI endpoint volume, `GetSystemPowerStatus`, `FileSystemWatcher`, Win32 `SetWindowRgn` & global hotkeys
 - **Weather & Location**: Open-Meteo forecast & geocoding APIs, `ipwho.is` IP lookup, JSON disk caches
 - **MVVM & Serialization**: `CommunityToolkit.Mvvm`, source-generated `System.Text.Json` contexts
-- **Testing**: xUnit with Moq (172 unit tests)
+- **Testing**: xUnit with Moq (342 unit tests)
 
 ---
 
@@ -132,7 +132,7 @@ cd pulse
 # Build the solution (Release)
 dotnet build Pulse.sln -c Release
 
-# Run automated unit tests (172 tests)
+# Run automated unit tests (342 tests)
 dotnet test tests\Pulse.Tests\Pulse.Tests.csproj -c Release --no-build
 
 # Run the app
@@ -189,7 +189,7 @@ pulse/
 │       ├── Views/                  # Island & Settings windows
 │       └── Assets/                 # App icons and graphics
 ├── tests/
-│   └── Pulse.Tests/                # xUnit Automated Tests (172 tests)
+│   └── Pulse.Tests/                # xUnit Automated Tests (342 tests)
 ├── docs/
 │   └── images/                     # Live WinUI 3 application screenshots
 ├── Pulse.sln                       # Visual Studio / .NET Solution
