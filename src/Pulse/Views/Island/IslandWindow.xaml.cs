@@ -1096,7 +1096,8 @@ public sealed partial class IslandWindow : Window
                 _userOverrodeFullscreenHide = false;
             }
 
-            if (isFullscreen && !_isIslandHidden && !_userOverrodeFullscreenHide)
+            if (isFullscreen && !_isIslandHidden && !_userOverrodeFullscreenHide &&
+                !_viewModel.IsExpanded && !_isPointerOverSurface && !_isInteractingWithControl && !_viewModel.IsScrubbing)
             {
                 _autoHiddenForFullscreen = true;
                 HideIslandAnimated(showAnchor: false);
@@ -1351,7 +1352,15 @@ public sealed partial class IslandWindow : Window
         int hostPixelW = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * dpi));
         int hostPixelH = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * dpi));
 
-        if (_isIslandHidden)
+        bool isExpandedMode = _viewModel.IsExpanded || (ExpandedView is not null && ExpandedView.Visibility == Visibility.Visible);
+        if (isExpandedMode && !_viewModel.IsCollapsing)
+        {
+            pillWidth = Math.Max(pillWidth, 384.0);
+            pillHeight = Math.Max(pillHeight, 240.0);
+            cornerRadius = Math.Max(cornerRadius, 56.0);
+        }
+
+        if (_isIslandHidden && Surface.Visibility != Visibility.Visible)
         {
             if (!_hideAnchorVisible)
             {
@@ -3893,24 +3902,58 @@ public sealed partial class IslandWindow : Window
 
         _isInteractingWithControl = true;
         _collapseDelayTimer.Stop();
-        if (sender is FrameworkElement el) AnimateButtonScale(el, 0.92f);
-        e.Handled = true;
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 0.92f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCaptureLost += OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
+            el.PointerCanceled += OnButtonPointerCanceled;
+        }
+        // Do not set e.Handled = true: allow ButtonBase to process Click & Command naturally.
     }
 
     private void OnButtonPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         _isInteractingWithControl = false;
-        if (sender is FrameworkElement el) AnimateButtonScale(el, 1.0f);
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 1.0f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
+        }
+
         if (IsNonPrimaryRelease(e))
         {
             return;
         }
 
-        e.Handled = true;
-
         if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
         {
             RestartCollapseDelayTimer();
+        }
+        // Do not set e.Handled = true: allow ButtonBase to fire Click & Command.
+    }
+
+    private void OnButtonPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 1.0f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
+        }
+    }
+
+    private void OnButtonPointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 1.0f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
         }
     }
 
@@ -4701,6 +4744,16 @@ public sealed partial class IslandWindow : Window
                 const int HTTRANSPARENT = -1;
                 return new IntPtr(HTTRANSPARENT);
             }
+
+            var hit = DefSubclassProc(hWnd, uMsg, wParam, lParam);
+            // If the point is inside the visible island bounds but DefSubclassProc fell through to transparent/nowhere,
+            // promote it to HTCLIENT so clicks never pass through the island.
+            if (hit.ToInt64() == -1 || hit.ToInt64() == 0)
+            {
+                const int HTCLIENT = 1;
+                return new IntPtr(HTCLIENT);
+            }
+            return hit;
         }
 
         return DefSubclassProc(hWnd, uMsg, wParam, lParam);
@@ -4722,9 +4775,16 @@ public sealed partial class IslandWindow : Window
         double localDipX = (screenX - winRect.Left) / _dpiScale;
         double localDipY = ((screenY - winRect.Top) / _dpiScale) - IslandSurfaceLayout.SurfaceTopInsetDip;
 
-        bool isSplit = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
+        bool isExpandedMode = _viewModel.IsExpanded || (ExpandedView is not null && ExpandedView.Visibility == Visibility.Visible);
+        bool isSplit = _viewModel.IsSplitModeActive && !isExpandedMode && !_viewModel.IsCollapsing;
         double pillWidth = _currentPillWidth > 0 ? _currentPillWidth : 216.0;
         double pillHeight = _currentPillHeight > 0 ? _currentPillHeight : 40.0;
+        if (isExpandedMode)
+        {
+            pillWidth = Math.Max(pillWidth, 384.0);
+            pillHeight = Math.Max(pillHeight, 240.0);
+        }
+
         double detachedWidth = (DetachedPill is not null && DetachedPill.Width > 0)
             ? DetachedPill.Width
             : IslandSurfaceLayout.DetachedPillWidthDip;
@@ -4732,11 +4792,13 @@ public sealed partial class IslandWindow : Window
             ? DetachedPill.Height
             : IslandSurfaceLayout.DetachedPillHeightDip;
 
+        bool isEffectivelyHidden = _isIslandHidden && (Surface is null || Surface.Visibility != Visibility.Visible);
+
         return IslandSurfaceLayout.IsPointInsideIsland(
             localDipX: localDipX,
             localDipY: localDipY,
             hostWidth: IslandSurfaceLayout.DefaultHostWidthDip,
-            isHidden: _isIslandHidden,
+            isHidden: isEffectivelyHidden,
             pillWidth: pillWidth,
             pillHeight: pillHeight,
             surfaceOffsetX: _currentLeadingX,
