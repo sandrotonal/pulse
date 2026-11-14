@@ -5,7 +5,12 @@ namespace Pulse.Core.Services;
 public sealed record SingleInstanceNames(
     string MutexName,
     string ShowIslandEventName,
-    string ShowSettingsEventName);
+    string ShowSettingsEventName,
+    string ExpandMediaEventName = SingleInstanceNameResolver.DefaultExpandMediaEventName,
+    string ExpandFocusEventName = SingleInstanceNameResolver.DefaultExpandFocusEventName,
+    string ExpandSystemEventName = SingleInstanceNameResolver.DefaultExpandSystemEventName,
+    string CollapseEventName = SingleInstanceNameResolver.DefaultCollapseEventName,
+    string ToggleSplitDemoEventName = SingleInstanceNameResolver.DefaultToggleSplitDemoEventName);
 
 /// <summary>
 /// Resolves kernel object names for Pulse's single-instance guard.
@@ -18,6 +23,11 @@ public static class SingleInstanceNameResolver
     public const string DefaultMutexName = "Local\\PulseDynamicIslandInstance";
     public const string DefaultShowIslandEventName = "Local\\PulseShowIslandSignal";
     public const string DefaultShowSettingsEventName = "Local\\PulseShowSettingsSignal";
+    public const string DefaultExpandMediaEventName = "Local\\PulseExpandMediaSignal";
+    public const string DefaultExpandFocusEventName = "Local\\PulseExpandFocusSignal";
+    public const string DefaultExpandSystemEventName = "Local\\PulseExpandSystemSignal";
+    public const string DefaultCollapseEventName = "Local\\PulseCollapseSignal";
+    public const string DefaultToggleSplitDemoEventName = "Local\\PulseToggleSplitDemoSignal";
 
     public static SingleInstanceNames Resolve(string? desktopName)
     {
@@ -26,7 +36,12 @@ public static class SingleInstanceNameResolver
             return new SingleInstanceNames(
                 DefaultMutexName,
                 DefaultShowIslandEventName,
-                DefaultShowSettingsEventName);
+                DefaultShowSettingsEventName,
+                DefaultExpandMediaEventName,
+                DefaultExpandFocusEventName,
+                DefaultExpandSystemEventName,
+                DefaultCollapseEventName,
+                DefaultToggleSplitDemoEventName);
         }
 
         var trimmed = desktopName.Trim();
@@ -35,14 +50,24 @@ public static class SingleInstanceNameResolver
             return new SingleInstanceNames(
                 DefaultMutexName,
                 DefaultShowIslandEventName,
-                DefaultShowSettingsEventName);
+                DefaultShowSettingsEventName,
+                DefaultExpandMediaEventName,
+                DefaultExpandFocusEventName,
+                DefaultExpandSystemEventName,
+                DefaultCollapseEventName,
+                DefaultToggleSplitDemoEventName);
         }
 
         var suffix = SanitizeDesktopSuffix(trimmed);
         return new SingleInstanceNames(
             $"{DefaultMutexName}_{suffix}",
             $"{DefaultShowIslandEventName}_{suffix}",
-            $"{DefaultShowSettingsEventName}_{suffix}");
+            $"{DefaultShowSettingsEventName}_{suffix}",
+            $"{DefaultExpandMediaEventName}_{suffix}",
+            $"{DefaultExpandFocusEventName}_{suffix}",
+            $"{DefaultExpandSystemEventName}_{suffix}",
+            $"{DefaultCollapseEventName}_{suffix}",
+            $"{DefaultToggleSplitDemoEventName}_{suffix}");
     }
 
     internal static string SanitizeDesktopSuffix(string rawDesktopName)
