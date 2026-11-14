@@ -1560,6 +1560,13 @@ public sealed partial class IslandWindow : Window
                 PlayTrackChangePulse();
             }
         }
+        else if (e.PropertyName == nameof(IslandViewModel.SelectedPageIndex))
+        {
+            if (_targetPageIndex != _viewModel.SelectedPageIndex)
+            {
+                NavigateToPage(_viewModel.SelectedPageIndex, _viewModel.SelectedPageIndex > _targetPageIndex);
+            }
+        }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) 
                  or nameof(MediaViewModel.ArtworkAccentColor) 
                  or nameof(MediaViewModel.DynamicColorTint)
@@ -3450,7 +3457,7 @@ public sealed partial class IslandWindow : Window
     private void NavigateToPage(int targetIndex, bool isForward)
     {
         targetIndex = Math.Clamp(targetIndex, 0, 2);
-        int fromIndex = _viewModel.SelectedPageIndex;
+        int fromIndex = _targetPageIndex;
         if (fromIndex == targetIndex) return;
 
         AnimatePageTransition(fromIndex, targetIndex, isForward);

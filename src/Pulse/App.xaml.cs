@@ -46,12 +46,24 @@ public partial class App : Application
     private RegisteredWaitHandle? _showIslandRegistration;
     private EventWaitHandle? _showSettingsSignal;
     private RegisteredWaitHandle? _showSettingsRegistration;
+    private EventWaitHandle? _expandMediaSignal;
+    private RegisteredWaitHandle? _expandMediaRegistration;
+    private EventWaitHandle? _expandFocusSignal;
+    private RegisteredWaitHandle? _expandFocusRegistration;
+    private EventWaitHandle? _expandSystemSignal;
+    private RegisteredWaitHandle? _expandSystemRegistration;
+    private EventWaitHandle? _collapseSignal;
+    private RegisteredWaitHandle? _collapseRegistration;
+    private EventWaitHandle? _toggleSplitDemoSignal;
+    private RegisteredWaitHandle? _toggleSplitDemoRegistration;
     private int _pendingShowIslandSignal;
     private int _pendingShowSettingsSignal;
 
-    private static bool HasSettingsLaunchArg()
+    private static bool HasLaunchArg(string argName)
         => Environment.GetCommandLineArgs().Any(arg =>
-            string.Equals(arg, "--settings", StringComparison.OrdinalIgnoreCase));
+            string.Equals(arg, argName, StringComparison.OrdinalIgnoreCase));
+
+    private static bool HasSettingsLaunchArg() => HasLaunchArg("--settings");
 
     private static string? TryGetCurrentDesktopName()
     {
@@ -116,9 +128,20 @@ public partial class App : Application
         _instanceMutex = new Mutex(initiallyOwned: true, _instanceNames.MutexName, out var createdNew);
         if (!createdNew)
         {
-            var targetSignal = HasSettingsLaunchArg()
+            var targetSignal = HasLaunchArg("--settings")
                 ? _instanceNames.ShowSettingsEventName
+                : HasLaunchArg("--media")
+                ? _instanceNames.ExpandMediaEventName
+                : HasLaunchArg("--focus")
+                ? _instanceNames.ExpandFocusEventName
+                : HasLaunchArg("--system")
+                ? _instanceNames.ExpandSystemEventName
+                : HasLaunchArg("--collapse")
+                ? _instanceNames.CollapseEventName
+                : HasLaunchArg("--split")
+                ? _instanceNames.ToggleSplitDemoEventName
                 : _instanceNames.ShowIslandEventName;
+
             _ = TrySignalExistingInstance(targetSignal);
 
             Environment.Exit(0);
@@ -262,6 +285,96 @@ public partial class App : Application
                             }
                         });
                     }
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _expandMediaSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandMediaEventName);
+            _expandMediaRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _expandMediaSignal,
+                (_, _) =>
+                {
+                    if (_exiting || _islandWindow is not { } window) return;
+                    window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _islandViewModel.SelectedPageIndex = 0;
+                        if (!_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    });
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _expandFocusSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandFocusEventName);
+            _expandFocusRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _expandFocusSignal,
+                (_, _) =>
+                {
+                    if (_exiting || _islandWindow is not { } window) return;
+                    window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _islandViewModel.SelectedPageIndex = 1;
+                        if (!_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    });
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _expandSystemSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandSystemEventName);
+            _expandSystemRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _expandSystemSignal,
+                (_, _) =>
+                {
+                    if (_exiting || _islandWindow is not { } window) return;
+                    window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _islandViewModel.SelectedPageIndex = 2;
+                        if (!_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    });
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _collapseSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.CollapseEventName);
+            _collapseRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _collapseSignal,
+                (_, _) =>
+                {
+                    if (_exiting || _islandWindow is not { } window) return;
+                    window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    });
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _toggleSplitDemoSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ToggleSplitDemoEventName);
+            _toggleSplitDemoRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _toggleSplitDemoSignal,
+                (_, _) =>
+                {
+                    if (_exiting || _islandWindow is not { } window) return;
+                    window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _islandViewModel.IsSplitDemoForced = !_islandViewModel.IsSplitDemoForced;
+                    });
                 },
                 null,
                 Timeout.Infinite,
@@ -611,6 +724,16 @@ public partial class App : Application
             _showIslandSignal?.Dispose();
             _showSettingsRegistration?.Unregister(null);
             _showSettingsSignal?.Dispose();
+            _expandMediaRegistration?.Unregister(null);
+            _expandMediaSignal?.Dispose();
+            _expandFocusRegistration?.Unregister(null);
+            _expandFocusSignal?.Dispose();
+            _expandSystemRegistration?.Unregister(null);
+            _expandSystemSignal?.Dispose();
+            _collapseRegistration?.Unregister(null);
+            _collapseSignal?.Dispose();
+            _toggleSplitDemoRegistration?.Unregister(null);
+            _toggleSplitDemoSignal?.Dispose();
             _trayService?.Dispose();
             _settingsWindow?.Close();
             _islandWindow?.Close();
