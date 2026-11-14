@@ -6,6 +6,7 @@ public interface ISystemEventService : IDisposable
     void ReportPowerConnected(int percentage);
     void ReportBluetoothStatus(string deviceName, bool isConnected);
     void ReportAudioStatus(int volumePercentage, bool isMuted);
+    void ReportAudioEndpointChanged(string deviceName, string glyph) { }
     void ReportScreenshotSaved(string filePath);
     void ReportSystemToast(string toastId, string title, string subtitle, string iconGlyph, bool isUrgent = false, string? launchTarget = null) { }
 }

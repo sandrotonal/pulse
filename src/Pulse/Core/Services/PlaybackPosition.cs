@@ -22,4 +22,24 @@ public static class PlaybackPosition
 
         return Clamp(TimeSpan.FromTicks(target), duration);
     }
+
+    public static string FormatTime(TimeSpan time)
+    {
+        var clamped = time < TimeSpan.Zero ? TimeSpan.Zero : time;
+        return clamped.TotalHours >= 1
+            ? clamped.ToString(@"h\:mm\:ss")
+            : clamped.ToString(@"m\:ss");
+    }
+
+    public static string ComputePreviewText(TimeSpan? duration, double percent)
+    {
+        var clampedPercent = Math.Clamp(percent, 0.0, 100.0);
+        if (duration is { Ticks: > 0 } dur)
+        {
+            var previewMs = dur.TotalMilliseconds * (clampedPercent / 100.0);
+            return FormatTime(TimeSpan.FromMilliseconds(previewMs));
+        }
+
+        return $"{Math.Round(clampedPercent)}%";
+    }
 }

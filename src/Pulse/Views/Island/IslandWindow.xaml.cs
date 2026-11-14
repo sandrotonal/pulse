@@ -223,6 +223,24 @@ public sealed partial class IslandWindow : Window
     private PointerEventHandler? _sliderPressedHandler;
     private PointerEventHandler? _sliderReleasedHandler;
 
+    private Microsoft.UI.Xaml.Media.LinearGradientBrush? _ambientBrush;
+    private Microsoft.UI.Xaml.Media.GradientStop? _ambientStartStop;
+    private Microsoft.UI.Xaml.Media.GradientStop? _ambientMidStop;
+    private Microsoft.UI.Xaml.Media.GradientStop? _ambientEndStop;
+
+    private double _currentAmbientR;
+    private double _currentAmbientG;
+    private double _currentAmbientB;
+    private double _currentAmbientAlpha;
+
+    private double _targetAmbientR;
+    private double _targetAmbientG;
+    private double _targetAmbientB;
+    private double _targetAmbientAlpha;
+
+    private bool _isAmbientColorAnimating;
+    private bool _isAmbientTargetDynamicMusic;
+
     public string HotkeyConflictWarning { get; private set; } = string.Empty;
     public event EventHandler? SettingsRequested;
 
@@ -1078,7 +1096,8 @@ public sealed partial class IslandWindow : Window
                 _userOverrodeFullscreenHide = false;
             }
 
-            if (isFullscreen && !_isIslandHidden && !_userOverrodeFullscreenHide)
+            if (isFullscreen && !_isIslandHidden && !_userOverrodeFullscreenHide &&
+                !_viewModel.IsExpanded && !_isPointerOverSurface && !_isInteractingWithControl && !_viewModel.IsScrubbing)
             {
                 _autoHiddenForFullscreen = true;
                 HideIslandAnimated(showAnchor: false);
@@ -1333,7 +1352,15 @@ public sealed partial class IslandWindow : Window
         int hostPixelW = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWidthDip * dpi));
         int hostPixelH = Math.Max(1, (int)Math.Round(IslandSurfaceLayout.DefaultHostWindowHeightDip * dpi));
 
-        if (_isIslandHidden)
+        bool isExpandedMode = _viewModel.IsExpanded || (ExpandedView is not null && ExpandedView.Visibility == Visibility.Visible);
+        if (isExpandedMode && !_viewModel.IsCollapsing)
+        {
+            pillWidth = Math.Max(pillWidth, 384.0);
+            pillHeight = Math.Max(pillHeight, 240.0);
+            cornerRadius = Math.Max(cornerRadius, 56.0);
+        }
+
+        if (_isIslandHidden && Surface.Visibility != Visibility.Visible)
         {
             if (!_hideAnchorVisible)
             {
@@ -1545,6 +1572,11 @@ public sealed partial class IslandWindow : Window
             // Theme/accent changes only recolor the glass; the captured blur is
             // desktop-only and stays valid, so never re-capture here (no blink).
             ApplyTheme(_viewModel.Theme);
+
+            if (e.PropertyName is nameof(IslandViewModel.ArtworkImage) or nameof(MediaViewModel.ArtworkImage))
+            {
+                PlayArtworkTransitionAnimation();
+            }
         }
         else if (e.PropertyName == nameof(MediaViewModel.UseTransparency))
         {
@@ -2068,7 +2100,7 @@ public sealed partial class IslandWindow : Window
 
     private void StopRenderLoopIfIdle()
     {
-        if (!_isRenderLoopSubscribed || _isDimensionAnimating || _isPageAnimating || _isDotAnimating)
+        if (!_isRenderLoopSubscribed || _isDimensionAnimating || _isPageAnimating || _isDotAnimating || _isAmbientColorAnimating)
         {
             return;
         }
@@ -2109,6 +2141,11 @@ public sealed partial class IslandWindow : Window
         if (_isDotAnimating)
         {
             StepDotAnimation(dt);
+        }
+
+        if (_isAmbientColorAnimating)
+        {
+            StepAmbientColorTransition(dt);
         }
 
         StopRenderLoopIfIdle();
@@ -3865,24 +3902,58 @@ public sealed partial class IslandWindow : Window
 
         _isInteractingWithControl = true;
         _collapseDelayTimer.Stop();
-        if (sender is FrameworkElement el) AnimateButtonScale(el, 0.92f);
-        e.Handled = true;
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 0.92f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCaptureLost += OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
+            el.PointerCanceled += OnButtonPointerCanceled;
+        }
+        // Do not set e.Handled = true: allow ButtonBase to process Click & Command naturally.
     }
 
     private void OnButtonPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         _isInteractingWithControl = false;
-        if (sender is FrameworkElement el) AnimateButtonScale(el, 1.0f);
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 1.0f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
+        }
+
         if (IsNonPrimaryRelease(e))
         {
             return;
         }
 
-        e.Handled = true;
-
         if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
         {
             RestartCollapseDelayTimer();
+        }
+        // Do not set e.Handled = true: allow ButtonBase to fire Click & Command.
+    }
+
+    private void OnButtonPointerCaptureLost(object sender, PointerRoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 1.0f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
+        }
+    }
+
+    private void OnButtonPointerCanceled(object sender, PointerRoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+        if (sender is FrameworkElement el)
+        {
+            AnimateButtonScale(el, 1.0f);
+            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
+            el.PointerCanceled -= OnButtonPointerCanceled;
         }
     }
 
@@ -4050,6 +4121,29 @@ public sealed partial class IslandWindow : Window
         }
     }
 
+    private void EnsureAmbientBrush()
+    {
+        if (_ambientBrush is not null || ArtworkAmbientLayer is null)
+        {
+            return;
+        }
+
+        _ambientStartStop = new Microsoft.UI.Xaml.Media.GradientStop { Offset = 0.0 };
+        _ambientMidStop = new Microsoft.UI.Xaml.Media.GradientStop { Offset = 0.45 };
+        _ambientEndStop = new Microsoft.UI.Xaml.Media.GradientStop { Offset = 1.0 };
+
+        _ambientBrush = new Microsoft.UI.Xaml.Media.LinearGradientBrush
+        {
+            StartPoint = new Windows.Foundation.Point(0.0, 0.0),
+            EndPoint = new Windows.Foundation.Point(0.85, 0.95)
+        };
+        _ambientBrush.GradientStops.Add(_ambientStartStop);
+        _ambientBrush.GradientStops.Add(_ambientMidStop);
+        _ambientBrush.GradientStops.Add(_ambientEndStop);
+
+        ArtworkAmbientLayer.Fill = _ambientBrush;
+    }
+
     private void UpdateArtworkAmbientGlow(GlassSurfacePalette palette)
     {
         try
@@ -4059,23 +4153,55 @@ public sealed partial class IslandWindow : Window
                 return;
             }
 
+            EnsureAmbientBrush();
+
             var isDynamicMusic = _viewModel.DynamicColorTint && _viewModel.HasTrack;
+            _isAmbientTargetDynamicMusic = isDynamicMusic;
+
             if (!isDynamicMusic)
             {
-                ArtworkAmbientLayer.Visibility = Visibility.Collapsed;
-                if (_glassEnabled)
+                if (ReducedMotion)
                 {
-                    FrostLayer.Visibility = Visibility.Visible;
-                    if (FrostTintLayer is not null)
+                    _isAmbientColorAnimating = false;
+                    _currentAmbientAlpha = 0;
+                    _targetAmbientAlpha = 0;
+                    ArtworkAmbientLayer.Visibility = Visibility.Collapsed;
+                    if (_glassEnabled)
                     {
-                        FrostTintLayer.Visibility = Visibility.Visible;
+                        FrostLayer.Visibility = Visibility.Visible;
+                        if (FrostTintLayer is not null)
+                        {
+                            FrostTintLayer.Visibility = Visibility.Visible;
+                        }
                     }
+                    StopRenderLoopIfIdle();
+                    return;
+                }
+
+                _targetAmbientAlpha = 0.0;
+                if (_currentAmbientAlpha > 0.5)
+                {
+                    _isAmbientColorAnimating = true;
+                    EnsureRenderLoopRunning();
+                }
+                else
+                {
+                    _isAmbientColorAnimating = false;
+                    ArtworkAmbientLayer.Visibility = Visibility.Collapsed;
+                    if (_glassEnabled)
+                    {
+                        FrostLayer.Visibility = Visibility.Visible;
+                        if (FrostTintLayer is not null)
+                        {
+                            FrostTintLayer.Visibility = Visibility.Visible;
+                        }
+                    }
+                    StopRenderLoopIfIdle();
                 }
                 return;
             }
 
-            // When listening to music with dynamic tinting, suppress the desktop wallpaper capture
-            // so the island reflects the album art color with a sleek ambient glow instead of a desktop snapshot.
+            // Suppress desktop wallpaper capture to avoid any bleed
             FrostLayer.Visibility = Visibility.Collapsed;
             if (FrostTintLayer is not null)
             {
@@ -4088,28 +4214,150 @@ public sealed partial class IslandWindow : Window
             var strength = Math.Clamp(_viewModel.ArtworkTintStrength / 100.0, 0.2, 1.0);
             var isLight = palette.IsLightTheme;
 
-            var startAlpha = (byte)Math.Clamp(Math.Round((isLight ? 75 : 125) * strength), 20, 220);
-            var midAlpha = (byte)Math.Clamp(Math.Round((isLight ? 35 : 60) * strength), 10, 140);
-            var endAlpha = (byte)0;
+            var targetAlpha = (double)Math.Clamp(Math.Round((isLight ? 75 : 125) * strength), 20, 220);
 
-            var startColor = Windows.UI.Color.FromArgb(startAlpha, accentColor.R, accentColor.G, accentColor.B);
-            var midColor = Windows.UI.Color.FromArgb(midAlpha, accentColor.R, accentColor.G, accentColor.B);
-            var endColor = Windows.UI.Color.FromArgb(endAlpha, accentColor.R, accentColor.G, accentColor.B);
+            _targetAmbientR = accentColor.R;
+            _targetAmbientG = accentColor.G;
+            _targetAmbientB = accentColor.B;
+            _targetAmbientAlpha = targetAlpha;
 
-            var brush = new Microsoft.UI.Xaml.Media.LinearGradientBrush
+            if (ReducedMotion)
             {
-                StartPoint = new Windows.Foundation.Point(0.0, 0.0),
-                EndPoint = new Windows.Foundation.Point(0.85, 0.95)
-            };
-            brush.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop { Color = startColor, Offset = 0.0 });
-            brush.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop { Color = midColor, Offset = 0.45 });
-            brush.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop { Color = endColor, Offset = 1.0 });
+                _currentAmbientR = _targetAmbientR;
+                _currentAmbientG = _targetAmbientG;
+                _currentAmbientB = _targetAmbientB;
+                _currentAmbientAlpha = _targetAmbientAlpha;
+                _isAmbientColorAnimating = false;
+                ApplyAmbientStops();
+                StopRenderLoopIfIdle();
+                return;
+            }
 
-            ArtworkAmbientLayer.Fill = brush;
+            // Initial transition into dynamic music starts at 0 alpha and fades in smoothly
+            if (_currentAmbientAlpha <= 1.0)
+            {
+                _currentAmbientR = _targetAmbientR;
+                _currentAmbientG = _targetAmbientG;
+                _currentAmbientB = _targetAmbientB;
+            }
+
+            if (Math.Abs(_targetAmbientR - _currentAmbientR) > 0.5 ||
+                Math.Abs(_targetAmbientG - _currentAmbientG) > 0.5 ||
+                Math.Abs(_targetAmbientB - _currentAmbientB) > 0.5 ||
+                Math.Abs(_targetAmbientAlpha - _currentAmbientAlpha) > 0.5)
+            {
+                _isAmbientColorAnimating = true;
+                EnsureRenderLoopRunning();
+            }
+            else
+            {
+                _currentAmbientR = _targetAmbientR;
+                _currentAmbientG = _targetAmbientG;
+                _currentAmbientB = _targetAmbientB;
+                _currentAmbientAlpha = _targetAmbientAlpha;
+                _isAmbientColorAnimating = false;
+                ApplyAmbientStops();
+                StopRenderLoopIfIdle();
+            }
         }
         catch (Exception ex)
         {
             CrashLogger.Write("IslandWindow.UpdateArtworkAmbientGlow", ex);
+        }
+    }
+
+    private void StepAmbientColorTransition(double dt)
+    {
+        // Smooth exponential interpolation with ~120ms time constant (reaches 95% in ~360ms)
+        var factor = 1.0 - Math.Exp(-dt / 0.12);
+
+        _currentAmbientR += (_targetAmbientR - _currentAmbientR) * factor;
+        _currentAmbientG += (_targetAmbientG - _currentAmbientG) * factor;
+        _currentAmbientB += (_targetAmbientB - _currentAmbientB) * factor;
+        _currentAmbientAlpha += (_targetAmbientAlpha - _currentAmbientAlpha) * factor;
+
+        var diffR = Math.Abs(_targetAmbientR - _currentAmbientR);
+        var diffG = Math.Abs(_targetAmbientG - _currentAmbientG);
+        var diffB = Math.Abs(_targetAmbientB - _currentAmbientB);
+        var diffA = Math.Abs(_targetAmbientAlpha - _currentAmbientAlpha);
+
+        if (diffR < 0.5 && diffG < 0.5 && diffB < 0.5 && diffA < 0.5)
+        {
+            _currentAmbientR = _targetAmbientR;
+            _currentAmbientG = _targetAmbientG;
+            _currentAmbientB = _targetAmbientB;
+            _currentAmbientAlpha = _targetAmbientAlpha;
+            _isAmbientColorAnimating = false;
+
+            if (!_isAmbientTargetDynamicMusic)
+            {
+                ArtworkAmbientLayer.Visibility = Visibility.Collapsed;
+                if (_glassEnabled)
+                {
+                    FrostLayer.Visibility = Visibility.Visible;
+                    if (FrostTintLayer is not null)
+                    {
+                        FrostTintLayer.Visibility = Visibility.Visible;
+                    }
+                }
+            }
+        }
+
+        ApplyAmbientStops();
+    }
+
+    private void ApplyAmbientStops()
+    {
+        if (_ambientStartStop is null || _ambientMidStop is null || _ambientEndStop is null)
+        {
+            return;
+        }
+
+        byte curAlpha = (byte)Math.Clamp(Math.Round(_currentAmbientAlpha), 0, 255);
+        byte curR = (byte)Math.Clamp(Math.Round(_currentAmbientR), 0, 255);
+        byte curG = (byte)Math.Clamp(Math.Round(_currentAmbientG), 0, 255);
+        byte curB = (byte)Math.Clamp(Math.Round(_currentAmbientB), 0, 255);
+
+        byte midAlpha = (byte)Math.Clamp(Math.Round(curAlpha * 0.48), 0, 255);
+
+        _ambientStartStop.Color = Windows.UI.Color.FromArgb(curAlpha, curR, curG, curB);
+        _ambientMidStop.Color = Windows.UI.Color.FromArgb(midAlpha, curR, curG, curB);
+        _ambientEndStop.Color = Windows.UI.Color.FromArgb(0, curR, curG, curB);
+    }
+
+    private void PlayArtworkTransitionAnimation()
+    {
+        if (ReducedMotion)
+        {
+            return;
+        }
+
+        try
+        {
+            if (_viewModel.IsExpanded && ExpandedArtImage is not null)
+            {
+                var visual = ElementCompositionPreview.GetElementVisual(ExpandedArtImage);
+                var compositor = visual.Compositor;
+                var fade = compositor.CreateScalarKeyFrameAnimation();
+                fade.InsertKeyFrame(0.0f, 0.45f);
+                fade.InsertKeyFrame(1.0f, 1.0f);
+                fade.Duration = TimeSpan.FromMilliseconds(220);
+                visual.StartAnimation("Opacity", fade);
+            }
+            else if (!_viewModel.IsExpanded && CompactArtImage is not null)
+            {
+                var visual = ElementCompositionPreview.GetElementVisual(CompactArtImage);
+                var compositor = visual.Compositor;
+                var fade = compositor.CreateScalarKeyFrameAnimation();
+                fade.InsertKeyFrame(0.0f, 0.45f);
+                fade.InsertKeyFrame(1.0f, 1.0f);
+                fade.Duration = TimeSpan.FromMilliseconds(180);
+                visual.StartAnimation("Opacity", fade);
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.PlayArtworkTransitionAnimation", ex);
         }
     }
 
@@ -4496,6 +4744,16 @@ public sealed partial class IslandWindow : Window
                 const int HTTRANSPARENT = -1;
                 return new IntPtr(HTTRANSPARENT);
             }
+
+            var hit = DefSubclassProc(hWnd, uMsg, wParam, lParam);
+            // If the point is inside the visible island bounds but DefSubclassProc fell through to transparent/nowhere,
+            // promote it to HTCLIENT so clicks never pass through the island.
+            if (hit.ToInt64() == -1 || hit.ToInt64() == 0)
+            {
+                const int HTCLIENT = 1;
+                return new IntPtr(HTCLIENT);
+            }
+            return hit;
         }
 
         return DefSubclassProc(hWnd, uMsg, wParam, lParam);
@@ -4517,9 +4775,16 @@ public sealed partial class IslandWindow : Window
         double localDipX = (screenX - winRect.Left) / _dpiScale;
         double localDipY = ((screenY - winRect.Top) / _dpiScale) - IslandSurfaceLayout.SurfaceTopInsetDip;
 
-        bool isSplit = _viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing;
+        bool isExpandedMode = _viewModel.IsExpanded || (ExpandedView is not null && ExpandedView.Visibility == Visibility.Visible);
+        bool isSplit = _viewModel.IsSplitModeActive && !isExpandedMode && !_viewModel.IsCollapsing;
         double pillWidth = _currentPillWidth > 0 ? _currentPillWidth : 216.0;
         double pillHeight = _currentPillHeight > 0 ? _currentPillHeight : 40.0;
+        if (isExpandedMode)
+        {
+            pillWidth = Math.Max(pillWidth, 384.0);
+            pillHeight = Math.Max(pillHeight, 240.0);
+        }
+
         double detachedWidth = (DetachedPill is not null && DetachedPill.Width > 0)
             ? DetachedPill.Width
             : IslandSurfaceLayout.DetachedPillWidthDip;
@@ -4527,11 +4792,13 @@ public sealed partial class IslandWindow : Window
             ? DetachedPill.Height
             : IslandSurfaceLayout.DetachedPillHeightDip;
 
+        bool isEffectivelyHidden = _isIslandHidden && (Surface is null || Surface.Visibility != Visibility.Visible);
+
         return IslandSurfaceLayout.IsPointInsideIsland(
             localDipX: localDipX,
             localDipY: localDipY,
             hostWidth: IslandSurfaceLayout.DefaultHostWidthDip,
-            isHidden: _isIslandHidden,
+            isHidden: isEffectivelyHidden,
             pillWidth: pillWidth,
             pillHeight: pillHeight,
             surfaceOffsetX: _currentLeadingX,

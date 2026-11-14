@@ -103,6 +103,28 @@ public sealed class SystemEventService : ISystemEventService
         _eventRouter.Publish(evt);
     }
 
+    public void ReportAudioEndpointChanged(string deviceName, string glyph)
+    {
+        if (_settings is not null && (!_settings.Current.AudioNotifications || _settings.Current.DoNotDisturb))
+        {
+            return;
+        }
+
+        var name = string.IsNullOrWhiteSpace(deviceName) ? "Hoparlör" : deviceName;
+        var icon = string.IsNullOrWhiteSpace(glyph) ? "\uE7F5" : glyph;
+        var evt = new SystemNotificationEvent(
+            "audio_endpoint_changed",
+            EventCategory.Audio,
+            "Ses Çıkışı",
+            name,
+            icon,
+            EventPriority.Informational,
+            TimeSpan.FromSeconds(2.8)
+        );
+
+        _eventRouter.Publish(evt);
+    }
+
     public void ReportScreenshotSaved(string filePath)
     {
         if (_settings is not null && (!_settings.Current.ScreenshotNotifications || _settings.Current.DoNotDisturb))

@@ -1,6 +1,12 @@
 namespace Pulse.Core.Interfaces;
 
-public sealed record AudioStateChangedEventArgs(int VolumePercent, bool IsMuted, bool IsSelfOriginated, bool IsDeviceSwitch = false);
+public sealed record AudioStateChangedEventArgs(
+    int VolumePercent,
+    bool IsMuted,
+    bool IsSelfOriginated,
+    bool IsDeviceSwitch = false,
+    string? DeviceName = null,
+    string? DeviceGlyph = null);
 
 /// <summary>
 /// Real system-level controls: endpoint volume, mute, screen capture, battery.
@@ -21,6 +27,15 @@ public interface ISystemControlService
     bool IsMuted();
 
     void SetMute(bool muted);
+
+    /// <summary>Returns the friendly name and glyph for the default render audio endpoint.</summary>
+    (string Name, string Glyph) GetActiveAudioDevice() => ("Hoparlör", "\uE7F5");
+
+    /// <summary>Opens Windows audio flyout or sound settings.</summary>
+    void OpenSoundFlyout() { }
+
+    /// <summary>Opens Windows sound settings.</summary>
+    void OpenSoundSettings() { }
 
     /// <summary>Captures the primary screen. Returns the saved file path, or empty on failure.</summary>
     string CaptureScreenshot();

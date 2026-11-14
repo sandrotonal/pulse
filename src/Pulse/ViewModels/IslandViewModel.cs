@@ -176,9 +176,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         {
             _masterVolume = _systemControl.GetMasterVolume();
             _systemMuted = _systemControl.IsMuted();
+            var (devName, devGlyph) = _systemControl.GetActiveAudioDevice();
+            _activeAudioDeviceName = devName;
+            _activeAudioDeviceGlyph = devGlyph;
             _systemControl.AudioStateChanged += OnSystemAudioStateChanged;
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
+        OpenSoundSwitcherCommand = new RelayCommand(() => _systemControl?.OpenSoundFlyout());
+        OpenSoundSettingsCommand = new RelayCommand(() => _systemControl?.OpenSoundSettings());
 
         TakeScreenshotCommand = new AsyncCommand(async () =>
         {
@@ -341,6 +346,18 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(IsSystemMuted));
         OnPropertyChanged(nameof(SystemMuteGlyph));
     }
+
+    private string _activeAudioDeviceName = "Hoparlör";
+    private string _activeAudioDeviceGlyph = "\uE7F5";
+
+    public string ActiveAudioDeviceName => _activeAudioDeviceName;
+
+    public string ActiveAudioDeviceShortName => AudioDeviceResolver.FormatShortName(_activeAudioDeviceName);
+
+    public string ActiveAudioDeviceGlyph => _activeAudioDeviceGlyph;
+
+    public RelayCommand OpenSoundSwitcherCommand { get; }
+    public RelayCommand OpenSoundSettingsCommand { get; }
 
     public bool HasBattery => _batteryPercent >= 0;
     public int BatteryPercent => _batteryPercent;
@@ -1583,7 +1600,23 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(SystemMuteGlyph));
             }
 
-            if (!e.IsSelfOriginated && (changed || e.IsDeviceSwitch))
+            if (e.IsDeviceSwitch)
+            {
+                var newName = !string.IsNullOrEmpty(e.DeviceName) ? e.DeviceName : (_systemControl?.GetActiveAudioDevice().Name ?? "Hoparlör");
+                var newGlyph = !string.IsNullOrEmpty(e.DeviceGlyph) ? e.DeviceGlyph : (_systemControl?.GetActiveAudioDevice().Glyph ?? "\uE7F5");
+
+                if (_activeAudioDeviceName != newName || _activeAudioDeviceGlyph != newGlyph)
+                {
+                    _activeAudioDeviceName = newName;
+                    _activeAudioDeviceGlyph = newGlyph;
+                    OnPropertyChanged(nameof(ActiveAudioDeviceName));
+                    OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
+                    OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
+                    _systemEvents.ReportAudioEndpointChanged(newName, newGlyph);
+                }
+            }
+
+            if (!e.IsSelfOriginated && changed && !e.IsDeviceSwitch)
             {
                 _systemEvents.ReportAudioStatus(e.VolumePercent, e.IsMuted);
             }
@@ -1612,6 +1645,16 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _systemMuted = muted;
             OnPropertyChanged(nameof(IsSystemMuted));
             OnPropertyChanged(nameof(SystemMuteGlyph));
+        }
+
+        var (devName, devGlyph) = _systemControl.GetActiveAudioDevice();
+        if (_activeAudioDeviceName != devName || _activeAudioDeviceGlyph != devGlyph)
+        {
+            _activeAudioDeviceName = devName;
+            _activeAudioDeviceGlyph = devGlyph;
+            OnPropertyChanged(nameof(ActiveAudioDeviceName));
+            OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
+            OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
         }
     }
 

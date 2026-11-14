@@ -35,7 +35,7 @@
                 CornerRadius="2"
                 Background="#FF0A84FF" />
 
-        <!-- Floating Thumb Knob -->
+        <!-- Floating Thumb Knob & Tooltip -->
         <Canvas x:Name="ThumbCanvas" HorizontalAlignment="Stretch" VerticalAlignment="Stretch" IsHitTestVisible="False">
             <Border x:Name="ThumbKnob"
                     Canvas.Top="6"
@@ -45,6 +45,23 @@
                     CornerRadius="5"
                     Background="#FFFFFFFF"
                     Opacity="0.9" />
+
+            <Border x:Name="ScrubTooltip"
+                    Canvas.Top="-18"
+                    Canvas.Left="0"
+                    Opacity="0"
+                    Background="#E618181A"
+                    BorderBrush="#33FFFFFF"
+                    BorderThickness="1"
+                    CornerRadius="5"
+                    Padding="5,1,5,1">
+                <TextBlock x:Name="ScrubTooltipText"
+                           FontSize="9.5"
+                           FontWeight="SemiBold"
+                           Foreground="#FFFFFFFF"
+                           Typography.NumeralAlignment="Tabular"
+                           Text="0:00" />
+            </Border>
         </Canvas>
     </Grid>
 </UserControl>

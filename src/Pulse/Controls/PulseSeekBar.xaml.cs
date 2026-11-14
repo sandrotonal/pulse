@@ -3,8 +3,10 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
 using Microsoft.UI.Xaml.Automation.Provider;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
+using Pulse.Core.Services;
 using Windows.System;
 
 namespace Pulse.Controls;
@@ -17,6 +19,13 @@ public sealed partial class PulseSeekBar : UserControl
             typeof(double),
             typeof(PulseSeekBar),
             new PropertyMetadata(0.0, OnValueChanged));
+
+    public static readonly DependencyProperty DurationProperty =
+        DependencyProperty.Register(
+            nameof(Duration),
+            typeof(TimeSpan?),
+            typeof(PulseSeekBar),
+            new PropertyMetadata(null));
 
     public static readonly DependencyProperty CanSeekProperty =
         DependencyProperty.Register(
@@ -92,6 +101,12 @@ public sealed partial class PulseSeekBar : UserControl
         set => SetValue(ValueProperty, Math.Clamp(value, 0.0, 100.0));
     }
 
+    public TimeSpan? Duration
+    {
+        get => (TimeSpan?)GetValue(DurationProperty);
+        set => SetValue(DurationProperty, value);
+    }
+
     public bool CanSeek
     {
         get => (bool)GetValue(CanSeekProperty);
@@ -154,6 +169,44 @@ public sealed partial class PulseSeekBar : UserControl
         var thumbWidth = ThumbKnob.Width;
         var thumbLeft = Math.Clamp(progressWidth - (thumbWidth / 2.0), 0.0, Math.Max(0, ActualWidth - thumbWidth));
         Canvas.SetLeft(ThumbKnob, thumbLeft);
+
+        UpdateScrubTooltip(clamped, progressWidth);
+    }
+
+    private void UpdateScrubTooltip(double percent, double progressX)
+    {
+        if (ScrubTooltip is null || ScrubTooltipText is null)
+        {
+            return;
+        }
+
+        ScrubTooltipText.Text = PlaybackPosition.ComputePreviewText(Duration, percent);
+
+        var tooltipWidth = ScrubTooltip.ActualWidth > 0 ? ScrubTooltip.ActualWidth : 36.0;
+        var tooltipLeft = Math.Clamp(progressX - (tooltipWidth / 2.0), 0.0, Math.Max(0, ActualWidth - tooltipWidth));
+        Canvas.SetLeft(ScrubTooltip, tooltipLeft);
+    }
+
+    private void SetTooltipVisibility(bool visible)
+    {
+        if (ScrubTooltip is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var visual = ElementCompositionPreview.GetElementVisual(ScrubTooltip);
+            var compositor = visual.Compositor;
+            var anim = compositor.CreateScalarKeyFrameAnimation();
+            anim.InsertKeyFrame(1.0f, visible ? 1.0f : 0.0f);
+            anim.Duration = TimeSpan.FromMilliseconds(120);
+            visual.StartAnimation("Opacity", anim);
+        }
+        catch
+        {
+            ScrubTooltip.Opacity = visible ? 1.0 : 0.0;
+        }
     }
 
     private void SetTrackThickness(bool expanded)
@@ -236,6 +289,13 @@ public sealed partial class PulseSeekBar : UserControl
     {
         _isHovered = true;
         SetTrackThickness(true);
+        if (CanSeek)
+        {
+            SetTooltipVisibility(true);
+            var point = e.GetCurrentPoint(this).Position;
+            var percent = Math.Clamp((point.X / Math.Max(1, ActualWidth)) * 100.0, 0.0, 100.0);
+            UpdateScrubTooltip(percent, (percent / 100.0) * ActualWidth);
+        }
     }
 
     private void OnPointerExited(object sender, PointerRoutedEventArgs e)
@@ -244,6 +304,7 @@ public sealed partial class PulseSeekBar : UserControl
         if (!_isDragging)
         {
             SetTrackThickness(false);
+            SetTooltipVisibility(false);
         }
     }
 
@@ -257,6 +318,7 @@ public sealed partial class PulseSeekBar : UserControl
         _isDragging = true;
         CapturePointer(e.Pointer);
         SetTrackThickness(true);
+        SetTooltipVisibility(true);
 
         var point = e.GetCurrentPoint(this).Position;
         var percent = Math.Clamp((point.X / ActualWidth) * 100.0, 0.0, 100.0);
@@ -268,17 +330,26 @@ public sealed partial class PulseSeekBar : UserControl
 
     private void OnPointerMoved(object sender, PointerRoutedEventArgs e)
     {
-        if (!_isDragging || ActualWidth <= 0)
+        if (ActualWidth <= 0)
         {
             return;
         }
 
         var point = e.GetCurrentPoint(this).Position;
         var percent = Math.Clamp((point.X / ActualWidth) * 100.0, 0.0, 100.0);
-        UpdateVisuals(percent);
-        Value = percent;
-        ScrubDelta?.Invoke(this, percent);
-        e.Handled = true;
+
+        if (_isDragging)
+        {
+            UpdateVisuals(percent);
+            Value = percent;
+            ScrubDelta?.Invoke(this, percent);
+            e.Handled = true;
+        }
+        else if (_isHovered && CanSeek)
+        {
+            var progressX = (percent / 100.0) * ActualWidth;
+            UpdateScrubTooltip(percent, progressX);
+        }
     }
 
     private void OnPointerReleased(object sender, PointerRoutedEventArgs e)
@@ -294,6 +365,7 @@ public sealed partial class PulseSeekBar : UserControl
         if (!_isHovered)
         {
             SetTrackThickness(false);
+            SetTooltipVisibility(false);
         }
 
         var point = e.GetCurrentPoint(this).Position;
@@ -315,6 +387,7 @@ public sealed partial class PulseSeekBar : UserControl
         if (!_isHovered)
         {
             SetTrackThickness(false);
+            SetTooltipVisibility(false);
         }
 
         ScrubCompleted?.Invoke(this, Value);
