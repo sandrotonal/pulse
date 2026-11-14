@@ -628,7 +628,7 @@
                                     <FontIcon x:Name="CompactArtFallbackGlyph" Glyph="&#xEC4F;" FontSize="11" Foreground="{ThemeResource SecondaryText}"
                                               HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Border>
-                                <Image Source="{Binding CompactArtworkImage}" Stretch="UniformToFill" />
+                                <Image x:Name="CompactArtImage" Source="{Binding CompactArtworkImage}" Stretch="UniformToFill" />
                             </Grid>
                         </Border>
 
@@ -855,7 +855,7 @@
                                             <FontIcon Glyph="&#xEC4F;" FontSize="28" Foreground="{ThemeResource SecondaryText}"
                                                        HorizontalAlignment="Center" VerticalAlignment="Center" />
                                         </Border>
-                                        <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
+                                        <Image x:Name="ExpandedArtImage" Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
                                     </Grid>
                                 </Border>
 
