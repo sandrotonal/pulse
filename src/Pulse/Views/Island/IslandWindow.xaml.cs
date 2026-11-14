@@ -4291,7 +4291,7 @@ public sealed partial class IslandWindow : Window
 
         try
         {
-            if (ExpandedArtImage is not null && _viewModel.IsExpanded)
+            if (_viewModel.IsExpanded && ExpandedArtImage is not null)
             {
                 var visual = ElementCompositionPreview.GetElementVisual(ExpandedArtImage);
                 var compositor = visual.Compositor;
@@ -4299,6 +4299,16 @@ public sealed partial class IslandWindow : Window
                 fade.InsertKeyFrame(0.0f, 0.45f);
                 fade.InsertKeyFrame(1.0f, 1.0f);
                 fade.Duration = TimeSpan.FromMilliseconds(220);
+                visual.StartAnimation("Opacity", fade);
+            }
+            else if (!_viewModel.IsExpanded && CompactArtImage is not null)
+            {
+                var visual = ElementCompositionPreview.GetElementVisual(CompactArtImage);
+                var compositor = visual.Compositor;
+                var fade = compositor.CreateScalarKeyFrameAnimation();
+                fade.InsertKeyFrame(0.0f, 0.45f);
+                fade.InsertKeyFrame(1.0f, 1.0f);
+                fade.Duration = TimeSpan.FromMilliseconds(180);
                 visual.StartAnimation("Opacity", fade);
             }
         }
