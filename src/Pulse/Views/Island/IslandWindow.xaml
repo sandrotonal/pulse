@@ -925,9 +925,9 @@
                                 </Grid>
                             </Grid>
 
-                            <!-- Media Transport Controls (Apple live-activity layout: bare glyphs, filled play) -->
-                            <Grid Grid.Row="1" HorizontalAlignment="Center" Margin="0,0,0,0">
-                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="2">
+                            <!-- Media Transport Controls (Apple live-activity layout: bare glyphs, filled play, audio destination route) -->
+                            <Grid Grid.Row="1" Margin="0,0,0,0">
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="2">
                                     <Button Style="{StaticResource TransportNavButtonStyle}"
                                             Width="32" Height="32" CornerRadius="16"
                                             Command="{Binding SeekBackwardCommand}"
@@ -998,6 +998,20 @@
                                         </Grid>
                                     </Button>
                                 </StackPanel>
+
+                                <!-- Audio Destination / Output Route switcher (AirPlay style) -->
+                                <Button Style="{StaticResource TransportNavButtonStyle}"
+                                        Width="32" Height="32" CornerRadius="16"
+                                        HorizontalAlignment="Right"
+                                        VerticalAlignment="Center"
+                                        Command="{Binding OpenSoundSwitcherCommand}"
+                                        PointerPressed="OnButtonPointerPressed"
+                                        PointerReleased="OnButtonPointerReleased"
+                                        AutomationProperties.Name="Ses çıkış aygıtı"
+                                        ToolTipService.ToolTip="{Binding ActiveAudioDeviceName}">
+                                    <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="13"
+                                              Foreground="{ThemeResource SecondaryText}" />
+                                </Button>
                             </Grid>
                         </Grid>
 
@@ -1174,9 +1188,9 @@
                                             AutomationProperties.Name="Ses düzeyi" />
                                 </Grid>
 
-                                <!-- Battery + quick capture row -->
-                                <Grid ColumnDefinitions="Auto,*" VerticalAlignment="Center">
-                                    <StackPanel Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
+                                <!-- Battery + Audio Output + quick capture row -->
+                                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="7" VerticalAlignment="Center"
                                                 Visibility="{Binding BatteryVisibility}">
                                         <Grid Width="14" Height="14" VerticalAlignment="Center">
                                             <FontIcon Glyph="{Binding BatteryGlyph}" FontSize="14"
@@ -1200,17 +1214,37 @@
                                         </Grid>
                                     </StackPanel>
 
-                                    <Button Grid.Column="1"
-                                            Style="{StaticResource CircularHeaderButtonStyle}"
-                                            Width="32" Height="32" CornerRadius="16"
-                                            HorizontalAlignment="Right"
-                                            Command="{Binding TakeScreenshotCommand}"
-                                            PointerPressed="OnButtonPointerPressed"
-                                            PointerReleased="OnButtonPointerReleased"
-                                            AutomationProperties.Name="Ekran görüntüsü al"
-                                            ToolTipService.ToolTip="Ekran Görüntüsü Al (Görüntü panoya kopyalanır ve Ekran Görüntüleri klasörüne kaydedilir)">
-                                        <FontIcon Glyph="&#xE722;" FontSize="13" />
-                                    </Button>
+                                    <!-- Audio Output Endpoint Switcher Pill & Screenshot Button -->
+                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                                Height="28" CornerRadius="14"
+                                                Padding="9,0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding OpenSoundSwitcherCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Ses çıkış aygıtı"
+                                                ToolTipService.ToolTip="Ses Çıkış Aygıtını Değiştir (Hızlı Ayarlar)">
+                                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                                <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="11"
+                                                          Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="{Binding ActiveAudioDeviceShortName}"
+                                                           FontSize="11" FontWeight="Medium"
+                                                           MaxWidth="115" TextTrimming="CharacterEllipsis"
+                                                           Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+
+                                        <Button Style="{StaticResource CircularHeaderButtonStyle}"
+                                                Width="30" Height="30" CornerRadius="15"
+                                                Command="{Binding TakeScreenshotCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Ekran görüntüsü al"
+                                                ToolTipService.ToolTip="Ekran Görüntüsü Al (Görüntü panoya kopyalanır ve Ekran Görüntüleri klasörüne kaydedilir)">
+                                            <FontIcon Glyph="&#xE722;" FontSize="12.5" />
+                                        </Button>
+                                    </StackPanel>
                                 </Grid>
                             </StackPanel>
                         </Grid>

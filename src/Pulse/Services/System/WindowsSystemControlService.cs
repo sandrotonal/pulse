@@ -217,7 +217,14 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
             var volume = GetMasterVolume();
             var muted = IsMuted();
-            AudioStateChanged?.Invoke(this, new AudioStateChangedEventArgs(volume, muted, IsSelfOriginated: false, IsDeviceSwitch: true));
+            var (deviceName, deviceGlyph) = GetActiveAudioDevice();
+            AudioStateChanged?.Invoke(this, new AudioStateChangedEventArgs(
+                volume,
+                muted,
+                IsSelfOriginated: false,
+                IsDeviceSwitch: true,
+                DeviceName: deviceName,
+                DeviceGlyph: deviceGlyph));
         });
     }
 
@@ -281,6 +288,113 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     }
 
     public void ToggleMute() => SetMute(!IsMuted());
+
+    public (string Name, string Glyph) GetActiveAudioDevice()
+    {
+        lock (_audioLock)
+        {
+            if (_disposed)
+            {
+                return ("Hoparlör", "\uE7F5");
+            }
+
+            try
+            {
+                if (_deviceEnumerator is null)
+                {
+                    _ = GetEndpointVolume();
+                }
+
+                if (_deviceEnumerator is null ||
+                    _deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eRender, ERole.eConsole, out var device) != 0 ||
+                    device is null)
+                {
+                    return ("Hoparlör", "\uE7F5");
+                }
+
+                try
+                {
+                    if (device.OpenPropertyStore(0 /* STGM_READ */, out var store) == 0 && store is not null)
+                    {
+                        try
+                        {
+                            var keyFriendlyName = new PropertyKey { fmtid = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), pid = 14 };
+                            var name = string.Empty;
+                            if (store.GetValue(ref keyFriendlyName, out var pvName) == 0)
+                            {
+                                if (pvName.vt == 31 /* VT_LPWSTR */ && pvName.pwszVal != IntPtr.Zero)
+                                {
+                                    name = Marshal.PtrToStringUni(pvName.pwszVal) ?? string.Empty;
+                                }
+                                _ = PropVariantClear(ref pvName);
+                            }
+
+                            var keyFormFactor = new PropertyKey { fmtid = new Guid("1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"), pid = 0 };
+                            uint formFactor = 0;
+                            if (store.GetValue(ref keyFormFactor, out var pvForm) == 0)
+                            {
+                                formFactor = pvForm.uintVal;
+                                _ = PropVariantClear(ref pvForm);
+                            }
+
+                            if (!string.IsNullOrWhiteSpace(name))
+                            {
+                                var glyph = ResolveDeviceGlyph(name, formFactor);
+                                return (name, glyph);
+                            }
+                        }
+                        finally
+                        {
+                            _ = Marshal.ReleaseComObject(store);
+                        }
+                    }
+                }
+                finally
+                {
+                    _ = Marshal.ReleaseComObject(device);
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("WindowsSystemControlService.GetActiveAudioDevice", ex);
+            }
+
+            return ("Hoparlör", "\uE7F5");
+        }
+    }
+
+    internal static string ResolveDeviceGlyph(string name, uint formFactor)
+        => AudioDeviceResolver.ResolveGlyph(name, formFactor);
+
+    public void OpenSoundFlyout()
+    {
+        try
+        {
+            keybd_event(VK_LWIN, 0, 0, UIntPtr.Zero);
+            keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+            keybd_event(VK_V, 0, 0, UIntPtr.Zero);
+            keybd_event(VK_V, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+            keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+            keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("WindowsSystemControlService.OpenSoundFlyout", ex);
+            OpenSoundSettings();
+        }
+    }
+
+    public void OpenSoundSettings()
+    {
+        try
+        {
+            _ = Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:sound"));
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("WindowsSystemControlService.OpenSoundSettings", ex);
+        }
+    }
 
     // ---- Screen capture ----
 
@@ -991,6 +1105,17 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         [Out] char[] lpExeName,
         ref int lpdwSize);
 
+    [DllImport("ole32.dll")]
+    private static extern int PropVariantClear(ref PropVariant pvar);
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(byte bVk, byte bScan, uint dwFlags, UIntPtr dwExtraInfo);
+
+    private const byte VK_LWIN = 0x5B;
+    private const byte VK_CONTROL = 0x11;
+    private const byte VK_V = 0x56;
+    private const uint KEYEVENTF_KEYUP = 0x0002;
+
     [Flags]
     private enum CLSCTX : uint
     {
@@ -1106,10 +1231,40 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             [MarshalAs(UnmanagedType.IUnknown)] out object? ppInterface);
 
         [PreserveSig]
-        int OpenPropertyStore(uint stgmAccess, out IntPtr ppProperties);
+        int OpenPropertyStore(uint stgmAccess, [MarshalAs(UnmanagedType.Interface)] out IPropertyStore? ppProperties);
 
         [PreserveSig]
         int GetId([MarshalAs(UnmanagedType.LPWStr)] out string ppszId);
+    }
+
+    [ComImport, Guid("886D8EEB-8CF2-4446-8D02-CDBA1DBDCF99"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IPropertyStore
+    {
+        [PreserveSig]
+        int GetCount(out uint cProps);
+
+        [PreserveSig]
+        int GetAt(uint iProp, out PropertyKey pkey);
+
+        [PreserveSig]
+        int GetValue(ref PropertyKey key, out PropVariant pv);
+
+        [PreserveSig]
+        int SetValue(ref PropertyKey key, ref PropVariant pv);
+
+        [PreserveSig]
+        int Commit();
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct PropVariant
+    {
+        [FieldOffset(0)] public ushort vt;
+        [FieldOffset(2)] public ushort wReserved1;
+        [FieldOffset(4)] public ushort wReserved2;
+        [FieldOffset(6)] public ushort wReserved3;
+        [FieldOffset(8)] public IntPtr pwszVal;
+        [FieldOffset(8)] public uint uintVal;
     }
 
     [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
