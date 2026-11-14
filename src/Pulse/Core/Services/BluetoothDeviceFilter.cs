@@ -34,7 +34,7 @@ public static class BluetoothDeviceFilter
 
     /// <summary>
     /// Extracts the underlying device name from a Windows audio render endpoint display name,
-    /// e.g. "Kulaklıklar (AirPods)" or "Headset (JBL TUNE500BT Hands-Free AG Audio)".
+    /// e.g. "Kulaklıklar (AirPods)", "Headset (JBL TUNE500BT Hands-Free AG Audio)", or direct "JBL TUNE500BT Stereo".
     /// </summary>
     public static string TryExtractAudioEndpointDeviceName(string? endpointName)
     {

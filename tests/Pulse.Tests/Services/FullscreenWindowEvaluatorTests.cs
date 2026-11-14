@@ -8,6 +8,8 @@ public sealed class FullscreenWindowEvaluatorTests
         Handle: new IntPtr(100),
         OwnHandle: new IntPtr(200),
         ClassName: "UnrealWindow",
+        ProcessName: "Game.exe",
+        WindowTitle: "Awesome Game",
         IsVisible: true,
         IsMinimized: false,
         IsMaximized: false,
@@ -27,6 +29,22 @@ public sealed class FullscreenWindowEvaluatorTests
     public void RealBorderlessGameOnIslandMonitorDetectsFullscreen()
     {
         Assert.True(FullscreenWindowEvaluator.IsBorderlessFullscreen(BaseCandidate()));
+    }
+
+    [Fact]
+    public void RejectsScreenshotAndSnippingOverlays()
+    {
+        var snippingClass = BaseCandidate() with { ClassName = "ScreenClippingHost" };
+        var snippingProc = BaseCandidate() with { ProcessName = "ScreenClippingHost" };
+        var snippingToolProc = BaseCandidate() with { ProcessName = "SnippingTool" };
+        var lightshotProc = BaseCandidate() with { ProcessName = "Lightshot" };
+        var snippingTitle = BaseCandidate() with { WindowTitle = "Ekran Alıntısı" };
+
+        Assert.False(FullscreenWindowEvaluator.IsBorderlessFullscreen(snippingClass));
+        Assert.False(FullscreenWindowEvaluator.IsBorderlessFullscreen(snippingProc));
+        Assert.False(FullscreenWindowEvaluator.IsBorderlessFullscreen(snippingToolProc));
+        Assert.False(FullscreenWindowEvaluator.IsBorderlessFullscreen(lightshotProc));
+        Assert.False(FullscreenWindowEvaluator.IsBorderlessFullscreen(snippingTitle));
     }
 
     [Fact]

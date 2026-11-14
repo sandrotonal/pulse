@@ -265,6 +265,15 @@
                                    VerticalAlignment="Stretch"
                                    IsHitTestVisible="False" />
 
+                        <!-- Dynamic Ambient Artwork Glow: when music is active with DynamicColorTint,
+                             provides a rich, smooth ambient gradient based on the album cover accent
+                             rather than leaking a static desktop wallpaper snapshot. -->
+                        <Rectangle x:Name="ArtworkAmbientLayer"
+                                   Visibility="Collapsed"
+                                   HorizontalAlignment="Stretch"
+                                   VerticalAlignment="Stretch"
+                                   IsHitTestVisible="False" />
+
                         <!-- Live album tint over the neutral blur. Keeping the tint separate
                              lets track changes recolor the glass instantly without re-capturing
                              the desktop (which briefly hides the window and blinks). -->
@@ -608,13 +617,18 @@
                                 Width="26" Height="26"
                                 CornerRadius="7"
                                 Margin="0,0,8,0"
-                                Background="{ThemeResource PillControlBackground}"
+                                Background="Transparent"
                                 PointerReleased="OnMediaSourcePointerReleased"
                                 ToolTipService.ToolTip="Uygulamada aç">
-                            <Grid x:Name="CompactArtInnerGrid" CornerRadius="7">
-                                <FontIcon x:Name="CompactArtFallbackGlyph" Glyph="&#xEC4F;" FontSize="11" Foreground="{ThemeResource SecondaryText}"
-                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
+                            <Grid x:Name="CompactArtInnerGrid">
+                                <Border x:Name="CompactArtFallback"
+                                        CornerRadius="7"
+                                        Background="{ThemeResource PillControlBackground}"
+                                        Visibility="{Binding ArtworkFallbackVisibility}">
+                                    <FontIcon x:Name="CompactArtFallbackGlyph" Glyph="&#xEC4F;" FontSize="11" Foreground="{ThemeResource SecondaryText}"
+                                              HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Border>
+                                <Image Source="{Binding CompactArtworkImage}" Stretch="UniformToFill" />
                             </Grid>
                         </Border>
 
@@ -824,19 +838,23 @@
                             <!-- Existing Media Art & Metadata -->
                             <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,4,0,10">
                                 <!-- Square Album Art -->
-                                <Border Grid.Column="0"
+                                <Border x:Name="ExpandedArtBorder"
+                                        Grid.Column="0"
                                         Width="96" Height="96"
                                         CornerRadius="18"
-                                        Background="{ThemeResource PillControlBackground}"
-                                        BorderBrush="{ThemeResource IslandBorder}"
-                                        BorderThickness="1"
+                                        Background="Transparent"
                                         PointerReleased="OnMediaSourcePointerReleased"
                                         AutomationProperties.Name="Medya uygulamasını aç"
                                         ToolTipService.ToolTip="Uygulamada aç"
                                         VerticalAlignment="Center">
-                                    <Grid CornerRadius="17">
-                                        <FontIcon Glyph="&#xEC4F;" FontSize="28" Foreground="{ThemeResource SecondaryText}"
-                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    <Grid>
+                                        <Border x:Name="ExpandedArtFallback"
+                                                CornerRadius="18"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Visibility="{Binding ArtworkFallbackVisibility}">
+                                            <FontIcon Glyph="&#xEC4F;" FontSize="28" Foreground="{ThemeResource SecondaryText}"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                        </Border>
                                         <Image Source="{Binding ArtworkImage}" Stretch="UniformToFill" />
                                     </Grid>
                                 </Border>

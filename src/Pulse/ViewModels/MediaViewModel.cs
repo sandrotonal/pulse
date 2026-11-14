@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Pulse.Core.Events;
 using Pulse.Core.Interfaces;
@@ -29,7 +31,8 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private DateTimeOffset _lastTickTime = DateTimeOffset.UtcNow;
     private CancellationTokenSource? _lyricsCts;
     private MediaTrack? _currentTrack;
-    private BitmapImage? _artworkImage;
+    private ImageSource? _artworkImage;
+    private ImageSource? _compactArtworkImage;
     private uint _artworkAccentColor = 0xFF007AFFu;
     private LyricsResult? _lyrics;
     private string _currentLyricLine = "Sözler aranıyor";
@@ -215,7 +218,12 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     public string? SourceAppUserModelId => CurrentTrack?.SourceApplicationId;
     public bool CanGoNext => CurrentTrack?.CanNext == true;
     public bool CanGoPrevious => CurrentTrack?.CanPrevious == true;
-    public BitmapImage? ArtworkImage => _artworkImage;
+    public ImageSource? ArtworkImage => _artworkImage;
+    public ImageSource? CompactArtworkImage => _compactArtworkImage;
+    public bool HasArtwork => _artworkImage is not null;
+    public Microsoft.UI.Xaml.Visibility ArtworkFallbackVisibility => HasArtwork
+        ? Microsoft.UI.Xaml.Visibility.Collapsed
+        : Microsoft.UI.Xaml.Visibility.Visible;
     public uint ArtworkAccentColor => _artworkAccentColor;
     public bool HasLyrics => _lyrics?.HasLyrics == true;
     public string CurrentLyricLine => _currentLyricLine;
@@ -821,35 +829,27 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         var expectedKey = _lastArtworkKey;
         if (_disposed || artwork is null || artwork.Length == 0)
         {
-            _artworkImage = null;
-            _artworkAccentColor = 0xFF007AFFu;
-            OnPropertyChanged(nameof(ArtworkImage));
-            OnPropertyChanged(nameof(ArtworkAccentColor));
+            SetArtworkState(null, null, 0xFF007AFFu);
             return;
         }
 
         try
         {
-            using var stream = new InMemoryRandomAccessStream();
-            using (var writer = new DataWriter(stream))
-            {
-                writer.WriteBytes(artwork);
-                await writer.StoreAsync();
-                writer.DetachStream();
-            }
-            stream.Seek(0);
-            var image = new BitmapImage();
-            await image.SetSourceAsync(stream);
-            var accent = await ExtractArtworkAccentColorAsync(artwork);
+            var processed = await DecodeAndProcessArtworkAsync(artwork);
             if (_disposed || !string.Equals(_lastArtworkKey, expectedKey, StringComparison.Ordinal))
             {
                 return;
             }
 
-            _artworkImage = image;
-            _artworkAccentColor = accent;
-            OnPropertyChanged(nameof(ArtworkImage));
-            OnPropertyChanged(nameof(ArtworkAccentColor));
+            if (processed is null)
+            {
+                SetArtworkState(null, null, 0xFF007AFFu);
+                return;
+            }
+
+            var expandedBitmap = CreateWriteableBitmap(processed.Value.ExpandedBgra, ArtworkBitmapProcessor.ExpandedTargetSizePx);
+            var compactBitmap = CreateWriteableBitmap(processed.Value.CompactBgra, ArtworkBitmapProcessor.CompactTargetSizePx);
+            SetArtworkState(expandedBitmap, compactBitmap, processed.Value.AccentArgb);
         }
         catch (Exception)
         {
@@ -858,88 +858,93 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
                 return;
             }
 
-            _artworkImage = null;
-            _artworkAccentColor = 0xFF007AFFu;
-            OnPropertyChanged(nameof(ArtworkImage));
-            OnPropertyChanged(nameof(ArtworkAccentColor));
+            SetArtworkState(null, null, 0xFF007AFFu);
         }
     }
 
-    private static async Task<uint> ExtractArtworkAccentColorAsync(byte[] artwork)
+    private void SetArtworkState(ImageSource? expanded, ImageSource? compact, uint accentColor)
     {
-        try
-        {
-            using var stream = new InMemoryRandomAccessStream();
-            using (var writer = new DataWriter(stream))
-            {
-                writer.WriteBytes(artwork);
-                await writer.StoreAsync();
-                writer.DetachStream();
-            }
-
-            stream.Seek(0);
-            var decoder = await BitmapDecoder.CreateAsync(stream);
-            var transform = new BitmapTransform
-            {
-                ScaledWidth = Math.Min(48u, decoder.PixelWidth),
-                ScaledHeight = Math.Min(48u, decoder.PixelHeight),
-                InterpolationMode = BitmapInterpolationMode.Linear
-            };
-            var pixels = await decoder.GetPixelDataAsync(
-                BitmapPixelFormat.Rgba8,
-                BitmapAlphaMode.Premultiplied,
-                transform,
-                ExifOrientationMode.IgnoreExifOrientation,
-                ColorManagementMode.DoNotColorManage);
-            var data = pixels.DetachPixelData();
-            if (data.Length < 4)
-            {
-                return 0xFF007AFFu;
-            }
-
-            double totalWeight = 0;
-            double r = 0;
-            double g = 0;
-            double b = 0;
-            for (var i = 0; i + 3 < data.Length; i += 4)
-            {
-                var pr = data[i];
-                var pg = data[i + 1];
-                var pb = data[i + 2];
-                var max = Math.Max(pr, Math.Max(pg, pb));
-                var min = Math.Min(pr, Math.Min(pg, pb));
-                var saturation = (max - min) / 255d;
-                var brightness = max / 255d;
-                if (brightness < 0.12 || brightness > 0.95)
-                {
-                    continue;
-                }
-
-                var weight = 0.35 + saturation + (brightness * 0.35);
-                r += pr * weight;
-                g += pg * weight;
-                b += pb * weight;
-                totalWeight += weight;
-            }
-
-            if (totalWeight <= 0)
-            {
-                return 0xFF007AFFu;
-            }
-
-            var rr = NormalizeAccentChannel(r / totalWeight);
-            var gg = NormalizeAccentChannel(g / totalWeight);
-            var bb = NormalizeAccentChannel(b / totalWeight);
-            return 0xFF000000u | ((uint)rr << 16) | ((uint)gg << 8) | bb;
-        }
-        catch
-        {
-            return 0xFF007AFFu;
-        }
+        _artworkImage = expanded;
+        _compactArtworkImage = compact;
+        _artworkAccentColor = accentColor;
+        OnPropertyChanged(nameof(ArtworkImage));
+        OnPropertyChanged(nameof(CompactArtworkImage));
+        OnPropertyChanged(nameof(HasArtwork));
+        OnPropertyChanged(nameof(ArtworkFallbackVisibility));
+        OnPropertyChanged(nameof(ArtworkAccentColor));
     }
 
-    private static byte NormalizeAccentChannel(double value)
-        => (byte)Math.Clamp(Math.Round((value * 0.86) + 24), 32, 232);
+    private static async Task<(byte[] ExpandedBgra, byte[] CompactBgra, uint AccentArgb)?> DecodeAndProcessArtworkAsync(byte[] artwork)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        using (var writer = new DataWriter(stream))
+        {
+            writer.WriteBytes(artwork);
+            await writer.StoreAsync();
+            writer.DetachStream();
+        }
+
+        stream.Seek(0);
+        var decoder = await BitmapDecoder.CreateAsync(stream);
+        var (scaledW, scaledH) = ArtworkBitmapProcessor.ComputeDecodeDimensions(decoder.PixelWidth, decoder.PixelHeight);
+        if (scaledW == 0 || scaledH == 0)
+        {
+            return null;
+        }
+
+        var transform = new BitmapTransform
+        {
+            ScaledWidth = scaledW,
+            ScaledHeight = scaledH,
+            InterpolationMode = BitmapInterpolationMode.Fant
+        };
+        var pixels = await decoder.GetPixelDataAsync(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Straight,
+            transform,
+            ExifOrientationMode.RespectExifOrientation,
+            ColorManagementMode.DoNotColorManage);
+        var straightPixels = pixels.DetachPixelData();
+
+        var swappedAxes = decoder.OrientedPixelWidth != decoder.PixelWidth;
+        var pixelW = (int)(swappedAxes ? scaledH : scaledW);
+        var pixelH = (int)(swappedAxes ? scaledW : scaledH);
+        if (pixelW <= 0 || pixelH <= 0 || straightPixels.Length < checked(pixelW * pixelH * 4))
+        {
+            return null;
+        }
+
+        return await Task.Run(() =>
+        {
+            var accent = ArtworkBitmapProcessor.ExtractAccentColorFromBgra8(straightPixels, pixelW, pixelH);
+            var expandedBgra = ArtworkBitmapProcessor.CreateSoftEdgeSquarePremultipliedBgra8(
+                straightPixels,
+                pixelW,
+                pixelH,
+                ArtworkBitmapProcessor.ExpandedTargetSizePx,
+                ArtworkBitmapProcessor.ExpandedCornerRadiusRatio,
+                ArtworkBitmapProcessor.ExpandedFeatherRatio,
+                ArtworkBitmapProcessor.ExpandedOuterInsetRatio);
+            var compactBgra = ArtworkBitmapProcessor.CreateSoftEdgeSquarePremultipliedBgra8(
+                straightPixels,
+                pixelW,
+                pixelH,
+                ArtworkBitmapProcessor.CompactTargetSizePx,
+                ArtworkBitmapProcessor.CompactCornerRadiusRatio,
+                ArtworkBitmapProcessor.CompactFeatherRatio,
+                ArtworkBitmapProcessor.CompactOuterInsetRatio);
+            return ((byte[] ExpandedBgra, byte[] CompactBgra, uint AccentArgb)?)(expandedBgra, compactBgra, accent);
+        });
+    }
+
+    private static WriteableBitmap CreateWriteableBitmap(byte[] premultipliedBgra, int size)
+    {
+        var bitmap = new WriteableBitmap(size, size);
+        using var pixelStream = bitmap.PixelBuffer.AsStream();
+        pixelStream.Write(premultipliedBgra, 0, premultipliedBgra.Length);
+        bitmap.Invalidate();
+        return bitmap;
+    }
 
     private static string FormatTime(TimeSpan? value)
     {

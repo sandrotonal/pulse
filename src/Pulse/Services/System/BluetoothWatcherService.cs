@@ -226,7 +226,7 @@ public sealed class BluetoothWatcherService : IDisposable
             var hasName = TryReadStringProperty(args.Properties, ItemNameDisplayProperty, out var updatedName);
             var hasConn = TryReadBoolProperty(args.Properties, IsConnectedProperty, out var isConnected);
 
-            if (hasConn && !_winRtDevices.ContainsKey(args.Id))
+            if (hasConn)
             {
                 var change = _coordinator.RegisterOrUpdatePrimaryEndpoint(
                     args.Id,

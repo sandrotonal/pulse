@@ -4,6 +4,8 @@ public sealed record FullscreenWindowCandidate(
     IntPtr Handle,
     IntPtr OwnHandle,
     string? ClassName,
+    string? ProcessName,
+    string? WindowTitle,
     bool IsVisible,
     bool IsMinimized,
     bool IsMaximized,
@@ -52,10 +54,44 @@ public static class FullscreenWindowEvaluator
             return false;
         }
 
+        // Windows Snipping Tool (Win+Shift+S / ScreenClippingHost), Lightshot, and screen capture overlays
+        // must never trigger fullscreen game suppression and hide the dynamic island.
+        if (IsScreenshotOverlay(candidate))
+        {
+            return false;
+        }
+
         return candidate.Left <= candidate.MonitorLeft + tolerancePixels
             && candidate.Top <= candidate.MonitorTop + tolerancePixels
             && candidate.Right >= candidate.MonitorRight - tolerancePixels
             && candidate.Bottom >= candidate.MonitorBottom - tolerancePixels;
+    }
+
+    public static bool IsScreenshotOverlay(FullscreenWindowCandidate candidate)
+    {
+        if (candidate.ClassName is "ScreenClippingHost" or "Microsoft-Windows-SnippingTool")
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrEmpty(candidate.ProcessName) &&
+            (string.Equals(candidate.ProcessName, "ScreenClippingHost", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(candidate.ProcessName, "SnippingTool", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(candidate.ProcessName, "Lightshot", StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(candidate.ProcessName, "ShareX", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        if (!string.IsNullOrEmpty(candidate.WindowTitle) &&
+            (candidate.WindowTitle.Contains("Screen Clipping", StringComparison.OrdinalIgnoreCase) ||
+             candidate.WindowTitle.Contains("Ekran Alıntısı", StringComparison.OrdinalIgnoreCase) ||
+             candidate.WindowTitle.Contains("Snipping Tool", StringComparison.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        return false;
     }
 }
 

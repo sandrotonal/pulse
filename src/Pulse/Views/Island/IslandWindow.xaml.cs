@@ -209,6 +209,7 @@ public sealed partial class IslandWindow : Window
     private bool _lastFileOpActive;
     private double _appliedCompactScale = double.NaN;
     private readonly char[] _classNameBuffer = new char[64];
+    private readonly char[] _titleBuffer = new char[256];
     private long _frostRestoreGuardTicks;
     private volatile bool _windowClosed;
     private bool _sessionLocked;
@@ -371,6 +372,26 @@ public sealed partial class IslandWindow : Window
         }
 
         _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+    }
+
+    /// <summary>Guarantees the native HWND is shown without disrupting active Composition animations.</summary>
+    public void EnsureNativeWindowVisible()
+    {
+        if (_hwnd == IntPtr.Zero || _windowClosed)
+        {
+            return;
+        }
+
+        if (_fullscreenActive)
+        {
+            _userOverrodeFullscreenHide = true;
+        }
+
+        if (!_isIslandHidden)
+        {
+            _ = ShowWindow(_hwnd, 4); // SW_SHOWNOACTIVATE
+            ReassertTopmost();
+        }
     }
 
     private void ResetDetachedVisualOpacity(float? opacity = 1f)
@@ -812,6 +833,29 @@ public sealed partial class IslandWindow : Window
             className = new string(_classNameBuffer, 0, length);
         }
 
+        string? processName = null;
+        string? windowTitle = null;
+        try
+        {
+            _ = GetWindowThreadProcessId(foreground, out var pid);
+            if (pid != 0)
+            {
+                using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
+                processName = proc.ProcessName;
+            }
+        }
+        catch { }
+
+        try
+        {
+            var titleLen = GetWindowText(foreground, _titleBuffer, _titleBuffer.Length);
+            if (titleLen > 0)
+            {
+                windowTitle = new string(_titleBuffer, 0, titleLen);
+            }
+        }
+        catch { }
+
         if (!GetWindowRect(foreground, out var windowRect)) return false;
 
         var fgMonitor = MonitorFromWindow(foreground, MonitorDefaultToNearest);
@@ -827,6 +871,8 @@ public sealed partial class IslandWindow : Window
             Handle: foreground,
             OwnHandle: _hwnd,
             ClassName: className,
+            ProcessName: processName,
+            WindowTitle: windowTitle,
             IsVisible: isVisible,
             IsMinimized: isMinimized,
             IsMaximized: isMaximized,
@@ -843,6 +889,65 @@ public sealed partial class IslandWindow : Window
             IsSameMonitorAsIsland: isSameMonitor);
 
         return FullscreenWindowEvaluator.IsBorderlessFullscreen(candidate);
+    }
+
+    private bool IsForegroundScreenshotOverlay()
+    {
+        var foreground = GetForegroundWindow();
+        if (foreground == IntPtr.Zero || foreground == _hwnd) return false;
+
+        string? className = null;
+        var length = GetClassName(foreground, _classNameBuffer, _classNameBuffer.Length);
+        if (length > 0)
+        {
+            className = new string(_classNameBuffer, 0, length);
+        }
+
+        string? processName = null;
+        string? windowTitle = null;
+        try
+        {
+            _ = GetWindowThreadProcessId(foreground, out var pid);
+            if (pid != 0)
+            {
+                using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
+                processName = proc.ProcessName;
+            }
+        }
+        catch { }
+
+        try
+        {
+            var titleLen = GetWindowText(foreground, _titleBuffer, _titleBuffer.Length);
+            if (titleLen > 0)
+            {
+                windowTitle = new string(_titleBuffer, 0, titleLen);
+            }
+        }
+        catch { }
+
+        var candidate = new FullscreenWindowCandidate(
+            Handle: foreground,
+            OwnHandle: _hwnd,
+            ClassName: className,
+            ProcessName: processName,
+            WindowTitle: windowTitle,
+            IsVisible: true,
+            IsMinimized: false,
+            IsMaximized: false,
+            IsCloaked: false,
+            ExStyle: 0,
+            Left: 0,
+            Top: 0,
+            Right: 0,
+            Bottom: 0,
+            MonitorLeft: 0,
+            MonitorTop: 0,
+            MonitorRight: 0,
+            MonitorBottom: 0,
+            IsSameMonitorAsIsland: true);
+
+        return FullscreenWindowEvaluator.IsScreenshotOverlay(candidate);
     }
 
     private bool IsForegroundMonitorSameAsIsland()
@@ -947,14 +1052,17 @@ public sealed partial class IslandWindow : Window
             var rawIsFullscreen = false;
             try
             {
-                if (SHQueryUserNotificationState(out var state) == 0 && FullscreenNotificationState.IsFullscreen(state))
+                if (!IsForegroundScreenshotOverlay())
                 {
-                    rawIsFullscreen = IsForegroundMonitorSameAsIsland();
-                }
+                    if (SHQueryUserNotificationState(out var state) == 0 && FullscreenNotificationState.IsFullscreen(state))
+                    {
+                        rawIsFullscreen = IsForegroundMonitorSameAsIsland();
+                    }
 
-                // Exclusive fullscreen is not the only case: borderless/windowed fullscreen
-                // games report QUNS_ACCEPTS_NOTIFICATIONS, so check the foreground window too.
-                rawIsFullscreen = rawIsFullscreen || IsBorderlessFullscreenForeground();
+                    // Exclusive fullscreen is not the only case: borderless/windowed fullscreen
+                    // games report QUNS_ACCEPTS_NOTIFICATIONS, so check the foreground window too.
+                    rawIsFullscreen = rawIsFullscreen || IsBorderlessFullscreenForeground();
+                }
             }
             catch
             {
@@ -1427,7 +1535,12 @@ public sealed partial class IslandWindow : Window
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) 
                  or nameof(MediaViewModel.ArtworkAccentColor) 
-                 or nameof(MediaViewModel.DynamicColorTint))
+                 or nameof(MediaViewModel.DynamicColorTint)
+                 or nameof(IslandViewModel.ArtworkAccentColor)
+                 or nameof(IslandViewModel.DynamicColorTint)
+                 or nameof(IslandViewModel.HasArtwork)
+                 or nameof(IslandViewModel.HasTrack)
+                 or nameof(IslandViewModel.ArtworkImage))
         {
             // Theme/accent changes only recolor the glass; the captured blur is
             // desktop-only and stays valid, so never re-capture here (no blink).
@@ -1640,7 +1753,7 @@ public sealed partial class IslandWindow : Window
         CompactArtBorder.Height = m.CompactArtSize;
         CompactArtBorder.CornerRadius = new CornerRadius(m.CompactArtCornerRadius);
         CompactArtBorder.Margin = new Thickness(0, 0, m.CompactArtMarginRight, 0);
-        CompactArtInnerGrid.CornerRadius = new CornerRadius(m.CompactArtCornerRadius);
+        CompactArtFallback.CornerRadius = new CornerRadius(m.CompactArtCornerRadius);
         CompactArtFallbackGlyph.FontSize = m.CompactArtFallbackGlyphSize;
         CompactTrackTitleBlock.FontSize = m.CompactTrackTitleFontSize;
         CompactTrackArtistBlock.FontSize = m.CompactTrackArtistFontSize;
@@ -2994,7 +3107,7 @@ public sealed partial class IslandWindow : Window
         _isPointerOverSurface = false;
         _viewModel.OnPointerExited();
 
-        if (_viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl)
+        if (_viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl && !_viewModel.PreserveFocusPanel)
         {
             RestartCollapseDelayTimer();
         }
@@ -3166,13 +3279,22 @@ public sealed partial class IslandWindow : Window
         catch { }
     }
 
+    private void ResetCompactPressFeedback()
+    {
+        _longPressTimer?.Stop();
+        _longPressTriggered = false;
+        AnimateSurfaceScale(1.0f, 1.0f, 140);
+    }
+
     private void OnMediaSourcePointerReleased(object sender, PointerRoutedEventArgs e)
     {
         if (IsNonPrimaryRelease(e))
         {
+            ResetCompactPressFeedback();
             return;
         }
 
+        ResetCompactPressFeedback();
         // Tapping the artwork/title opens the app that owns the media session (Spotify, browser...).
         e.Handled = true;
         _viewModel.ActivateMediaSourceApp();
@@ -3182,19 +3304,27 @@ public sealed partial class IslandWindow : Window
     {
         if (IsNonPrimaryRelease(e))
         {
+            ResetCompactPressFeedback();
             return;
         }
 
-        e.Handled = _viewModel.ActivateActiveEventTarget();
+        var handled = _viewModel.ActivateActiveEventTarget();
+        if (handled)
+        {
+            ResetCompactPressFeedback();
+        }
+        e.Handled = handled;
     }
 
     private void OnCompactFocusPointerReleased(object sender, PointerRoutedEventArgs e)
     {
         if (IsNonPrimaryRelease(e))
         {
+            ResetCompactPressFeedback();
             return;
         }
 
+        ResetCompactPressFeedback();
         e.Handled = true;
         _viewModel.SelectPage(1);
         if (!_viewModel.IsExpanded)
@@ -3849,7 +3979,8 @@ public sealed partial class IslandWindow : Window
 
     private void UpdateFrostVisibility()
     {
-        var visible = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
+        var isDynamicMusic = _viewModel.DynamicColorTint && _viewModel.HasTrack;
+        var visible = (_glassEnabled && !isDynamicMusic) ? Visibility.Visible : Visibility.Collapsed;
         FrostLayer.Visibility = visible;
         if (FrostTintLayer is not null)
         {
@@ -3857,24 +3988,25 @@ public sealed partial class IslandWindow : Window
         }
         if (FrostSheen is not null)
         {
-            FrostSheen.Visibility = visible;
+            FrostSheen.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
         }
         if (DetachedFrostLayer is not null)
         {
-            DetachedFrostLayer.Visibility = visible;
+            DetachedFrostLayer.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
         }
         if (DetachedFrostTintLayer is not null)
         {
-            DetachedFrostTintLayer.Visibility = visible;
+            DetachedFrostTintLayer.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
         }
         if (DetachedFrostSheen is not null)
         {
-            DetachedFrostSheen.Visibility = visible;
+            DetachedFrostSheen.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
         }
         if (_glassEnabled)
         {
             UpdateFrostTint(ComputeCurrentPalette());
         }
+        UpdateArtworkAmbientGlow(ComputeCurrentPalette());
     }
 
     private GlassSurfacePalette ComputeCurrentPalette()
@@ -3915,6 +4047,69 @@ public sealed partial class IslandWindow : Window
         if (DetachedFrostSheenTopStop is not null)
         {
             DetachedFrostSheenTopStop.Color = DesktopFrostService.ToColor(palette.SheenTopArgb);
+        }
+    }
+
+    private void UpdateArtworkAmbientGlow(GlassSurfacePalette palette)
+    {
+        try
+        {
+            if (ArtworkAmbientLayer is null)
+            {
+                return;
+            }
+
+            var isDynamicMusic = _viewModel.DynamicColorTint && _viewModel.HasTrack;
+            if (!isDynamicMusic)
+            {
+                ArtworkAmbientLayer.Visibility = Visibility.Collapsed;
+                if (_glassEnabled)
+                {
+                    FrostLayer.Visibility = Visibility.Visible;
+                    if (FrostTintLayer is not null)
+                    {
+                        FrostTintLayer.Visibility = Visibility.Visible;
+                    }
+                }
+                return;
+            }
+
+            // When listening to music with dynamic tinting, suppress the desktop wallpaper capture
+            // so the island reflects the album art color with a sleek ambient glow instead of a desktop snapshot.
+            FrostLayer.Visibility = Visibility.Collapsed;
+            if (FrostTintLayer is not null)
+            {
+                FrostTintLayer.Visibility = Visibility.Collapsed;
+            }
+
+            ArtworkAmbientLayer.Visibility = Visibility.Visible;
+
+            var accentColor = DesktopFrostService.ToColor(palette.AccentArgb);
+            var strength = Math.Clamp(_viewModel.ArtworkTintStrength / 100.0, 0.2, 1.0);
+            var isLight = palette.IsLightTheme;
+
+            var startAlpha = (byte)Math.Clamp(Math.Round((isLight ? 75 : 125) * strength), 20, 220);
+            var midAlpha = (byte)Math.Clamp(Math.Round((isLight ? 35 : 60) * strength), 10, 140);
+            var endAlpha = (byte)0;
+
+            var startColor = Windows.UI.Color.FromArgb(startAlpha, accentColor.R, accentColor.G, accentColor.B);
+            var midColor = Windows.UI.Color.FromArgb(midAlpha, accentColor.R, accentColor.G, accentColor.B);
+            var endColor = Windows.UI.Color.FromArgb(endAlpha, accentColor.R, accentColor.G, accentColor.B);
+
+            var brush = new Microsoft.UI.Xaml.Media.LinearGradientBrush
+            {
+                StartPoint = new Windows.Foundation.Point(0.0, 0.0),
+                EndPoint = new Windows.Foundation.Point(0.85, 0.95)
+            };
+            brush.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop { Color = startColor, Offset = 0.0 });
+            brush.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop { Color = midColor, Offset = 0.45 });
+            brush.GradientStops.Add(new Microsoft.UI.Xaml.Media.GradientStop { Color = endColor, Offset = 1.0 });
+
+            ArtworkAmbientLayer.Fill = brush;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.UpdateArtworkAmbientGlow", ex);
         }
     }
 
@@ -4080,9 +4275,14 @@ public sealed partial class IslandWindow : Window
             WindowRoot.RequestedTheme = requestedTheme;
         }
 
-        PillBackdrop.Background = DesktopFrostService.CreateBrush(palette.SurfaceBackgroundArgb);
+        var isDynamicMusic = _viewModel.DynamicColorTint && _viewModel.HasTrack;
+        var surfaceBg = isDynamicMusic ? palette.FallbackBackgroundArgb : palette.SurfaceBackgroundArgb;
+
+        PillBackdrop.Background = DesktopFrostService.CreateBrush(surfaceBg);
         PillBackdrop.BorderBrush = DesktopFrostService.CreateBrush(0x00000000u);
         PillBackdrop.BorderThickness = new Thickness(0);
+
+        UpdateArtworkAmbientGlow(palette);
 
         if (_frostRimShape is not null)
         {
@@ -4428,6 +4628,12 @@ public sealed partial class IslandWindow : Window
 
     [DllImport("user32.dll")]
     private static extern bool IsZoomed(IntPtr hWnd);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetWindowTextW")]
+    private static extern int GetWindowText(IntPtr hWnd, [Out] char[] lpString, int nMaxCount);
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, char[] lpClassName, int nMaxCount);

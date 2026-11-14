@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
+using System.Text;
 using Microsoft.UI.Dispatching;
+using Microsoft.Win32;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Services;
 
@@ -17,6 +20,8 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     private static readonly Guid ClsidMmDeviceEnumerator = new("BCDE0395-E52F-467C-8E3D-C4579291692E");
     private static readonly Guid IidIMMDeviceEnumerator = new("A95664D2-9614-4F35-A746-DE8DB63617E6");
     private static readonly Guid IidIAudioEndpointVolume = new("5CDF2C82-841E-4546-9722-0CF74078229A");
+    private static readonly Guid ClsidApplicationActivationManager = new("45BA127D-10A8-46EA-8AB7-56EA9078943C");
+    private static readonly Guid IidIApplicationActivationManager = new("2E941141-7F97-4756-BA1D-9DECDE894A3D");
     private static readonly Guid SelfEventContext = new("87A1F2B6-6F1C-4A28-92A7-5C6B7A9E4123");
 
     private readonly object _audioLock = new();
@@ -423,68 +428,380 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
     public bool TryActivateApp(string appId)
     {
-        if (string.IsNullOrWhiteSpace(appId))
+        var plan = AppActivationTargetResolver.BuildPlan(appId);
+        if (plan is null)
         {
             return false;
         }
 
-        // Win32 media sessions report the bare exe name (e.g. "Spotify.exe").
-        var fileName = Path.GetFileName(appId.Trim());
-        if (fileName.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        try
         {
+            if (plan.IsPackagedOrExplicitAumid && TryActivateAumid(plan.TrimAppId))
+            {
+                return true;
+            }
+
+            var matchingPids = new HashSet<uint>();
+            var discoveredAumids = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var discoveredExePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (plan.CandidateProcessNames.Count > 0 &&
+                TryActivateRunningProcesses(plan.CandidateProcessNames, matchingPids, discoveredAumids, discoveredExePaths))
+            {
+                return true;
+            }
+
+            if (matchingPids.Count > 0 && TryActivateWindowByPids(matchingPids))
+            {
+                return true;
+            }
+
+            foreach (var packagedAumid in discoveredAumids)
+            {
+                if (TryActivateAumid(packagedAumid))
+                {
+                    return true;
+                }
+            }
+
+            foreach (var exePath in discoveredExePaths)
+            {
+                if (!AppActivationTargetResolver.IsWindowsAppsExecutablePath(exePath) &&
+                    TryStartShellTarget(exePath))
+                {
+                    return true;
+                }
+            }
+
+            if (!plan.IsPackagedOrExplicitAumid &&
+                plan.AllowDirectAumidActivation &&
+                TryActivateAumid(plan.TrimAppId))
+            {
+                return true;
+            }
+
+            if (Path.IsPathRooted(plan.TrimAppId) &&
+                File.Exists(plan.TrimAppId) &&
+                TryStartShellTarget(plan.TrimAppId))
+            {
+                return true;
+            }
+
+            if (plan.IsExplicitExecutable)
+            {
+                var fileName = Path.GetFileName(plan.TrimAppId);
+                var registeredPath = TryResolveAppPathFromRegistry(fileName);
+                if (registeredPath is not null && TryStartShellTarget(registeredPath))
+                {
+                    return true;
+                }
+            }
+
+            if (plan.ProtocolFallbackUri is not null && TryStartShellTarget(plan.ProtocolFallbackUri))
+            {
+                return true;
+            }
+
+            if (!plan.IsExplicitExecutable && TryStartShellTarget(plan.TrimAppId))
+            {
+                return true;
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("WindowsSystemControlService.TryActivateApp", ex);
+        }
+
+        return false;
+    }
+
+    private static bool TryActivateRunningProcesses(
+        IReadOnlyList<string> processNames,
+        HashSet<uint> matchingPids,
+        HashSet<string> discoveredAumids,
+        HashSet<string> discoveredExePaths)
+    {
+        foreach (var processName in processNames)
+        {
+            Process[] processes;
             try
             {
-                var processName = Path.GetFileNameWithoutExtension(fileName);
-                var processes = global::System.Diagnostics.Process.GetProcessesByName(processName);
-                try
-                {
-                    foreach (var process in processes)
-                    {
-                        if (process.MainWindowHandle != IntPtr.Zero)
-                        {
-                            _ = ShowWindow(process.MainWindowHandle, SwRestore);
-                            _ = SetForegroundWindow(process.MainWindowHandle);
-                            return true;
-                        }
-                    }
-                }
-                finally
-                {
-                    foreach (var process in processes)
-                    {
-                        process.Dispose();
-                    }
-                }
+                processes = Process.GetProcessesByName(processName);
             }
             catch
             {
+                continue;
+            }
+
+            try
+            {
+                foreach (var process in processes)
+                {
+                    try
+                    {
+                        if (process.HasExited)
+                        {
+                            continue;
+                        }
+
+                        if (process.MainWindowHandle != IntPtr.Zero &&
+                            BringWindowToForeground(process.MainWindowHandle))
+                        {
+                            return true;
+                        }
+
+                        matchingPids.Add(unchecked((uint)process.Id));
+
+                        try
+                        {
+                            var handle = process.Handle;
+                            if (TryGetProcessAumid(handle, out var aumid) && !string.IsNullOrWhiteSpace(aumid))
+                            {
+                                discoveredAumids.Add(aumid);
+                            }
+
+                            if (TryGetProcessExecutablePath(handle, out var exePath) && !string.IsNullOrWhiteSpace(exePath))
+                            {
+                                discoveredExePaths.Add(exePath);
+                            }
+                        }
+                        catch
+                        {
+                        }
+                    }
+                    catch
+                    {
+                    }
+                }
+            }
+            finally
+            {
+                foreach (var process in processes)
+                {
+                    process.Dispose();
+                }
             }
         }
 
-        // Packaged apps (e.g. "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify").
-        try
-        {
-            using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
-                "explorer.exe",
-                $"shell:AppsFolder\\{appId}")
-            {
-                UseShellExecute = true
-            });
-            return true;
-        }
-        catch
-        {
-        }
+        return false;
+    }
 
+    private static bool TryActivateWindowByPids(HashSet<uint> targetPids)
+    {
+        var candidateHwnd = IntPtr.Zero;
         try
         {
-            using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(appId) { UseShellExecute = true });
-            return true;
+            EnumWindows((hwnd, unusedParam) =>
+            {
+                _ = GetWindowThreadProcessId(hwnd, out var pid);
+                if (!targetPids.Contains(pid))
+                {
+                    return true;
+                }
+
+                if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GwOwner) != IntPtr.Zero)
+                {
+                    return true;
+                }
+
+                var exStyle = GetWindowLongPtr(hwnd, GwlExStyle).ToInt64();
+                if ((exStyle & WsExToolWindow) != 0)
+                {
+                    return true;
+                }
+
+                if (!GetWindowRect(hwnd, out var rect) ||
+                    rect.Right - rect.Left <= 0 ||
+                    rect.Bottom - rect.Top <= 0)
+                {
+                    return true;
+                }
+
+                candidateHwnd = hwnd;
+                return false;
+            }, IntPtr.Zero);
         }
         catch
         {
             return false;
         }
+
+        return candidateHwnd != IntPtr.Zero && BringWindowToForeground(candidateHwnd);
+    }
+
+    private static bool BringWindowToForeground(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero || !IsWindow(hwnd))
+        {
+            return false;
+        }
+
+        if (IsIconic(hwnd))
+        {
+            _ = ShowWindow(hwnd, SwRestore);
+        }
+        else if (!IsWindowVisible(hwnd))
+        {
+            _ = ShowWindow(hwnd, SwShow);
+        }
+
+        _ = BringWindowToTop(hwnd);
+        if (!SetForegroundWindow(hwnd))
+        {
+            // IslandWindow is WS_EX_NOACTIVATE, so direct SetForegroundWindow can stop at a
+            // taskbar flash; SwitchToThisWindow forces focus transfer reliably.
+            SwitchToThisWindow(hwnd, fAltTab: true);
+        }
+
+        return true;
+    }
+
+    private static bool TryActivateAumid(string aumid)
+    {
+        if (string.IsNullOrWhiteSpace(aumid))
+        {
+            return false;
+        }
+
+        object? activationObj = null;
+        try
+        {
+            var clsid = ClsidApplicationActivationManager;
+            var iid = IidIApplicationActivationManager;
+            var hr = CoCreateInstance(ref clsid, IntPtr.Zero, (uint)CLSCTX.CLSCTX_LOCAL_SERVER, ref iid, out activationObj);
+            if (hr >= 0 && activationObj is IApplicationActivationManager manager)
+            {
+                hr = manager.ActivateApplication(aumid, null, 0, out _);
+                if (hr >= 0)
+                {
+                    return true;
+                }
+            }
+        }
+        catch
+        {
+        }
+        finally
+        {
+            if (activationObj is not null && Marshal.IsComObject(activationObj))
+            {
+                try { _ = Marshal.ReleaseComObject(activationObj); } catch { }
+            }
+        }
+
+        // Only launch explorer fallback for real packaged AUMIDs or shell aliases (not bare .exe names).
+        if (!aumid.Contains('!', StringComparison.Ordinal) &&
+            aumid.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo("explorer.exe", $"shell:AppsFolder\\{aumid}")
+            {
+                UseShellExecute = true
+            });
+            return process is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static bool TryStartShellTarget(string target)
+    {
+        if (string.IsNullOrWhiteSpace(target))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            return process is not null;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private static string? TryResolveAppPathFromRegistry(string fileName)
+    {
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        string[] roots =
+        [
+            $@"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\{fileName}"
+        ];
+
+        foreach (var subKeyPath in roots)
+        {
+            foreach (var hive in new[] { Registry.CurrentUser, Registry.LocalMachine })
+            {
+                try
+                {
+                    using var key = hive.OpenSubKey(subKeyPath);
+                    var raw = key?.GetValue(null) as string;
+                    if (string.IsNullOrWhiteSpace(raw))
+                    {
+                        continue;
+                    }
+
+                    var cleaned = Environment.ExpandEnvironmentVariables(raw.Trim().Trim('"'));
+                    if (File.Exists(cleaned))
+                    {
+                        return cleaned;
+                    }
+                }
+                catch
+                {
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static bool TryGetProcessAumid(IntPtr processHandle, out string? aumid)
+    {
+        aumid = null;
+        uint length = 256;
+        var buffer = new char[length];
+        var result = GetApplicationUserModelId(processHandle, ref length, buffer);
+        if (result == ErrorInsufficientBuffer && length > 0 && length <= 2048)
+        {
+            buffer = new char[length];
+            result = GetApplicationUserModelId(processHandle, ref length, buffer);
+        }
+
+        if (result != 0 || length == 0)
+        {
+            return false;
+        }
+
+        var count = (int)Math.Min(buffer.Length, length);
+        aumid = new string(buffer, 0, count).TrimEnd('\0');
+        return !string.IsNullOrWhiteSpace(aumid);
+    }
+
+    private static bool TryGetProcessExecutablePath(IntPtr processHandle, out string? path)
+    {
+        path = null;
+        var buffer = new char[512];
+        var length = buffer.Length;
+        if (!QueryFullProcessImageName(processHandle, 0, buffer, ref length) || length <= 0)
+        {
+            return false;
+        }
+
+        path = new string(buffer, 0, Math.Min(buffer.Length, length)).TrimEnd('\0');
+        return !string.IsNullOrWhiteSpace(path);
     }
 
     public bool TryOpenPath(string path)
@@ -607,7 +924,23 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     [DllImport("user32.dll")]
     private static extern int GetSystemMetrics(int nIndex);
 
+    private const int SwShow = 5;
     private const int SwRestore = 9;
+    private const uint GwOwner = 4;
+    private const int GwlExStyle = -20;
+    private const long WsExToolWindow = 0x00000080L;
+    private const int ErrorInsufficientBuffer = 122;
+
+    private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Win32Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
 
     [DllImport("user32.dll")]
     private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
@@ -615,10 +948,78 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern void SwitchToThisWindow(IntPtr hWnd, [MarshalAs(UnmanagedType.Bool)] bool fAltTab);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+    [DllImport("user32.dll", EntryPoint = "GetWindowLongPtr")]
+    private static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetWindowRect(IntPtr hWnd, out Win32Rect lpRect);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetApplicationUserModelId(
+        IntPtr hProcess,
+        ref uint applicationUserModelIdLength,
+        [Out] char[]? applicationUserModelId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+    private static extern bool QueryFullProcessImageName(
+        IntPtr hProcess,
+        int dwFlags,
+        [Out] char[] lpExeName,
+        ref int lpdwSize);
+
     [Flags]
     private enum CLSCTX : uint
     {
+        CLSCTX_LOCAL_SERVER = 0x4,
         CLSCTX_ALL = 0x17
+    }
+
+    [ComImport, Guid("2E941141-7F97-4756-BA1D-9DECDE894A3D"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IApplicationActivationManager
+    {
+        [PreserveSig]
+        int ActivateApplication(
+            [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+            [MarshalAs(UnmanagedType.LPWStr)] string? arguments,
+            uint options,
+            out uint processId);
+
+        [PreserveSig]
+        int ActivateForFile(
+            [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+            IntPtr itemArray,
+            [MarshalAs(UnmanagedType.LPWStr)] string verb,
+            out uint processId);
+
+        [PreserveSig]
+        int ActivateForProtocol(
+            [MarshalAs(UnmanagedType.LPWStr)] string appUserModelId,
+            IntPtr itemArray,
+            out uint processId);
     }
 
     private enum EDataFlow

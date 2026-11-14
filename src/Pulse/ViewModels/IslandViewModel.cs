@@ -491,7 +491,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public string NotificationGlyph => (_activeEvent as SystemNotificationEvent)?.IconGlyph ?? "\uE7E7";
     public bool IsNotificationWarning => (_activeEvent as SystemNotificationEvent)?.Priority == EventPriority.Warning;
 
-    public bool IsFocusTimerActive => _activeEvent is FocusTimerEvent || _focusTimer.IsRunning;
+    public bool IsFocusTimerActive => _activeEvent is FocusTimerEvent || _focusTimer.IsRunning || (_focusTimer.State == FocusTimerState.Paused && _focusTimer.RemainingTime > TimeSpan.Zero && _focusTimer.RemainingTime < _focusTimer.TotalDuration);
     public string FocusTimerText
     {
         get
@@ -824,7 +824,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool CanTogglePlayback => _media.CanTogglePlayback;
     public bool CanGoNext => _media.CanGoNext;
     public bool CanGoPrevious => _media.CanGoPrevious;
-    public BitmapImage? ArtworkImage => _media.ArtworkImage;
+    public Microsoft.UI.Xaml.Media.ImageSource? ArtworkImage => _media.ArtworkImage;
+    public Microsoft.UI.Xaml.Media.ImageSource? CompactArtworkImage => _media.CompactArtworkImage;
+    public bool HasArtwork => _media.HasArtwork;
+    public Microsoft.UI.Xaml.Visibility ArtworkFallbackVisibility => _media.ArtworkFallbackVisibility;
     public uint ArtworkAccentColor => _media.ArtworkAccentColor;
     public bool HasLyrics => _media.HasLyrics;
     public Microsoft.UI.Xaml.Visibility LyricsVisibility => ShowLyrics && HasLyrics
@@ -1000,6 +1003,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(FocusProgress));
         OnPropertyChanged(nameof(PreserveFocusPanel));
         OnPropertyChanged(nameof(DetachedBadgeText));
+        OnPropertyChanged(nameof(IsFocusTimerActive));
+        OnPropertyChanged(nameof(FocusTimerVisibility));
     }
 
     private bool _lastSplitModeActive;
@@ -1647,6 +1652,16 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         else if (e.PropertyName is nameof(MediaViewModel.Theme) or nameof(MediaViewModel.ArtworkAccentColor) or nameof(MediaViewModel.DynamicColorTint))
         {
             RefreshThemeResources();
+            OnPropertyChanged(nameof(ArtworkAccentColor));
+            OnPropertyChanged(nameof(DynamicColorTint));
+        }
+        else if (e.PropertyName is nameof(MediaViewModel.ArtworkImage) or nameof(MediaViewModel.CompactArtworkImage) or nameof(MediaViewModel.HasArtwork))
+        {
+            OnPropertyChanged(nameof(ArtworkImage));
+            OnPropertyChanged(nameof(CompactArtworkImage));
+            OnPropertyChanged(nameof(HasArtwork));
+            OnPropertyChanged(nameof(ArtworkFallbackVisibility));
+            OnPropertyChanged(nameof(ArtworkAccentColor));
         }
     }
 

@@ -40,38 +40,86 @@ public partial class App : Application
     private TrayService? _trayService;
     private bool _exiting;
 
-    private const string InstanceMutexName = "Local\\PulseDynamicIslandInstance";
-    private const string ShowIslandEventName = "Local\\PulseShowIslandSignal";
-    private const string ShowSettingsEventName = "Local\\PulseShowSettingsSignal";
+    private readonly SingleInstanceNames _instanceNames;
     private static Mutex? _instanceMutex;
     private EventWaitHandle? _showIslandSignal;
     private RegisteredWaitHandle? _showIslandRegistration;
     private EventWaitHandle? _showSettingsSignal;
     private RegisteredWaitHandle? _showSettingsRegistration;
+    private int _pendingShowIslandSignal;
+    private int _pendingShowSettingsSignal;
 
     private static bool HasSettingsLaunchArg()
         => Environment.GetCommandLineArgs().Any(arg =>
             string.Equals(arg, "--settings", StringComparison.OrdinalIgnoreCase));
 
-    public App()
+    private static string? TryGetCurrentDesktopName()
     {
-        // Single-instance guard: a second launch must not boot a competing instance.
-        _instanceMutex = new Mutex(initiallyOwned: true, InstanceMutexName, out var createdNew);
-        if (!createdNew)
+        try
+        {
+            var desktop = GetThreadDesktop(GetCurrentThreadId());
+            if (desktop == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            const int uoiName = 2;
+            var buffer = new char[256];
+            if (!GetUserObjectInformation(desktop, uoiName, buffer, buffer.Length * sizeof(char), out var neededBytes) ||
+                neededBytes <= 0)
+            {
+                return null;
+            }
+
+            var charCount = Math.Min(buffer.Length, neededBytes / sizeof(char));
+            return new string(buffer, 0, charCount).TrimEnd('\0');
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool TrySignalExistingInstance(string targetSignal)
+    {
+        for (var attempt = 0; attempt < 8; attempt++)
         {
             try
             {
-                var targetSignal = HasSettingsLaunchArg() ? ShowSettingsEventName : ShowIslandEventName;
                 if (EventWaitHandle.TryOpenExisting(targetSignal, out var signalEvent))
                 {
                     signalEvent.Set();
                     signalEvent.Dispose();
+                    return true;
                 }
             }
             catch
             {
-                // Existing instance may be shutting down; nothing to signal.
             }
+
+            if (attempt < 7)
+            {
+                Thread.Sleep(40);
+            }
+        }
+
+        return false;
+    }
+
+    public App()
+    {
+        _instanceNames = SingleInstanceNameResolver.Resolve(TryGetCurrentDesktopName());
+
+        // Single-instance guard: a second launch must not boot a competing instance.
+        // Note: on Windows, Local\ mutexes are session-wide across desktops, so resolving
+        // by desktop keeps isolated sandbox runs from blocking the interactive desktop.
+        _instanceMutex = new Mutex(initiallyOwned: true, _instanceNames.MutexName, out var createdNew);
+        if (!createdNew)
+        {
+            var targetSignal = HasSettingsLaunchArg()
+                ? _instanceNames.ShowSettingsEventName
+                : _instanceNames.ShowIslandEventName;
+            _ = TrySignalExistingInstance(targetSignal);
 
             Environment.Exit(0);
             return;
@@ -148,6 +196,81 @@ public partial class App : Application
             _settingsService,
             _weatherService,
             _locationService);
+
+        RegisterInstanceSignals(dispatcherQueue);
+    }
+
+    private void RegisterInstanceSignals(DispatcherQueue dispatcherQueue)
+    {
+        try
+        {
+            _showIslandSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowIslandEventName);
+            _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _showIslandSignal,
+                (_, _) =>
+                {
+                    if (_exiting)
+                    {
+                        return;
+                    }
+
+                    if (_islandWindow is { } window)
+                    {
+                        window.DispatcherQueue.TryEnqueue(() =>
+                            SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
+                    }
+                    else
+                    {
+                        Interlocked.Exchange(ref _pendingShowIslandSignal, 1);
+                        dispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (_islandWindow is not null &&
+                                Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
+                            {
+                                SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true);
+                            }
+                        });
+                    }
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowSettingsEventName);
+            _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _showSettingsSignal,
+                (_, _) =>
+                {
+                    if (_exiting)
+                    {
+                        return;
+                    }
+
+                    if (_islandWindow is { } window)
+                    {
+                        window.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
+                    }
+                    else
+                    {
+                        Interlocked.Exchange(ref _pendingShowSettingsSignal, 1);
+                        dispatcherQueue.TryEnqueue(() =>
+                        {
+                            if (_islandWindow is not null &&
+                                Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
+                            {
+                                OnSettingsRequested(this, EventArgs.Empty);
+                            }
+                        });
+                    }
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.RegisterInstanceSignals", ex);
+        }
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -184,26 +307,14 @@ public partial class App : Application
             var mediaInitTask = _mediaViewModel.InitializeAsync();
             var startupReconcileTask = ReconcileStartupAsync();
 
-            // When a user launches Pulse again, surface the running instance instead of crashing.
             var islandWindow = _islandWindow;
-            _showIslandSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowIslandEventName);
-            _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _showIslandSignal,
-                (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() =>
-                    SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true)),
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+            if (Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
+            {
+                islandWindow.DispatcherQueue.TryEnqueue(() =>
+                    SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
+            }
 
-            _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsEventName);
-            _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _showSettingsSignal,
-                (_, _) => islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty)),
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
-
-            if (HasSettingsLaunchArg())
+            if (HasSettingsLaunchArg() || Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
             {
                 islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
             }
@@ -278,6 +389,10 @@ public partial class App : Application
             if (wasHidden)
             {
                 islandWindow.ShowIsland();
+            }
+            else
+            {
+                islandWindow.EnsureNativeWindowVisible();
             }
 
             if (wasHidden || !toggleIfAlreadyVisible)
@@ -377,6 +492,15 @@ public partial class App : Application
 
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetThreadDesktop(uint dwThreadId);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern bool GetUserObjectInformation(IntPtr hObj, int nIndex, [System.Runtime.InteropServices.Out] char[]? pvInfo, int nLength, out int lpnLengthNeeded);
 
     private async void OnStartupRequested(object? sender, bool enabled)
     {
