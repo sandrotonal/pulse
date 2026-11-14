@@ -886,6 +886,7 @@
                                                            x:Name="ExpandedSeekBar"
                                                            Height="22"
                                                            Value="{Binding SeekPercent, Mode=TwoWay}"
+                                                           Duration="{Binding CurrentTrack.Duration}"
                                                            CanSeek="{Binding CurrentTrack.CanSeek, FallbackValue=True}"
                                                            AccentBrush="{ThemeResource SeekAccent}"
                                                            Visibility="{Binding SeekPanelVisibility}"
