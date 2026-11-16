@@ -1219,26 +1219,25 @@
                                         <Button Style="{StaticResource IslandButtonStyle}"
                                                 Height="28" CornerRadius="14"
                                                 MinWidth="0"
-                                                Padding="10,0"
                                                 Background="{ThemeResource PillControlBackground}"
                                                 Command="{Binding OpenSoundSwitcherCommand}"
                                                 PointerPressed="OnButtonPointerPressed"
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Ses çıkış aygıtı"
                                                 ToolTipService.ToolTip="{Binding ActiveAudioDeviceName}">
-                                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="11"
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="11.5"
                                                           Foreground="{ThemeResource PrimaryText}" />
                                                 <TextBlock Text="{Binding ActiveAudioDeviceShortName}"
-                                                           FontSize="11" FontWeight="Medium"
-                                                           MaxWidth="130" TextTrimming="CharacterEllipsis"
+                                                           FontSize="11.5" FontWeight="Medium"
+                                                           MaxWidth="120" TextTrimming="CharacterEllipsis"
                                                            Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
 
                                         <!-- Animated Headphone Connection Indicator (replaces screenshot button) -->
                                         <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="28" Width="30" CornerRadius="14"
+                                                Height="28" Width="28" CornerRadius="14"
                                                 MinWidth="0" Padding="0"
                                                 Background="{ThemeResource PillControlBackground}"
                                                 Command="{Binding OpenSoundSwitcherCommand}"
@@ -1246,24 +1245,19 @@
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="{Binding HeadphoneStatusTooltip}"
                                                 ToolTipService.ToolTip="{Binding HeadphoneStatusTooltip}">
-                                            <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Grid Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <!-- Pulse halo animated when headphones connected -->
                                                 <Ellipse x:Name="HeadphoneBeaconHalo"
-                                                         Width="20" Height="20"
+                                                         Width="24" Height="24"
                                                          Fill="{Binding HeadphoneStatusBrush}"
                                                          Opacity="0.0"
                                                          Visibility="{Binding HeadphoneHaloVisibility}"
                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                <!-- Headphone glyph -->
-                                                <FontIcon Glyph="&#xE7F6;" FontSize="11"
+                                                <!-- Headphone glyph: Segoe MDL2 Assets E7F6 -->
+                                                <FontIcon Glyph="&#xE7F6;" FontSize="13"
                                                           Foreground="{Binding HeadphoneStatusBrush}"
                                                           Opacity="{Binding HeadphoneIconOpacity}"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                <!-- Micro status dot -->
-                                                <Ellipse Width="4" Height="4"
-                                                         Fill="{Binding HeadphoneStatusBrush}"
-                                                         HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                         Margin="0,0,1,1" />
                                             </Grid>
                                         </Button>
                                     </StackPanel>

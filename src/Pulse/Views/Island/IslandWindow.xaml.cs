@@ -2527,21 +2527,21 @@ public sealed partial class IslandWindow : Window
 
         bool isSplit = _viewModel.IsSplitModeActive && !isExpanded && !isCollapsing;
 
-        double targetWidth = IslandPresentationPolicy.ComputeCompactTargetWidth(
-            state,
-            hasTrack,
-            isSplit,
-            _viewModel.IsNotificationActive,
-            _viewModel.IsFileOperationActive,
-            _viewModel.IsFocusTimerActive);
-
         var metrics = IslandSurfaceLayout.ComputeCompactMetrics(_viewModel.IslandScale);
-        var scale = isExpanded ? 1.0 : metrics.Scale;
+        double targetWidth = isExpanded
+            ? 384.0
+            : IslandPresentationPolicy.ComputeCompactTargetWidth(
+                state,
+                hasTrack,
+                isSplit,
+                _viewModel.IsNotificationActive,
+                _viewModel.IsFileOperationActive,
+                _viewModel.IsFocusTimerActive) * metrics.Scale;
+
         double targetHeight = isExpanded ? 240.0 : metrics.PillHeight;
         // Continuous island corners: large enough to read as an Apple surface
         // instead of a generic rounded card, still inside the content insets.
         double targetCornerRadius = isExpanded ? 56.0 : metrics.PillCornerRadius;
-        targetWidth *= scale;
 
         double detachedWidth = metrics.DetachedPillWidth;
         double detachedHeight = metrics.DetachedPillHeight;
@@ -3117,8 +3117,9 @@ public sealed partial class IslandWindow : Window
     private void OnCollapseDelayTimerTick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl && !_viewModel.PreserveFocusPanel)
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_viewModel.PreserveFocusPanel)
         {
+            _isInteractingWithControl = false;
             _viewModel.Collapse();
         }
         else if (_viewModel.PreserveFocusPanel && _viewModel.IsExpanded)
@@ -3243,9 +3244,10 @@ public sealed partial class IslandWindow : Window
         _longPressTimer?.Stop();
         _longPressTriggered = false;
         _isPointerOverSurface = false;
+        _isInteractingWithControl = false;
         _viewModel.OnPointerExited();
 
-        if (_viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl && !_viewModel.PreserveFocusPanel)
+        if (_viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_viewModel.PreserveFocusPanel)
         {
             RestartCollapseDelayTimer();
         }
@@ -3353,8 +3355,9 @@ public sealed partial class IslandWindow : Window
     private void OnDetachedPillPointerExited(object sender, PointerRoutedEventArgs e)
     {
         AnimateElementScale(DetachedPill, 1.0f, 120);
-        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_isInteractingWithControl && !_viewModel.PreserveFocusPanel)
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_viewModel.PreserveFocusPanel)
         {
+            _isInteractingWithControl = false;
             RestartCollapseDelayTimer();
         }
     }
@@ -4821,6 +4824,17 @@ public sealed partial class IslandWindow : Window
             }
         }
 
+        const uint WM_KILLFOCUS = 0x0008;
+        const uint WM_CAPTURECHANGED = 0x0215;
+        if (uMsg == WM_KILLFOCUS || uMsg == WM_CAPTURECHANGED)
+        {
+            _isInteractingWithControl = false;
+            if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
+            {
+                RestartCollapseDelayTimer();
+            }
+        }
+
         if (uMsg == WM_GETMINMAXINFO)
         {
             var mmi = Marshal.PtrToStructure<MINMAXINFO>(lParam);
@@ -4832,15 +4846,9 @@ public sealed partial class IslandWindow : Window
 
         if (uMsg == WM_NCHITTEST)
         {
-            // During active control drag/scrub or button press, maintain hit testing
-            if (_isInteractingWithControl || _viewModel.IsScrubbing)
-            {
-                return DefSubclassProc(hWnd, uMsg, wParam, lParam);
-            }
-
             var (screenX, screenY) = IslandSurfaceLayout.ExtractSignedScreenCoordinates(lParam);
 
-            if (!IsPointInsideVisibleIsland(screenX, screenY))
+            if (!_viewModel.IsScrubbing && !IsPointInsideVisibleIsland(screenX, screenY))
             {
                 const int HTTRANSPARENT = -1;
                 return new IntPtr(HTTRANSPARENT);
