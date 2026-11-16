@@ -6,7 +6,9 @@ public sealed record AudioStateChangedEventArgs(
     bool IsSelfOriginated,
     bool IsDeviceSwitch = false,
     string? DeviceName = null,
-    string? DeviceGlyph = null);
+    string? DeviceGlyph = null,
+    bool AreHeadphonesConnected = false,
+    string? HeadphoneDeviceName = null);
 
 /// <summary>
 /// Real system-level controls: endpoint volume, mute, screen capture, battery.
@@ -30,6 +32,9 @@ public interface ISystemControlService
 
     /// <summary>Returns the friendly name and glyph for the default render audio endpoint.</summary>
     (string Name, string Glyph) GetActiveAudioDevice() => ("Hoparlör", "\uE7F5");
+
+    /// <summary>Returns true if headphones/headset are connected to the system, along with optional name.</summary>
+    (bool IsConnected, string? DeviceName) GetHeadphoneStatus() => (false, null);
 
     /// <summary>Opens Windows audio flyout or sound settings.</summary>
     void OpenSoundFlyout() { }

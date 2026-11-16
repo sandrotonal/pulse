@@ -72,6 +72,7 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _systemPanelVisual;
     private readonly Visual _detachedVisual;
     private readonly Visual _batteryChargeHaloVisual;
+    private readonly Visual _headphoneBeaconHaloVisual;
     private readonly Border[] _dotVisualElements;
     private readonly Visual[] _dotVisuals = new Visual[3];
     private readonly CompositionRoundedRectangleGeometry[] _dotClipGeometries = new CompositionRoundedRectangleGeometry[3];
@@ -162,6 +163,7 @@ public sealed partial class IslandWindow : Window
 
     private bool _waveAnimating;
     private bool _batteryChargeAnimating;
+    private bool _headphoneBeaconAnimating;
     private readonly DispatcherQueueTimer _collapseDelayTimer;
     private DispatcherQueueTimer? _hoverExpandTimer;
     private DispatcherQueueTimer? _longPressTimer;
@@ -284,6 +286,7 @@ public sealed partial class IslandWindow : Window
         _systemPanelVisual = ElementCompositionPreview.GetElementVisual(SystemExpandedPanel);
         _detachedVisual = ElementCompositionPreview.GetElementVisual(DetachedPill);
         _batteryChargeHaloVisual = ElementCompositionPreview.GetElementVisual(BatteryChargeHalo);
+        _headphoneBeaconHaloVisual = ElementCompositionPreview.GetElementVisual(HeadphoneBeaconHalo);
 
         _dotVisualElements = [PageDotVisual0, PageDotVisual1, PageDotVisual2];
         for (int i = 0; i < 3; i++)
@@ -339,6 +342,7 @@ public sealed partial class IslandWindow : Window
         }
         Closed += OnWindowClosed;
         UpdateBatteryChargingAnimation();
+        UpdateHeadphoneBeaconAnimation();
 
         if (ExpandedPanelsHost is not null)
         {
@@ -793,6 +797,16 @@ public sealed partial class IslandWindow : Window
             }
             catch { }
         }
+        if (_headphoneBeaconAnimating)
+        {
+            _headphoneBeaconAnimating = false;
+            try
+            {
+                _headphoneBeaconHaloVisual.StopAnimation("Opacity");
+                _headphoneBeaconHaloVisual.StopAnimation("Scale");
+            }
+            catch { }
+        }
     }
 
     private void RestoreAmbientAnimations()
@@ -802,6 +816,7 @@ public sealed partial class IslandWindow : Window
             StartEqualizerWave();
         }
         UpdateBatteryChargingAnimation();
+        UpdateHeadphoneBeaconAnimation();
     }
 
     public void ToggleHideIsland()
@@ -1534,6 +1549,13 @@ public sealed partial class IslandWindow : Window
                 UpdateBatteryChargingAnimation();
             }
         }
+        else if (e.PropertyName == nameof(IslandViewModel.IsHeadphonesConnected))
+        {
+            if (!_isIslandHidden || _hideAnchorVisible)
+            {
+                UpdateHeadphoneBeaconAnimation();
+            }
+        }
         else if (e.PropertyName == nameof(MediaViewModel.CurrentIslandState))
         {
             UpdateStateLayout(_viewModel.CurrentIslandState, animated: !_isIslandHidden);
@@ -2088,6 +2110,18 @@ public sealed partial class IslandWindow : Window
                 _batteryChargeHaloVisual.StopAnimation("Scale");
                 _batteryChargeHaloVisual.Opacity = 0.35f;
                 _batteryChargeHaloVisual.Scale = Vector3.One;
+            }
+            catch { }
+        }
+
+        if (_viewModel.IsHeadphonesConnected)
+        {
+            try
+            {
+                _headphoneBeaconHaloVisual.StopAnimation("Opacity");
+                _headphoneBeaconHaloVisual.StopAnimation("Scale");
+                _headphoneBeaconHaloVisual.Opacity = 0.35f;
+                _headphoneBeaconHaloVisual.Scale = Vector3.One;
             }
             catch { }
         }
@@ -2988,6 +3022,66 @@ public sealed partial class IslandWindow : Window
         catch
         {
             _batteryChargeAnimating = false;
+        }
+    }
+
+    private void UpdateHeadphoneBeaconAnimation()
+    {
+        if (!_viewModel.IsHeadphonesConnected)
+        {
+            if (!_headphoneBeaconAnimating) return;
+            _headphoneBeaconAnimating = false;
+
+            try
+            {
+                _headphoneBeaconHaloVisual.StopAnimation("Opacity");
+                _headphoneBeaconHaloVisual.StopAnimation("Scale");
+            }
+            catch { }
+
+            return;
+        }
+
+        if (ReducedMotion)
+        {
+            _headphoneBeaconAnimating = false;
+            ApplyStaticAmbientStatesIfReducedMotion();
+            return;
+        }
+
+        if (_headphoneBeaconAnimating) return;
+        _headphoneBeaconAnimating = true;
+
+        try
+        {
+            var visual = _headphoneBeaconHaloVisual;
+            var compositor = visual.Compositor;
+            var easing = compositor.CreateCubicBezierEasingFunction(
+                new Vector2(0.42f, 0f), new Vector2(0.58f, 1f));
+
+            visual.CenterPoint = new Vector3(
+                (float)(HeadphoneBeaconHalo.Width / 2),
+                (float)(HeadphoneBeaconHalo.Height / 2), 0f);
+
+            var opacity = compositor.CreateScalarKeyFrameAnimation();
+            opacity.Duration = TimeSpan.FromMilliseconds(1500);
+            opacity.IterationBehavior = AnimationIterationBehavior.Forever;
+            opacity.Direction = AnimationDirection.Alternate;
+            opacity.InsertKeyFrame(0f, 0.12f);
+            opacity.InsertKeyFrame(1f, 0.55f, easing);
+            visual.StartAnimation("Opacity", opacity);
+
+            var scale = compositor.CreateVector3KeyFrameAnimation();
+            scale.Duration = TimeSpan.FromMilliseconds(1500);
+            scale.IterationBehavior = AnimationIterationBehavior.Forever;
+            scale.Direction = AnimationDirection.Alternate;
+            scale.InsertKeyFrame(0f, new Vector3(0.85f, 0.85f, 1f));
+            scale.InsertKeyFrame(1f, new Vector3(1.20f, 1.20f, 1f), easing);
+            visual.StartAnimation("Scale", scale);
+        }
+        catch
+        {
+            _headphoneBeaconAnimating = false;
         }
     }
 
