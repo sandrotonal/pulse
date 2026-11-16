@@ -218,13 +218,16 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             var volume = GetMasterVolume();
             var muted = IsMuted();
             var (deviceName, deviceGlyph) = GetActiveAudioDevice();
+            var (isHeadphones, headphoneName) = GetHeadphoneStatus();
             AudioStateChanged?.Invoke(this, new AudioStateChangedEventArgs(
                 volume,
                 muted,
                 IsSelfOriginated: false,
                 IsDeviceSwitch: true,
                 DeviceName: deviceName,
-                DeviceGlyph: deviceGlyph));
+                DeviceGlyph: deviceGlyph,
+                AreHeadphonesConnected: isHeadphones,
+                HeadphoneDeviceName: headphoneName));
         });
     }
 
@@ -360,6 +363,102 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             }
 
             return ("Hoparlör", "\uE7F5");
+        }
+    }
+
+    public (bool IsConnected, string? DeviceName) GetHeadphoneStatus()
+    {
+        lock (_audioLock)
+        {
+            if (_disposed)
+            {
+                return (false, null);
+            }
+
+            try
+            {
+                // 1. Check if the active default audio device is already headphones/headset
+                var (activeName, activeGlyph) = GetActiveAudioDevice();
+                if (AudioDeviceResolver.IsHeadphones(activeName) || activeGlyph == "\uE7F6")
+                {
+                    return (true, activeName);
+                }
+
+                // 2. Check active render endpoints if enumerator is initialized
+                if (_deviceEnumerator is null)
+                {
+                    _ = GetEndpointVolume();
+                }
+
+                if (_deviceEnumerator is not null &&
+                    _deviceEnumerator.EnumAudioEndpoints(EDataFlow.eRender, 1 /* DEVICE_STATE_ACTIVE */, out var collection) == 0 &&
+                    collection is not null)
+                {
+                    try
+                    {
+                        if (collection.GetCount(out var count) == 0 && count > 0)
+                        {
+                            var keyFriendlyName = new PropertyKey { fmtid = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), pid = 14 };
+                            var keyFormFactor = new PropertyKey { fmtid = new Guid("1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"), pid = 0 };
+
+                            for (uint i = 0; i < count; i++)
+                            {
+                                if (collection.Item(i, out var dev) == 0 && dev is not null)
+                                {
+                                    try
+                                    {
+                                        if (dev.OpenPropertyStore(0 /* STGM_READ */, out var store) == 0 && store is not null)
+                                        {
+                                            try
+                                            {
+                                                var name = string.Empty;
+                                                if (store.GetValue(ref keyFriendlyName, out var pvName) == 0)
+                                                {
+                                                    if (pvName.vt == 31 && pvName.pwszVal != IntPtr.Zero)
+                                                    {
+                                                        name = Marshal.PtrToStringUni(pvName.pwszVal) ?? string.Empty;
+                                                    }
+                                                    _ = PropVariantClear(ref pvName);
+                                                }
+
+                                                uint formFactor = 0;
+                                                if (store.GetValue(ref keyFormFactor, out var pvForm) == 0)
+                                                {
+                                                    formFactor = pvForm.uintVal;
+                                                    _ = PropVariantClear(ref pvForm);
+                                                }
+
+                                                if (AudioDeviceResolver.IsHeadphones(name, formFactor))
+                                                {
+                                                    return (true, name);
+                                                }
+                                            }
+                                            finally
+                                            {
+                                                _ = Marshal.ReleaseComObject(store);
+                                            }
+                                        }
+                                    }
+                                    finally
+                                    {
+                                        _ = Marshal.ReleaseComObject(dev);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    finally
+                    {
+                        _ = Marshal.ReleaseComObject(collection);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("WindowsSystemControlService.GetHeadphoneStatus", ex);
+            }
+
+            return (false, null);
         }
     }
 
@@ -1006,9 +1105,24 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
     private sealed class DeviceNotificationClient(Action onDefaultRenderChanged) : IMMNotificationClient
     {
-        public int OnDeviceStateChanged(string pwstrDeviceId, uint dwNewState) => 0;
-        public int OnDeviceAdded(string pwstrDeviceId) => 0;
-        public int OnDeviceRemoved(string pwstrDeviceId) => 0;
+        public int OnDeviceStateChanged(string pwstrDeviceId, uint dwNewState)
+        {
+            onDefaultRenderChanged();
+            return 0;
+        }
+
+        public int OnDeviceAdded(string pwstrDeviceId)
+        {
+            onDefaultRenderChanged();
+            return 0;
+        }
+
+        public int OnDeviceRemoved(string pwstrDeviceId)
+        {
+            onDefaultRenderChanged();
+            return 0;
+        }
+
         public int OnPropertyValueChanged(string pwstrDeviceId, PropertyKey key) => 0;
 
         public int OnDefaultDeviceChanged(EDataFlow flow, ERole role, string? pwstrDefaultDeviceId)
@@ -1204,11 +1318,21 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         int OnPropertyValueChanged([MarshalAs(UnmanagedType.LPWStr)] string pwstrDeviceId, PropertyKey key);
     }
 
+    [ComImport, Guid("0BD7A1BE-7A1A-44DB-8397-CC5392387B5E"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    private interface IMMDeviceCollection
+    {
+        [PreserveSig]
+        int GetCount(out uint pcDevices);
+
+        [PreserveSig]
+        int Item(uint nDevice, [MarshalAs(UnmanagedType.Interface)] out IMMDevice? ppDevice);
+    }
+
     [ComImport, Guid("A95664D2-9614-4F35-A746-DE8DB63617E6"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
     private interface IMMDeviceEnumerator
     {
         [PreserveSig]
-        int EnumAudioEndpoints(EDataFlow dataFlow, uint dwStateMask, out IntPtr ppDevices);
+        int EnumAudioEndpoints(EDataFlow dataFlow, uint dwStateMask, [MarshalAs(UnmanagedType.Interface)] out IMMDeviceCollection? ppDevices);
 
         [PreserveSig]
         int GetDefaultAudioEndpoint(EDataFlow dataFlow, ERole role, [MarshalAs(UnmanagedType.Interface)] out IMMDevice? ppEndpoint);

@@ -2,6 +2,34 @@ namespace Pulse.Core.Services;
 
 public static class AudioDeviceResolver
 {
+    public static bool IsHeadphones(string? deviceName, uint formFactor = 0)
+    {
+        // Windows Core Audio FormFactor enum:
+        // 3 = Headphones, 5 = Headset, 6 = Handset
+        if (formFactor is 3 or 5 or 6)
+        {
+            return true;
+        }
+
+        if (string.IsNullOrWhiteSpace(deviceName))
+        {
+            return false;
+        }
+
+        var lower = deviceName.ToLowerInvariant();
+        return lower.Contains("headphone") ||
+               lower.Contains("kulaklık") ||
+               lower.Contains("kulaklik") ||
+               lower.Contains("headset") ||
+               lower.Contains("airpods") ||
+               lower.Contains("buds") ||
+               lower.Contains("earphone") ||
+               lower.Contains("freebuds") ||
+               lower.Contains("wh-") ||
+               lower.Contains("wf-") ||
+               lower.Contains("pixel buds");
+    }
+
     public static string ResolveGlyph(string? deviceName, uint formFactor = 0)
     {
         if (string.IsNullOrWhiteSpace(deviceName))
@@ -9,18 +37,12 @@ public static class AudioDeviceResolver
             return "\uE7F5"; // Default Speaker
         }
 
-        var lower = deviceName.ToLowerInvariant();
-        if (formFactor is 3 or 5 or 6 ||
-            lower.Contains("headphone") ||
-            lower.Contains("kulaklık") ||
-            lower.Contains("headset") ||
-            lower.Contains("airpods") ||
-            lower.Contains("buds") ||
-            lower.Contains("earphone"))
+        if (IsHeadphones(deviceName, formFactor))
         {
             return "\uE7F6"; // Headphones
         }
 
+        var lower = deviceName.ToLowerInvariant();
         if (lower.Contains("bluetooth") || lower.Contains("bt"))
         {
             return "\uE702"; // Bluetooth
@@ -38,12 +60,12 @@ public static class AudioDeviceResolver
 
         var name = deviceName.Trim();
         var parenIdx = name.IndexOf('(');
-        if (parenIdx > 0 && name.Length > 16)
+        if (parenIdx > 0)
         {
             var clean = name.Substring(0, parenIdx).Trim();
             if (!string.IsNullOrEmpty(clean))
             {
-                return clean;
+                name = clean;
             }
         }
 

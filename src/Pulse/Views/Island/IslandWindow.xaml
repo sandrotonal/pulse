@@ -1214,35 +1214,57 @@
                                         </Grid>
                                     </StackPanel>
 
-                                    <!-- Audio Output Endpoint Switcher Pill & Screenshot Button -->
+                                    <!-- Audio Output Endpoint Switcher Pill & Headphone Status Live Indicator -->
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                        <Button Style="{StaticResource TransportCapsuleButtonStyle}"
+                                        <Button Style="{StaticResource IslandButtonStyle}"
                                                 Height="28" CornerRadius="14"
-                                                Padding="9,0"
+                                                MinWidth="0"
+                                                Padding="10,0"
                                                 Background="{ThemeResource PillControlBackground}"
                                                 Command="{Binding OpenSoundSwitcherCommand}"
                                                 PointerPressed="OnButtonPointerPressed"
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Ses çıkış aygıtı"
-                                                ToolTipService.ToolTip="Ses Çıkış Aygıtını Değiştir (Hızlı Ayarlar)">
+                                                ToolTipService.ToolTip="{Binding ActiveAudioDeviceName}">
                                             <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                                                 <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="11"
                                                           Foreground="{ThemeResource PrimaryText}" />
                                                 <TextBlock Text="{Binding ActiveAudioDeviceShortName}"
                                                            FontSize="11" FontWeight="Medium"
-                                                           MaxWidth="115" TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="130" TextTrimming="CharacterEllipsis"
                                                            Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
 
-                                        <Button Style="{StaticResource CircularHeaderButtonStyle}"
-                                                Width="30" Height="30" CornerRadius="15"
-                                                Command="{Binding TakeScreenshotCommand}"
+                                        <!-- Animated Headphone Connection Indicator (replaces screenshot button) -->
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="28" Width="30" CornerRadius="14"
+                                                MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding OpenSoundSwitcherCommand}"
                                                 PointerPressed="OnButtonPointerPressed"
                                                 PointerReleased="OnButtonPointerReleased"
-                                                AutomationProperties.Name="Ekran görüntüsü al"
-                                                ToolTipService.ToolTip="Ekran Görüntüsü Al (Görüntü panoya kopyalanır ve Ekran Görüntüleri klasörüne kaydedilir)">
-                                            <FontIcon Glyph="&#xE722;" FontSize="12.5" />
+                                                AutomationProperties.Name="{Binding HeadphoneStatusTooltip}"
+                                                ToolTipService.ToolTip="{Binding HeadphoneStatusTooltip}">
+                                            <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <!-- Pulse halo animated when headphones connected -->
+                                                <Ellipse x:Name="HeadphoneBeaconHalo"
+                                                         Width="20" Height="20"
+                                                         Fill="{Binding HeadphoneStatusBrush}"
+                                                         Opacity="0.0"
+                                                         Visibility="{Binding HeadphoneHaloVisibility}"
+                                                         HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                <!-- Headphone glyph -->
+                                                <FontIcon Glyph="&#xE7F6;" FontSize="11"
+                                                          Foreground="{Binding HeadphoneStatusBrush}"
+                                                          Opacity="{Binding HeadphoneIconOpacity}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                <!-- Micro status dot -->
+                                                <Ellipse Width="4" Height="4"
+                                                         Fill="{Binding HeadphoneStatusBrush}"
+                                                         HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                         Margin="0,0,1,1" />
+                                            </Grid>
                                         </Button>
                                     </StackPanel>
                                 </Grid>

@@ -179,6 +179,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             var (devName, devGlyph) = _systemControl.GetActiveAudioDevice();
             _activeAudioDeviceName = devName;
             _activeAudioDeviceGlyph = devGlyph;
+            var (hpConn, hpName) = _systemControl.GetHeadphoneStatus();
+            _areHeadphonesConnected = hpConn;
+            _headphoneDeviceName = hpName;
             _systemControl.AudioStateChanged += OnSystemAudioStateChanged;
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
@@ -349,12 +352,56 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private string _activeAudioDeviceName = "Hoparlör";
     private string _activeAudioDeviceGlyph = "\uE7F5";
+    private bool _areHeadphonesConnected;
+    private string? _headphoneDeviceName;
+
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneConnectedDarkBrush = new(Windows.UI.Color.FromArgb(255, 48, 209, 88));   // iOS Emerald Green #30D158
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneConnectedLightBrush = new(Windows.UI.Color.FromArgb(255, 52, 199, 89));  // iOS Green Light
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedDarkBrush = new(Windows.UI.Color.FromArgb(160, 142, 142, 147)); // Muted Gray Dark #8E8E93
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedLightBrush = new(Windows.UI.Color.FromArgb(160, 108, 108, 112)); // Muted Gray Light
 
     public string ActiveAudioDeviceName => _activeAudioDeviceName;
 
     public string ActiveAudioDeviceShortName => AudioDeviceResolver.FormatShortName(_activeAudioDeviceName);
 
     public string ActiveAudioDeviceGlyph => _activeAudioDeviceGlyph;
+
+    public bool IsHeadphonesConnected => _areHeadphonesConnected;
+
+    public string HeadphoneBadgeGlyph => "\uE7F6";
+
+    public double HeadphoneIconOpacity => _areHeadphonesConnected ? 1.0 : 0.45;
+
+    public Microsoft.UI.Xaml.Visibility HeadphoneHaloVisibility => _areHeadphonesConnected
+        ? Microsoft.UI.Xaml.Visibility.Visible
+        : Microsoft.UI.Xaml.Visibility.Collapsed;
+
+    public Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneStatusBrush
+    {
+        get
+        {
+            var isLight = DesktopFrostService.ResolveIsLightTheme(_media.Theme);
+            return _areHeadphonesConnected
+                ? (isLight ? HeadphoneConnectedLightBrush : HeadphoneConnectedDarkBrush)
+                : (isLight ? HeadphoneDisconnectedLightBrush : HeadphoneDisconnectedDarkBrush);
+        }
+    }
+
+    public string HeadphoneStatusTooltip => _areHeadphonesConnected
+        ? (!string.IsNullOrWhiteSpace(_headphoneDeviceName)
+            ? $"Kulaklık Bağlı: {_headphoneDeviceName} (Ses Çıkışını Değiştir)"
+            : "Kulaklık Bağlı (Ses Çıkışını Değiştir)")
+        : "Kulaklık Bağlı Değil (Ses Çıkışını Değiştir)";
+
+    public void NotifyHeadphoneStateChanged()
+    {
+        OnPropertyChanged(nameof(IsHeadphonesConnected));
+        OnPropertyChanged(nameof(HeadphoneBadgeGlyph));
+        OnPropertyChanged(nameof(HeadphoneIconOpacity));
+        OnPropertyChanged(nameof(HeadphoneStatusBrush));
+        OnPropertyChanged(nameof(HeadphoneStatusTooltip));
+        OnPropertyChanged(nameof(HeadphoneHaloVisibility));
+    }
 
     public RelayCommand OpenSoundSwitcherCommand { get; }
     public RelayCommand OpenSoundSettingsCommand { get; }
@@ -629,6 +676,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         NotifyFocusBrushes();
         OnPropertyChanged(nameof(BatteryStatusBrush));
         OnPropertyChanged(nameof(BatteryIconBrush));
+        OnPropertyChanged(nameof(HeadphoneStatusBrush));
     }
 
     private static Microsoft.UI.Xaml.Media.SolidColorBrush MakeBrush(uint value)
@@ -1614,6 +1662,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                     OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
                     _systemEvents.ReportAudioEndpointChanged(newName, newGlyph);
                 }
+
+                if (_areHeadphonesConnected != e.AreHeadphonesConnected || _headphoneDeviceName != e.HeadphoneDeviceName)
+                {
+                    _areHeadphonesConnected = e.AreHeadphonesConnected;
+                    _headphoneDeviceName = e.HeadphoneDeviceName;
+                    NotifyHeadphoneStateChanged();
+                }
             }
 
             if (!e.IsSelfOriginated && changed && !e.IsDeviceSwitch)
@@ -1655,6 +1710,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(ActiveAudioDeviceName));
             OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
             OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
+        }
+
+        var (hpConn, hpName) = _systemControl.GetHeadphoneStatus();
+        if (_areHeadphonesConnected != hpConn || _headphoneDeviceName != hpName)
+        {
+            _areHeadphonesConnected = hpConn;
+            _headphoneDeviceName = hpName;
+            NotifyHeadphoneStateChanged();
         }
     }
 
