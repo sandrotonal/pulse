@@ -1225,19 +1225,19 @@
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Ses çıkış aygıtı"
                                                 ToolTipService.ToolTip="{Binding ActiveAudioDeviceName}">
-                                            <StackPanel Orientation="Horizontal" Spacing="7" Margin="12,0" VerticalAlignment="Center">
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0" VerticalAlignment="Center">
                                                 <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="11.5"
                                                           Foreground="{ThemeResource PrimaryText}" />
                                                 <TextBlock Text="{Binding ActiveAudioDeviceShortName}"
                                                            FontSize="11.5" FontWeight="Medium"
-                                                           MaxWidth="130" TextTrimming="CharacterEllipsis"
+                                                           MaxWidth="120" TextTrimming="CharacterEllipsis"
                                                            Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
 
                                         <!-- Animated Headphone Connection Indicator (replaces screenshot button) -->
                                         <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="28" Width="32" CornerRadius="14"
+                                                Height="28" Width="28" CornerRadius="14"
                                                 MinWidth="0" Padding="0"
                                                 Background="{ThemeResource PillControlBackground}"
                                                 Command="{Binding OpenSoundSwitcherCommand}"
@@ -1248,21 +1248,16 @@
                                             <Grid Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <!-- Pulse halo animated when headphones connected -->
                                                 <Ellipse x:Name="HeadphoneBeaconHalo"
-                                                         Width="22" Height="22"
+                                                         Width="24" Height="24"
                                                          Fill="{Binding HeadphoneStatusBrush}"
                                                          Opacity="0.0"
                                                          Visibility="{Binding HeadphoneHaloVisibility}"
                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                <!-- Headphone glyph -->
-                                                <FontIcon Glyph="&#xE7F6;" FontSize="12.5"
+                                                <!-- Headphone glyph: Segoe MDL2 Assets E7F6 -->
+                                                <FontIcon Glyph="&#xE7F6;" FontSize="13"
                                                           Foreground="{Binding HeadphoneStatusBrush}"
                                                           Opacity="{Binding HeadphoneIconOpacity}"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                <!-- Micro status dot -->
-                                                <Ellipse Width="4.5" Height="4.5"
-                                                         Fill="{Binding HeadphoneStatusBrush}"
-                                                         HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                         Margin="0,0,1.5,1.5" />
                                             </Grid>
                                         </Button>
                                     </StackPanel>

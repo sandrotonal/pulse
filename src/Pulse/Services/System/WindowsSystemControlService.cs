@@ -28,6 +28,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly VolumeCallbackSink _volumeCallback;
     private readonly DeviceNotificationClient _deviceCallback;
+    private int _deviceChangeGeneration;
 
     private IMMDeviceEnumerator? _deviceEnumerator;
     private IAudioEndpointVolume? _endpointVolume;
@@ -201,10 +202,12 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             ReleaseEndpoint_NoLock();
         }
 
-        // Rebind on a worker so COM MTA notifications return immediately, then report current level.
-        _ = Task.Run(() =>
+        var gen = Interlocked.Increment(ref _deviceChangeGeneration);
+        // Debounce on a worker so COM MTA notifications return immediately and burst events collapse into one
+        _ = Task.Run(async () =>
         {
-            if (_disposed)
+            await Task.Delay(120).ConfigureAwait(false);
+            if (_disposed || gen != Volatile.Read(ref _deviceChangeGeneration))
             {
                 return;
             }
