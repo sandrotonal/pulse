@@ -357,8 +357,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneConnectedDarkBrush = new(Windows.UI.Color.FromArgb(255, 48, 209, 88));   // iOS Emerald Green #30D158
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneConnectedLightBrush = new(Windows.UI.Color.FromArgb(255, 52, 199, 89));  // iOS Green Light
-    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedDarkBrush = new(Windows.UI.Color.FromArgb(160, 142, 142, 147)); // Muted Gray Dark #8E8E93
-    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedLightBrush = new(Windows.UI.Color.FromArgb(160, 108, 108, 112)); // Muted Gray Light
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedDarkBrush = new(Windows.UI.Color.FromArgb(255, 175, 175, 180)); // Crisp Clear Silver #AFAFB4
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedLightBrush = new(Windows.UI.Color.FromArgb(255, 100, 100, 105)); // Crisp Slate Gray
 
     public string ActiveAudioDeviceName => _activeAudioDeviceName;
 
@@ -370,7 +370,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     public string HeadphoneBadgeGlyph => "\uE7F6";
 
-    public double HeadphoneIconOpacity => _areHeadphonesConnected ? 1.0 : 0.45;
+    public double HeadphoneIconOpacity => _areHeadphonesConnected ? 1.0 : 0.80;
 
     public Microsoft.UI.Xaml.Visibility HeadphoneHaloVisibility => _areHeadphonesConnected
         ? Microsoft.UI.Xaml.Visibility.Visible

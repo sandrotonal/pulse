@@ -390,29 +390,37 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
                     _ = GetEndpointVolume();
                 }
 
-                if (_deviceEnumerator is not null &&
-                    _deviceEnumerator.EnumAudioEndpoints(EDataFlow.eRender, 1 /* DEVICE_STATE_ACTIVE */, out var collection) == 0 &&
-                    collection is not null)
+                if (_deviceEnumerator is null)
+                {
+                    return (false, null);
+                }
+
+                var hrEnum = _deviceEnumerator.EnumAudioEndpoints(EDataFlow.eRender, 1 /* DEVICE_STATE_ACTIVE */, out var collection);
+                if (hrEnum == 0 && collection is not null)
                 {
                     try
                     {
-                        if (collection.GetCount(out var count) == 0 && count > 0)
+                        var hrCount = collection.GetCount(out var count);
+                        if (hrCount == 0 && count > 0)
                         {
                             var keyFriendlyName = new PropertyKey { fmtid = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), pid = 14 };
                             var keyFormFactor = new PropertyKey { fmtid = new Guid("1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"), pid = 0 };
 
                             for (uint i = 0; i < count; i++)
                             {
-                                if (collection.Item(i, out var dev) == 0 && dev is not null)
+                                var hrItem = collection.Item(i, out var dev);
+                                if (hrItem == 0 && dev is not null)
                                 {
                                     try
                                     {
-                                        if (dev.OpenPropertyStore(0 /* STGM_READ */, out var store) == 0 && store is not null)
+                                        var hrStore = dev.OpenPropertyStore(0 /* STGM_READ */, out var store);
+                                        if (hrStore == 0 && store is not null)
                                         {
                                             try
                                             {
                                                 var name = string.Empty;
-                                                if (store.GetValue(ref keyFriendlyName, out var pvName) == 0)
+                                                var hrName = store.GetValue(ref keyFriendlyName, out var pvName);
+                                                if (hrName == 0)
                                                 {
                                                     if (pvName.vt == 31 && pvName.pwszVal != IntPtr.Zero)
                                                     {
@@ -422,7 +430,8 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
                                                 }
 
                                                 uint formFactor = 0;
-                                                if (store.GetValue(ref keyFormFactor, out var pvForm) == 0)
+                                                var hrForm = store.GetValue(ref keyFormFactor, out var pvForm);
+                                                if (hrForm == 0)
                                                 {
                                                     formFactor = pvForm.uintVal;
                                                     _ = PropVariantClear(ref pvForm);
