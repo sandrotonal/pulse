@@ -111,14 +111,32 @@ Clicking the collapsed pill expands the dashboard; clicking outside or pressing 
 
 ---
 
-## Getting Started
+## Installation & Download (End Users)
+
+No .NET 9 SDK, Visual Studio, or Windows App SDK installation is required. Pulse is distributed as a **100% standalone, unpackaged, self-contained single-file executable**.
+
+### 1. Download
+1. Head over to the [GitHub Releases](https://github.com/sandrotonal/pulse/releases) page.
+2. Download the latest **`Pulse.exe`** from Assets.
+3. Move `Pulse.exe` to a permanent location (e.g., `%LOCALAPPDATA%\Programs\Pulse\` or your preferred tools folder).
+
+### 2. First Run & Windows SmartScreen
+Because Pulse is a community-built open-source application without an expensive commercial code-signing certificate, Windows Defender SmartScreen may display an *"Unrecognized app"* warning on the very first launch:
+
+1. Click **More info** (*Daha fazla bilgi*).
+2. Click **Run anyway** (*Yine de çalıştır*).
+
+> [!TIP]
+> Pulse runs immediately in your desktop system tray and top-center screen edge. You can enable **"Windows ile birlikte başlat"** (Launch at Windows startup) directly from the **Settings** window (`Win+Alt+I` -> Gear icon).
+
+---
+
+## Developer Guide & Building from Source
 
 ### Prerequisites
 
 1. **Windows 10/11** (Build 19041 or newer, recommended Windows 11 Build 26100+)
 2. **.NET 9.0 SDK** ([Download .NET 9](https://dotnet.microsoft.com/download/dotnet/9.0))
-
-No Developer Mode or external Windows App Runtime installation is required; the application builds as an unpackaged, self-contained executable.
 
 ### Building & Running
 
@@ -135,21 +153,19 @@ dotnet build Pulse.sln -c Release
 # Run automated unit tests (342 tests)
 dotnet test tests\Pulse.Tests\Pulse.Tests.csproj -c Release --no-build
 
-# Run the app
+# Run the app in development
 dotnet run --project src/Pulse/Pulse.csproj
 ```
 
-To launch the compiled Release binary directly:
+### Producing the Single-File Release Executable
+
+To produce the standalone unpackaged `Pulse.exe` without external dependencies:
 
 ```powershell
-.\src\Pulse\bin\x64\Release\net9.0-windows10.0.26100.0\win-x64\Pulse.exe
+dotnet publish src/Pulse/Pulse.csproj -c Release -r win-x64 -o ./publish
 ```
 
-If an instance is already running, stop it cleanly before replacing binaries:
-
-```powershell
-Stop-Process -Name Pulse -Force -ErrorAction SilentlyContinue
-```
+The resulting `publish/Pulse.exe` is completely self-contained and ready for end-user distribution.
 
 ---
 
