@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Release Tag (e.g. v2.1.0)'
+        required: true
+        default: 'v2.1.0'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '9.0.x'
+
+      - name: Restore Dependencies
+        run: dotnet restore Pulse.sln
+
+      - name: Build Release
+        run: dotnet build Pulse.sln -c Release --no-restore
+
+      - name: Run Tests
+        run: dotnet test tests/Pulse.Tests/Pulse.Tests.csproj -c Release --no-build --verbosity normal
+
+      - name: Publish Single-File Executable
+        run: dotnet publish src/Pulse/Pulse.csproj -c Release -r win-x64 -o ./publish
+
+      - name: Package Release Asset (Zip)
+        shell: pwsh
+        run: |
+          Compress-Archive -Path ./publish/Pulse.exe -DestinationPath ./publish/Pulse-win-x64.zip -Force
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }}
+          name: Pulse ${{ github.ref_type == 'tag' && github.ref_name || inputs.tag_name }} - Windows Dynamic Island
+          files: |
+            ./publish/Pulse.exe
+            ./publish/Pulse-win-x64.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
