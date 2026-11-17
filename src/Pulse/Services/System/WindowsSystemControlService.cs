@@ -40,9 +40,48 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         _dispatcherQueue = dispatcherQueue;
         _volumeCallback = new VolumeCallbackSink(OnVolumeNotify);
         _deviceCallback = new DeviceNotificationClient(OnDefaultRenderDeviceChanged);
+    }
 
-        // Prime endpoint & callbacks lazily if audio subsystem is already online.
-        _ = GetEndpointVolume();
+    /// <summary>
+    /// Primes the WASAPI audio endpoint and notification callbacks off the UI thread
+    /// so window creation is never blocked during Windows boot.
+    /// </summary>
+    public Task PrimeAsync()
+    {
+        return Task.Run(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                var endpoint = GetEndpointVolume();
+                if (endpoint is null || _disposed)
+                {
+                    return;
+                }
+
+                var volume = GetMasterVolume();
+                var muted = IsMuted();
+                var (deviceName, deviceGlyph) = GetActiveAudioDevice();
+                var (isHeadphones, headphoneName) = GetHeadphoneStatus();
+                AudioStateChanged?.Invoke(this, new AudioStateChangedEventArgs(
+                    volume,
+                    muted,
+                    IsSelfOriginated: false,
+                    IsDeviceSwitch: true,
+                    DeviceName: deviceName,
+                    DeviceGlyph: deviceGlyph,
+                    AreHeadphonesConnected: isHeadphones,
+                    HeadphoneDeviceName: headphoneName));
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("WindowsSystemControlService.PrimeAsync", ex);
+            }
+        });
     }
 
     public event EventHandler<AudioStateChangedEventArgs>? AudioStateChanged;
@@ -1392,7 +1431,9 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         int Commit();
     }
 
-    [StructLayout(LayoutKind.Explicit)]
+    // PROPVARIANT is 24 bytes on x64 (16 bytes on x86). Undersizing to 16 bytes on x64
+    // causes IPropertyStore::GetValue to overwrite 8 bytes of the caller's stack frame.
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     private struct PropVariant
     {
         [FieldOffset(0)] public ushort vt;
@@ -1401,6 +1442,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         [FieldOffset(6)] public ushort wReserved3;
         [FieldOffset(8)] public IntPtr pwszVal;
         [FieldOffset(8)] public uint uintVal;
+        [FieldOffset(16)] public long reservedPadding;
     }
 
     [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

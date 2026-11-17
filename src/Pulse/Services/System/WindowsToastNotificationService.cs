@@ -24,15 +24,15 @@ public sealed class WindowsToastNotificationService : IDisposable
     private readonly string _shmPath;
     private readonly object _debounceSync = new();
     private readonly SemaphoreSlim _scanGate = new(1, 1);
-    private readonly FileSystemWatcher? _watcher;
+    private FileSystemWatcher? _watcher;
     private readonly Timer _pollTimer;
 
     private CancellationTokenSource? _debounceCts;
     private long _lastSeenOrder;
     private bool _seeded;
+    private bool _started;
     private bool _enabled;
-    private DateTime _lastKnownStampUtc;
-    private long _lastKnownWalLength = -1;
+    private ulong _lastKnownSignature;
     private volatile bool _disposed;
 
     public WindowsToastNotificationService(ISystemEventService systemEvents, ISettingsService settings)
@@ -50,6 +50,27 @@ public sealed class WindowsToastNotificationService : IDisposable
         _dbPath = Path.Combine(_notificationsDir, "wpndatabase.db");
         _walPath = _dbPath + "-wal";
         _shmPath = _dbPath + "-shm";
+
+        // Timer starts paused; Start() activates it after the island window has rendered.
+        _pollTimer = new Timer(
+            _ => CheckForMetadataChange(),
+            null,
+            Timeout.InfiniteTimeSpan,
+            TimeSpan.FromMilliseconds(350));
+    }
+
+    /// <summary>
+    /// Starts monitoring Windows Action Center notifications off the UI startup path.
+    /// </summary>
+    public void Start()
+    {
+        if (_disposed || _started)
+        {
+            return;
+        }
+
+        _started = true;
+        _enabled = _settings.Current.SystemToastNotifications;
 
         if (Directory.Exists(_notificationsDir))
         {
@@ -72,15 +93,16 @@ public sealed class WindowsToastNotificationService : IDisposable
             }
         }
 
-        // Low-overhead stat check catches WAL appends that Windows skips emitting FSW events for until flush.
-        _pollTimer = new Timer(
-            _ => CheckForMetadataChange(),
-            null,
-            _enabled ? TimeSpan.FromMilliseconds(1200) : Timeout.InfiniteTimeSpan,
-            TimeSpan.FromMilliseconds(1500));
-
         if (_enabled)
         {
+            try
+            {
+                _pollTimer.Change(350, 350);
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
             _ = Task.Run(SeedBaselineOrderAsync);
         }
     }
@@ -111,6 +133,11 @@ public sealed class WindowsToastNotificationService : IDisposable
         }
 
         _seeded = false;
+        if (!_started)
+        {
+            return;
+        }
+
         try
         {
             if (_watcher is not null)
@@ -118,7 +145,7 @@ public sealed class WindowsToastNotificationService : IDisposable
                 _watcher.EnableRaisingEvents = true;
             }
 
-            _pollTimer.Change(1200, 1500);
+            _pollTimer.Change(350, 350);
         }
         catch (ObjectDisposedException)
         {
@@ -146,24 +173,64 @@ public sealed class WindowsToastNotificationService : IDisposable
 
         try
         {
-            var walInfo = File.Exists(_walPath) ? new FileInfo(_walPath) : null;
-            var dbInfo = new FileInfo(_dbPath);
-            var stamp = walInfo is not null && walInfo.LastWriteTimeUtc > dbInfo.LastWriteTimeUtc
-                ? walInfo.LastWriteTimeUtc
-                : dbInfo.LastWriteTimeUtc;
-            var walLen = walInfo?.Length ?? 0;
-
-            if (stamp != _lastKnownStampUtc || walLen != _lastKnownWalLength)
+            var signature = ComputeDatabaseSignature();
+            if (signature != _lastKnownSignature)
             {
-                _lastKnownStampUtc = stamp;
-                _lastKnownWalLength = walLen;
+                _lastKnownSignature = signature;
                 ScheduleScan();
             }
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            // Ignore transient lock/IO errors during stat check.
+            // Ignore transient file lock errors during poll check.
         }
+    }
+
+    /// <summary>
+    /// Probes the 48-byte SQLite WAL-index (-shm) header plus db/wal metadata.
+    /// Windows NTFS often defers updating LastWriteTime/Length on open WAL handles,
+    /// whereas the WAL-index iChange/mxFrame counters update immediately on every commit.
+    /// </summary>
+    private ulong ComputeDatabaseSignature()
+    {
+        const ulong offsetBasis = 14695981039346656037UL;
+        const ulong prime = 1099511628211UL;
+        ulong hash = offsetBasis;
+
+        static ulong MixUInt64(ulong h, ulong value)
+        {
+            h ^= value;
+            return h * prime;
+        }
+
+        if (File.Exists(_shmPath))
+        {
+            try
+            {
+                Span<byte> header = stackalloc byte[48];
+                using var fs = new FileStream(_shmPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                var read = fs.Read(header);
+                for (int i = 0; i < read; i++)
+                {
+                    hash = (hash ^ header[i]) * prime;
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+            }
+        }
+
+        if (File.Exists(_walPath))
+        {
+            var walInfo = new FileInfo(_walPath);
+            hash = MixUInt64(hash, (ulong)walInfo.Length);
+            hash = MixUInt64(hash, (ulong)walInfo.LastWriteTimeUtc.Ticks);
+        }
+
+        var dbInfo = new FileInfo(_dbPath);
+        hash = MixUInt64(hash, (ulong)dbInfo.Length);
+        hash = MixUInt64(hash, (ulong)dbInfo.LastWriteTimeUtc.Ticks);
+        return hash;
     }
 
     private void CancelPendingScan()
@@ -209,7 +276,7 @@ public sealed class WindowsToastNotificationService : IDisposable
     {
         try
         {
-            await Task.Delay(140, cts.Token).ConfigureAwait(false);
+            await Task.Delay(50, cts.Token).ConfigureAwait(false);
             await ScanNewToastsAsync(cts.Token).ConfigureAwait(false);
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
@@ -275,14 +342,9 @@ public sealed class WindowsToastNotificationService : IDisposable
     {
         try
         {
-            var walInfo = File.Exists(_walPath) ? new FileInfo(_walPath) : null;
-            var dbInfo = new FileInfo(_dbPath);
-            _lastKnownStampUtc = walInfo is not null && walInfo.LastWriteTimeUtc > dbInfo.LastWriteTimeUtc
-                ? walInfo.LastWriteTimeUtc
-                : dbInfo.LastWriteTimeUtc;
-            _lastKnownWalLength = walInfo?.Length ?? 0;
+            _lastKnownSignature = ComputeDatabaseSignature();
         }
-        catch
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
         }
     }
@@ -487,11 +549,8 @@ public sealed class WindowsToastNotificationService : IDisposable
                 CopyShared(_walPath, Path.Combine(dir, "wpndatabase.db-wal"));
             }
 
-            if (File.Exists(_shmPath))
-            {
-                CopyShared(_shmPath, Path.Combine(dir, "wpndatabase.db-shm"));
-            }
-
+            // Intentionally do NOT copy wpndatabase.db-shm: omitting -shm forces SQLite to
+            // rebuild the WAL index from every committed frame in wpndatabase.db-wal cleanly.
             return dir;
         }
         catch

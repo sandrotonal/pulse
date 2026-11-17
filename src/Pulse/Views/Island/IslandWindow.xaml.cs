@@ -329,7 +329,7 @@ public sealed partial class IslandWindow : Window
         PositionHostWindow();
         ApplyWindowStyles();
         EnsureSurfaceClipAndRim();
-        ApplyGlass();
+        ApplyGlass(deferCapture: true);
         ApplyTheme(_viewModel.Theme);
         ApplyCompactScale(_viewModel.IslandScale);
         UpdateIdleWeatherIcon(_viewModel.IdleWeatherIconKind);
@@ -2507,7 +2507,8 @@ public sealed partial class IslandWindow : Window
             _isInteractingWithControl = false;
         }
 
-        if (isExpanded && ExpandedView.Visibility != Visibility.Visible)
+        var enteringExpanded = isExpanded && ExpandedView.Visibility != Visibility.Visible;
+        if (enteringExpanded)
         {
             // The tree is parked while compact; wake it before the fade so the first
             // animation frame already has expanded content to show. A re-realized XAML
@@ -2523,6 +2524,20 @@ public sealed partial class IslandWindow : Window
                 _velExpandedScale = 0;
             }
             _expandedVisual.Scale = new Vector3((float)_currentExpandedScale, (float)_currentExpandedScale, 1f);
+
+            if (_viewModel.SelectedPageIndex == 2)
+            {
+                _viewModel.RefreshSystemAudio();
+            }
+
+            // If expanded programmatically (hotkey / tray / second-launch signal) while the cursor
+            // is away from the island, arm a generous auto-collapse grace timer so it never stays stuck open.
+            if (!_isPointerOverSurface && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
+            {
+                _collapseDelayTimer.Stop();
+                _collapseDelayTimer.Interval = TimeSpan.FromMilliseconds(Math.Max(3500.0, GetCollapseDelayInterval().TotalMilliseconds));
+                _collapseDelayTimer.Start();
+            }
         }
 
         bool isSplit = _viewModel.IsSplitModeActive && !isExpanded && !isCollapsing;
@@ -4088,7 +4103,7 @@ public sealed partial class IslandWindow : Window
     // frost layer: sample the live desktop behind the island, blur it and tint it
     // in-app. Never touches SystemBackdrop (keeps the TransparentTintBackdrop wired
     // in XAML so the window stays alpha-capable).
-    public void ApplyGlass()
+    public void ApplyGlass(bool deferCapture = false)
     {
         _glassEnabled = _viewModel.UseTransparency;
         if (!_glassEnabled)
@@ -4111,9 +4126,16 @@ public sealed partial class IslandWindow : Window
         if (_glassEnabled)
         {
             // No periodic re-capture: each capture briefly hides the window, which
-            // reads as a visible blink. The blur is captured on launch/glass enable,
-            // debounced TopOffset/IslandScale updates, display settles, and fullscreen returns.
-            _ = RefreshFrostAsync(force: true);
+            // reads as a visible blink. Deferring capture on startup lets the first
+            // obsidian frame paint immediately without a hide/show race on boot.
+            if (deferCapture)
+            {
+                ScheduleFrostRefresh(delayMs: 380);
+            }
+            else
+            {
+                _ = RefreshFrostAsync(force: true);
+            }
         }
     }
 
@@ -4188,12 +4210,13 @@ public sealed partial class IslandWindow : Window
     {
         var isLight = DesktopFrostService.ResolveIsLightTheme(_viewModel.Theme);
         var hasFrostBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
+        var effectiveArtworkAccent = _viewModel.HasTrack ? _viewModel.ArtworkAccentColor : 0u;
         return LiquidGlassEngine.ComputeIslandPalette(
             isLightTheme: isLight,
             useTransparency: _glassEnabled,
             transparencyLevel: _viewModel.TransparencyLevel,
             dynamicColorTint: _viewModel.DynamicColorTint,
-            artworkAccentColor: _viewModel.ArtworkAccentColor,
+            artworkAccentColor: effectiveArtworkAccent,
             artworkTintStrength: _viewModel.ArtworkTintStrength,
             hasFrostBitmap: hasFrostBitmap);
     }

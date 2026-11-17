@@ -171,17 +171,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             NotifySplitStateChanged();
         });
 
-        // Real system audio controls (endpoint volume), replacing the demo reporting path
+        // Real system audio controls (endpoint volume) — subscribe immediately and
+        // query WASAPI asynchronously so window startup is never blocked on boot.
         if (_systemControl is not null)
         {
-            _masterVolume = _systemControl.GetMasterVolume();
-            _systemMuted = _systemControl.IsMuted();
-            var (devName, devGlyph) = _systemControl.GetActiveAudioDevice();
-            _activeAudioDeviceName = devName;
-            _activeAudioDeviceGlyph = devGlyph;
-            var (hpConn, hpName) = _systemControl.GetHeadphoneStatus();
-            _areHeadphonesConnected = hpConn;
-            _headphoneDeviceName = hpName;
             _systemControl.AudioStateChanged += OnSystemAudioStateChanged;
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
@@ -1678,47 +1671,72 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         });
     }
 
-    /// <summary>Re-reads endpoint volume and mute state from the real audio device.</summary>
-    private void RefreshSystemAudio()
+    /// <summary>Re-reads endpoint volume, active audio device, and headphone state off the UI thread.</summary>
+    public void RefreshSystemAudio()
     {
-        if (_systemControl is null)
+        var control = _systemControl;
+        if (control is null || _disposed)
         {
             return;
         }
 
-        var volume = _systemControl.GetMasterVolume();
-        var muted = _systemControl.IsMuted();
-        if (_masterVolume != volume)
+        _ = Task.Run(() =>
         {
-            _masterVolume = volume;
-            OnPropertyChanged(nameof(MasterVolume));
-            OnPropertyChanged(nameof(MasterVolumeLabel));
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        if (_systemMuted != muted)
-        {
-            _systemMuted = muted;
-            OnPropertyChanged(nameof(IsSystemMuted));
-            OnPropertyChanged(nameof(SystemMuteGlyph));
-        }
+            try
+            {
+                var volume = control.GetMasterVolume();
+                var muted = control.IsMuted();
+                var (devName, devGlyph) = control.GetActiveAudioDevice();
+                var (hpConn, hpName) = control.GetHeadphoneStatus();
 
-        var (devName, devGlyph) = _systemControl.GetActiveAudioDevice();
-        if (_activeAudioDeviceName != devName || _activeAudioDeviceGlyph != devGlyph)
-        {
-            _activeAudioDeviceName = devName;
-            _activeAudioDeviceGlyph = devGlyph;
-            OnPropertyChanged(nameof(ActiveAudioDeviceName));
-            OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
-            OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
-        }
+                ApplyOnUi(() =>
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
 
-        var (hpConn, hpName) = _systemControl.GetHeadphoneStatus();
-        if (_areHeadphonesConnected != hpConn || _headphoneDeviceName != hpName)
-        {
-            _areHeadphonesConnected = hpConn;
-            _headphoneDeviceName = hpName;
-            NotifyHeadphoneStateChanged();
-        }
+                    if (_masterVolume != volume)
+                    {
+                        _masterVolume = volume;
+                        OnPropertyChanged(nameof(MasterVolume));
+                        OnPropertyChanged(nameof(MasterVolumeLabel));
+                    }
+
+                    if (_systemMuted != muted)
+                    {
+                        _systemMuted = muted;
+                        OnPropertyChanged(nameof(IsSystemMuted));
+                        OnPropertyChanged(nameof(SystemMuteGlyph));
+                    }
+
+                    if (_activeAudioDeviceName != devName || _activeAudioDeviceGlyph != devGlyph)
+                    {
+                        _activeAudioDeviceName = devName;
+                        _activeAudioDeviceGlyph = devGlyph;
+                        OnPropertyChanged(nameof(ActiveAudioDeviceName));
+                        OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
+                        OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
+                    }
+
+                    if (_areHeadphonesConnected != hpConn || _headphoneDeviceName != hpName)
+                    {
+                        _areHeadphonesConnected = hpConn;
+                        _headphoneDeviceName = hpName;
+                        NotifyHeadphoneStateChanged();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.RefreshSystemAudio", ex);
+            }
+        });
     }
 
     private void OnMediaPropertyChanged(object? sender, PropertyChangedEventArgs e)

@@ -37,6 +37,7 @@ public sealed class BluetoothWatcherService : IDisposable
     private DeviceWatcher? _aepWatcher;
     private DeviceWatcher? _audioWatcher;
     private long _watcherSessionToken;
+    private volatile bool _started;
     private volatile bool _aepEnumerationCompleted;
     private volatile bool _audioEnumerationCompleted;
     private volatile bool _disposed;
@@ -46,7 +47,20 @@ public sealed class BluetoothWatcherService : IDisposable
         _systemEvents = systemEvents ?? throw new ArgumentNullException(nameof(systemEvents));
         _settings = settings ?? throw new ArgumentNullException(nameof(settings));
         _settings.SettingsChanged += OnSettingsChanged;
+    }
 
+    /// <summary>
+    /// Starts WinRT Bluetooth device watchers after the UI window is visible so Windows boot
+    /// radio enumeration never delays the island appearing on screen.
+    /// </summary>
+    public void Start()
+    {
+        if (_disposed || _started)
+        {
+            return;
+        }
+
+        _started = true;
         if (_settings.Current.BluetoothNotifications)
         {
             StartWatcher();
@@ -55,7 +69,7 @@ public sealed class BluetoothWatcherService : IDisposable
 
     private void OnSettingsChanged(object? sender, Core.Models.AppSettings settings)
     {
-        if (_disposed)
+        if (_disposed || !_started)
         {
             return;
         }

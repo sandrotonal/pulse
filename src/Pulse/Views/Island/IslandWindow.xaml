@@ -285,14 +285,14 @@
 
                         <!-- Specular sheen scaled on GPU via Composition Visual.Scale -->
                         <Rectangle x:Name="FrostSheen"
-                                   Height="18"
+                                   Height="10"
                                    Visibility="Collapsed"
                                    HorizontalAlignment="Stretch"
                                    VerticalAlignment="Top"
                                    IsHitTestVisible="False">
                             <Rectangle.Fill>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop x:Name="FrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
+                                    <GradientStop x:Name="FrostSheenTopStop" Color="#12FFFFFF" Offset="0" />
                                     <GradientStop Color="#00FFFFFF" Offset="1" />
                                 </LinearGradientBrush>
                             </Rectangle.Fill>
@@ -1302,14 +1302,14 @@
                            IsHitTestVisible="False" />
 
                 <Rectangle x:Name="DetachedFrostSheen"
-                           Height="16"
+                           Height="10"
                            Visibility="Collapsed"
                            HorizontalAlignment="Stretch"
                            VerticalAlignment="Top"
                            IsHitTestVisible="False">
                     <Rectangle.Fill>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop x:Name="DetachedFrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
+                            <GradientStop x:Name="DetachedFrostSheenTopStop" Color="#12FFFFFF" Offset="0" />
                             <GradientStop Color="#00FFFFFF" Offset="1" />
                         </LinearGradientBrush>
                     </Rectangle.Fill>
