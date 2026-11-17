@@ -151,4 +151,35 @@ public sealed class DropShelfServiceTests : IDisposable
         Assert.False(File.Exists(zipItem.FilePath));
         Assert.True(File.Exists(fileA));
     }
+
+    [Fact]
+    public void ShouldUseSplitMode_ActivatesForPopulatedShelf_UnlessNotificationOrFileOpActive()
+    {
+        Assert.True(IslandPresentationPolicy.ShouldUseSplitMode(
+            isCompact: true,
+            isSplitDemoForced: false,
+            hasTrack: false,
+            isFocusTimerActive: false,
+            isNotificationActive: false,
+            isFileOperationActive: false,
+            hasShelfItems: true));
+
+        Assert.False(IslandPresentationPolicy.ShouldUseSplitMode(
+            isCompact: true,
+            isSplitDemoForced: false,
+            hasTrack: false,
+            isFocusTimerActive: false,
+            isNotificationActive: true,
+            isFileOperationActive: false,
+            hasShelfItems: true));
+
+        Assert.False(IslandPresentationPolicy.ShouldUseSplitMode(
+            isCompact: false,
+            isSplitDemoForced: false,
+            hasTrack: false,
+            isFocusTimerActive: false,
+            isNotificationActive: false,
+            isFileOperationActive: false,
+            hasShelfItems: true));
+    }
 }

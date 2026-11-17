@@ -274,6 +274,26 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             ShowShelfStatus(string.Empty);
         });
 
+        PasteToShelfCommand = new AsyncCommand(async () =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                var added = await ShelfShellService.PasteFromClipboardAsync(_dropShelf);
+                ShowShelfStatus(added > 0
+                    ? (added == 1 ? "Panodan eklendi" : $"{added} öğe eklendi")
+                    : "Panoda eklenecek öğe yok");
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.PasteToShelfCommand", ex);
+            }
+        });
+
         TakeScreenshotCommand = new AsyncCommand(async () =>
         {
             if (_disposed || _systemControl is null)
@@ -423,13 +443,36 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 _isDragHovering = value;
                 OnPropertyChanged();
                 OnPropertyChanged(nameof(ShelfDropPromptText));
+                OnPropertyChanged(nameof(ShelfDragOverlayVisibility));
             }
         }
     }
 
+    public Visibility ShelfDragOverlayVisibility => _isDragHovering ? Visibility.Visible : Visibility.Collapsed;
+
     public string ShelfDropPromptText => _isDragHovering
         ? "Bırak — Rafa Ekle"
         : "Dosya, görsel veya metin sürükleyip bırak";
+
+    public string ShelfTotalSummary
+    {
+        get
+        {
+            if (ShelfItems.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            long totalBytes = 0;
+            foreach (var item in ShelfItems)
+            {
+                totalBytes += item.Model.FileSizeBytes;
+            }
+
+            var countLabel = $"{ShelfItems.Count} öğe";
+            return totalBytes > 0 ? $"{countLabel} · {ShelfItem.FormatByteSize(totalBytes)}" : countLabel;
+        }
+    }
 
     public string ShelfStatusBanner => _shelfStatusBanner;
     public Visibility ShelfStatusBannerVisibility => string.IsNullOrWhiteSpace(_shelfStatusBanner)
@@ -439,12 +482,44 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public AsyncCommand CopyAllShelfCommand { get; }
     public AsyncCommand ZipShelfCommand { get; }
     public RelayCommand ClearShelfCommand { get; }
+    public AsyncCommand PasteToShelfCommand { get; }
 
     public void RemoveShelfItem(string itemId)
     {
         if (!_disposed && !string.IsNullOrWhiteSpace(itemId))
         {
             _dropShelf.Remove(itemId);
+        }
+    }
+
+    public void OpenShelfItemInExplorer(string filePath)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        _ = _systemControl?.TryOpenPath(filePath);
+    }
+
+    public async Task CopySingleShelfItemAsync(string filePath)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var ok = await ShelfShellService.CopyPathsToClipboardAsync([filePath]);
+            if (ok)
+            {
+                ShowShelfStatus("Panoya kopyalandı");
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.CopySingleShelfItemAsync", ex);
         }
     }
 
@@ -472,10 +547,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ShelfCount));
         OnPropertyChanged(nameof(HasShelfItems));
         OnPropertyChanged(nameof(ShelfCountText));
+        OnPropertyChanged(nameof(ShelfTotalSummary));
         OnPropertyChanged(nameof(ShelfEmptyVisibility));
         OnPropertyChanged(nameof(ShelfPopulatedVisibility));
         OnPropertyChanged(nameof(CompactShelfBadgeVisibility));
         OnPropertyChanged(nameof(ExpandedHeaderTitle));
+        NotifySplitStateChanged();
     }
 
     private void ShowShelfStatus(string message)
@@ -933,12 +1010,33 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         HasTrack,
         IsFocusTimerActive,
         IsNotificationActive,
-        IsFileOperationActive);
+        IsFileOperationActive,
+        HasShelfItems);
     public Microsoft.UI.Xaml.Visibility SplitModeVisibility => IsSplitModeActive ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
-    public string DetachedGlyph => IsFocusTimerActive ? "\uE916" : (IsNotificationActive ? NotificationGlyph : (_isSplitDemoForced ? "\uE916" : "\uE896"));
-    public string DetachedBadgeText => IsFocusTimerActive ? FocusTimerText : (IsNotificationActive ? "!" : (_isSplitDemoForced ? "25:00" : $"{FileOperationProgress:F0}%"));
-    public string DetachedToolTip => IsFocusTimerActive ? "Odak Sayacı" : (IsNotificationActive ? NotificationTitle : (_isSplitDemoForced ? "Odak Sayacı (Demo)" : FileOperationName));
+    public string DetachedGlyph => IsFocusTimerActive
+        ? "\uE916"
+        : (IsNotificationActive
+            ? NotificationGlyph
+            : (_isSplitDemoForced
+                ? "\uE916"
+                : (HasShelfItems ? "\uE896" : "\uE896")));
+
+    public string DetachedBadgeText => IsFocusTimerActive
+        ? FocusTimerText
+        : (IsNotificationActive
+            ? "!"
+            : (_isSplitDemoForced
+                ? "25:00"
+                : (HasShelfItems ? ShelfCountText : $"{FileOperationProgress:F0}%")));
+
+    public string DetachedToolTip => IsFocusTimerActive
+        ? "Odak Sayacı"
+        : (IsNotificationActive
+            ? NotificationTitle
+            : (_isSplitDemoForced
+                ? "Odak Sayacı (Demo)"
+                : (HasShelfItems ? $"Dosya Rafı ({ShelfTotalSummary})" : FileOperationName)));
 
     public void OnDetachedPillClicked()
     {
@@ -949,6 +1047,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         else if (IsNotificationActive || IsFileOperationActive)
         {
             SelectedPageIndex = 2;
+        }
+        else if (HasShelfItems)
+        {
+            SelectedPageIndex = 3;
         }
         ToggleExpanded();
     }

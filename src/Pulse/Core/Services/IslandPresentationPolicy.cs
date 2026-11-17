@@ -14,7 +14,8 @@ public static class IslandPresentationPolicy
         bool hasTrack,
         bool isFocusTimerActive,
         bool isNotificationActive,
-        bool isFileOperationActive)
+        bool isFileOperationActive,
+        bool hasShelfItems = false)
     {
         if (!isCompact)
         {
@@ -33,7 +34,7 @@ public static class IslandPresentationPolicy
             return false;
         }
 
-        return hasTrack && isFocusTimerActive;
+        return (hasTrack && isFocusTimerActive) || hasShelfItems;
     }
 
     public static double ComputeCompactTargetWidth(

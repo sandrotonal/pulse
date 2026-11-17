@@ -208,6 +208,30 @@ public static class ShelfShellService
         }
     }
 
+    public static async Task<int> PasteFromClipboardAsync(IDropShelfService shelf)
+    {
+        if (shelf is null)
+        {
+            return 0;
+        }
+
+        try
+        {
+            var content = Clipboard.GetContent();
+            if (content is null || !CanAcceptDrop(content))
+            {
+                return 0;
+            }
+
+            return await IngestDropAsync(content, shelf);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("ShelfShellService.PasteFromClipboardAsync", ex);
+            return 0;
+        }
+    }
+
     public static BitmapImage? TryCreateThumbnail(ShelfItem item)
     {
         if (item.Kind != ShelfItemKind.Image || !File.Exists(item.FilePath))
