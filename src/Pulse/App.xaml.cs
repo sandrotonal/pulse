@@ -24,6 +24,7 @@ public partial class App : Application
     private readonly FocusTimerService _focusTimerService;
     private readonly SystemEventService _systemEventService;
     private readonly FileOperationService _fileOperationService;
+    private readonly DropShelfService _dropShelfService;
     private readonly WindowsSystemControlService _systemControlService;
     private readonly DownloadsWatcherService _downloadsWatcherService;
     private readonly WindowsToastNotificationService _windowsToastService;
@@ -210,6 +211,7 @@ public partial class App : Application
         _focusTimerService = new FocusTimerService(_eventRouter);
         _systemEventService = new SystemEventService(_eventRouter, _settingsService);
         _fileOperationService = new FileOperationService(_eventRouter);
+        _dropShelfService = new DropShelfService();
         _systemControlService = new WindowsSystemControlService(dispatcherQueue);
         _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
         _windowsToastService = new WindowsToastNotificationService(_systemEventService, _settingsService);
@@ -238,7 +240,8 @@ public partial class App : Application
             _systemControlService,
             _settingsService,
             _weatherService,
-            _locationService);
+            _locationService,
+            _dropShelfService);
 
         RegisterInstanceSignals(dispatcherQueue);
     }
@@ -797,6 +800,7 @@ public partial class App : Application
             }
 
             _islandViewModel.Dispose();
+            _dropShelfService.Dispose();
             _downloadsWatcherService.Dispose();
             _windowsToastService.Dispose();
             _bluetoothWatcherService.Dispose();

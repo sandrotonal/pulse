@@ -15,6 +15,7 @@ using Pulse.Core.Services.Weather;
 using Pulse.Services.Glass;
 using Pulse.Services.System;
 using Pulse.ViewModels;
+using Windows.ApplicationModel.DataTransfer;
 using Windows.Graphics;
 
 namespace Pulse.Views.Island;
@@ -67,15 +68,18 @@ public sealed partial class IslandWindow : Window
     private readonly Visual _wave1Visual;
     private readonly Visual _wave2Visual;
     private readonly Visual _wave3Visual;
+    private const int ExpandedPageCount = IslandViewModel.PageCount;
+
     private readonly Visual _mediaPanelVisual;
     private readonly Visual _focusPanelVisual;
     private readonly Visual _systemPanelVisual;
+    private readonly Visual _shelfPanelVisual;
     private readonly Visual _detachedVisual;
     private readonly Visual _batteryChargeHaloVisual;
     private readonly Visual _headphoneBeaconHaloVisual;
     private readonly Border[] _dotVisualElements;
-    private readonly Visual[] _dotVisuals = new Visual[3];
-    private readonly CompositionRoundedRectangleGeometry[] _dotClipGeometries = new CompositionRoundedRectangleGeometry[3];
+    private readonly Visual[] _dotVisuals = new Visual[ExpandedPageCount];
+    private readonly CompositionRoundedRectangleGeometry[] _dotClipGeometries = new CompositionRoundedRectangleGeometry[ExpandedPageCount];
     private readonly DampedSpringOscillator _springMinimal = new(dampingRatio: 0.95, responseSeconds: 0.25);
     private readonly DampedSpringOscillator _springNormal = new(dampingRatio: 0.82, responseSeconds: 0.34);
     private readonly DampedSpringOscillator _springDynamic = new(dampingRatio: 0.60, responseSeconds: 0.40);
@@ -99,34 +103,40 @@ public sealed partial class IslandWindow : Window
     private double _pageAnimElapsedSec;
     private int _pageAnimFromIndex;
     private int _pageAnimToIndex;
-    private readonly double[] _pageFromX = new double[3];
-    private readonly double[] _pageToX = new double[3];
-    private readonly double[] _pageVelX = new double[3];
-    private readonly double[] _pageCurrX = new double[3];
-    private readonly double[] _pageCurrVelX = new double[3];
-    private readonly double[] _pageFromOpacity = new double[3];
-    private readonly double[] _pageToOpacity = new double[3];
-    private readonly double[] _pageVelOpacity = new double[3];
-    private readonly double[] _pageCurrOpacity = new double[3];
-    private readonly double[] _pageCurrVelOpacity = new double[3];
-    private readonly double[] _pageFromScale = new double[3];
-    private readonly double[] _pageToScale = new double[3];
-    private readonly double[] _pageVelScale = new double[3];
-    private readonly double[] _pageCurrScale = new double[3];
-    private readonly double[] _pageCurrVelScale = new double[3];
+    private readonly double[] _pageFromX = new double[ExpandedPageCount];
+    private readonly double[] _pageToX = new double[ExpandedPageCount];
+    private readonly double[] _pageVelX = new double[ExpandedPageCount];
+    private readonly double[] _pageCurrX = new double[ExpandedPageCount];
+    private readonly double[] _pageCurrVelX = new double[ExpandedPageCount];
+    private readonly double[] _pageFromOpacity = new double[ExpandedPageCount];
+    private readonly double[] _pageToOpacity = new double[ExpandedPageCount];
+    private readonly double[] _pageVelOpacity = new double[ExpandedPageCount];
+    private readonly double[] _pageCurrOpacity = new double[ExpandedPageCount];
+    private readonly double[] _pageCurrVelOpacity = new double[ExpandedPageCount];
+    private readonly double[] _pageFromScale = new double[ExpandedPageCount];
+    private readonly double[] _pageToScale = new double[ExpandedPageCount];
+    private readonly double[] _pageVelScale = new double[ExpandedPageCount];
+    private readonly double[] _pageCurrScale = new double[ExpandedPageCount];
+    private readonly double[] _pageCurrVelScale = new double[ExpandedPageCount];
 
     private bool _isDotAnimating;
     private double _dotAnimElapsedSec;
-    private readonly double[] _dotStartWidth = [18.0, 6.0, 6.0];
-    private readonly double[] _dotTargetWidth = [18.0, 6.0, 6.0];
-    private readonly double[] _dotVelWidth = new double[3];
-    private readonly double[] _dotCurrWidth = [18.0, 6.0, 6.0];
-    private readonly double[] _dotCurrVelWidth = new double[3];
-    private readonly double[] _dotStartOpacity = [1.0, 0.35, 0.35];
-    private readonly double[] _dotTargetOpacity = [1.0, 0.35, 0.35];
-    private readonly double[] _dotVelOpacity = new double[3];
-    private readonly double[] _dotCurrOpacity = [1.0, 0.35, 0.35];
-    private readonly double[] _dotCurrVelOpacity = new double[3];
+    private readonly double[] _dotStartWidth = [18.0, 6.0, 6.0, 6.0];
+    private readonly double[] _dotTargetWidth = [18.0, 6.0, 6.0, 6.0];
+    private readonly double[] _dotVelWidth = new double[ExpandedPageCount];
+    private readonly double[] _dotCurrWidth = [18.0, 6.0, 6.0, 6.0];
+    private readonly double[] _dotCurrVelWidth = new double[ExpandedPageCount];
+    private readonly double[] _dotStartOpacity = [1.0, 0.35, 0.35, 0.35];
+    private readonly double[] _dotTargetOpacity = [1.0, 0.35, 0.35, 0.35];
+    private readonly double[] _dotVelOpacity = new double[ExpandedPageCount];
+    private readonly double[] _dotCurrOpacity = [1.0, 0.35, 0.35, 0.35];
+    private readonly double[] _dotCurrVelOpacity = new double[ExpandedPageCount];
+
+    // Drop Shelf ("Raf") drag-in / drag-out physics state
+    private bool _isDragHovering;
+    private bool _isDraggingOut;
+    private bool _wasExpandedBeforeDrag;
+    private DispatcherQueueTimer? _dragLeaveTimer;
 
     private DispatcherQueueTimer? _hideAnimationTimer;
     private DispatcherQueueTimer? _topmostGuardTimer;
@@ -284,12 +294,13 @@ public sealed partial class IslandWindow : Window
         _mediaPanelVisual = ElementCompositionPreview.GetElementVisual(MediaExpandedPanel);
         _focusPanelVisual = ElementCompositionPreview.GetElementVisual(FocusExpandedPanel);
         _systemPanelVisual = ElementCompositionPreview.GetElementVisual(SystemExpandedPanel);
+        _shelfPanelVisual = ElementCompositionPreview.GetElementVisual(ShelfExpandedPanel);
         _detachedVisual = ElementCompositionPreview.GetElementVisual(DetachedPill);
         _batteryChargeHaloVisual = ElementCompositionPreview.GetElementVisual(BatteryChargeHalo);
         _headphoneBeaconHaloVisual = ElementCompositionPreview.GetElementVisual(HeadphoneBeaconHalo);
 
-        _dotVisualElements = [PageDotVisual0, PageDotVisual1, PageDotVisual2];
-        for (int i = 0; i < 3; i++)
+        _dotVisualElements = [PageDotVisual0, PageDotVisual1, PageDotVisual2, PageDotVisual3];
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             ElementCompositionPreview.SetIsTranslationEnabled(_dotVisualElements[i], true);
             _dotVisuals[i] = ElementCompositionPreview.GetElementVisual(_dotVisualElements[i]);
@@ -306,7 +317,13 @@ public sealed partial class IslandWindow : Window
         ElementCompositionPreview.SetIsTranslationEnabled(MediaExpandedPanel, true);
         ElementCompositionPreview.SetIsTranslationEnabled(FocusExpandedPanel, true);
         ElementCompositionPreview.SetIsTranslationEnabled(SystemExpandedPanel, true);
+        ElementCompositionPreview.SetIsTranslationEnabled(ShelfExpandedPanel, true);
         ElementCompositionPreview.SetIsTranslationEnabled(DetachedPill, true);
+
+        _dragLeaveTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
+        _dragLeaveTimer.IsRepeating = false;
+        _dragLeaveTimer.Interval = TimeSpan.FromMilliseconds(180);
+        _dragLeaveTimer.Tick += OnDragLeaveTimerTick;
 
         // Subclass window to intercept WM_NCHITTEST and WM_GETMINMAXINFO:
         _subclassProc = WndProc;
@@ -1207,6 +1224,7 @@ public sealed partial class IslandWindow : Window
         _unhideRecoveryTimer?.Stop();
         _displaySettleTimer?.Stop();
         _frostRefreshTimer?.Stop();
+        _dragLeaveTimer?.Stop();
         _collapseDelayTimer.Stop();
         _fullscreenPollTimer?.Stop();
         _hoverExpandTimer?.Stop();
@@ -2636,7 +2654,7 @@ public sealed partial class IslandWindow : Window
             if (isExpanded)
             {
                 int activeIndex = _viewModel.SelectedPageIndex;
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < ExpandedPageCount; i++)
                 {
                     var grid = GetPanelGrid(i);
                     grid.Visibility = (i == activeIndex) ? Visibility.Visible : Visibility.Collapsed;
@@ -2713,7 +2731,7 @@ public sealed partial class IslandWindow : Window
                 ExpandedView.IsHitTestVisible = true;
 
                 int activeIndex = _viewModel.SelectedPageIndex;
-                for (int i = 0; i < 3; i++)
+                for (int i = 0; i < ExpandedPageCount; i++)
                 {
                     var grid = GetPanelGrid(i);
                     grid.Visibility = (i == activeIndex) ? Visibility.Visible : Visibility.Collapsed;
@@ -3132,6 +3150,11 @@ public sealed partial class IslandWindow : Window
     private void OnCollapseDelayTimerTick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
+        if (_isDragHovering || _isDraggingOut)
+        {
+            return;
+        }
+
         if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_viewModel.PreserveFocusPanel)
         {
             _isInteractingWithControl = false;
@@ -3262,7 +3285,7 @@ public sealed partial class IslandWindow : Window
         _isInteractingWithControl = false;
         _viewModel.OnPointerExited();
 
-        if (_viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_viewModel.PreserveFocusPanel)
+        if (_viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
         {
             RestartCollapseDelayTimer();
         }
@@ -3505,6 +3528,7 @@ public sealed partial class IslandWindow : Window
         0 => _mediaPanelVisual,
         1 => _focusPanelVisual,
         2 => _systemPanelVisual,
+        3 => _shelfPanelVisual,
         _ => _mediaPanelVisual
     };
 
@@ -3513,12 +3537,328 @@ public sealed partial class IslandWindow : Window
         0 => MediaExpandedPanel,
         1 => FocusExpandedPanel,
         2 => SystemExpandedPanel,
+        3 => ShelfExpandedPanel,
         _ => MediaExpandedPanel
     };
 
     private void OnPageDot0Click(object sender, RoutedEventArgs e) => NavigateToPage(0, 0 > _viewModel.SelectedPageIndex);
     private void OnPageDot1Click(object sender, RoutedEventArgs e) => NavigateToPage(1, 1 > _viewModel.SelectedPageIndex);
     private void OnPageDot2Click(object sender, RoutedEventArgs e) => NavigateToPage(2, 2 > _viewModel.SelectedPageIndex);
+    private void OnPageDot3Click(object sender, RoutedEventArgs e) => NavigateToPage(3, 3 > _viewModel.SelectedPageIndex);
+
+    private void OnCompactShelfBadgeClick(object sender, RoutedEventArgs e)
+    {
+        if (_isIslandHidden)
+        {
+            return;
+        }
+
+        _targetPageIndex = 3;
+        _viewModel.SelectPage(3);
+        if (!_viewModel.IsExpanded)
+        {
+            ExpandFromCompact();
+        }
+    }
+
+    // ---- Drop Shelf ("Raf") Magnetic Drag-In / Tactile Drag-Out Physics ----
+
+    private void OnSurfaceDragEnter(object sender, DragEventArgs e)
+    {
+        if (_isIslandHidden || _isDraggingOut)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!ShelfShellService.CanAcceptDrop(e.DataView))
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                return;
+            }
+
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Rafa Bırak";
+            e.DragUIOverride.IsCaptionVisible = true;
+            e.DragUIOverride.IsGlyphVisible = true;
+
+            _dragLeaveTimer?.Stop();
+            _collapseDelayTimer.Stop();
+
+            if (!_isDragHovering)
+            {
+                _wasExpandedBeforeDrag = _viewModel.IsExpanded;
+                _isDragHovering = true;
+                _viewModel.IsDragHovering = true;
+            }
+
+            // Magnetically spring open to Page 3 ("Raf") on drag approach.
+            if (!_viewModel.IsExpanded)
+            {
+                _targetPageIndex = 3;
+                _viewModel.SelectPage(3);
+                ExpandFromCompact();
+            }
+            else if (_viewModel.SelectedPageIndex != 3)
+            {
+                NavigateToPage(3, isForward: true);
+            }
+
+            SetDropZonePulseState(active: true);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.OnSurfaceDragEnter", ex);
+        }
+    }
+
+    private void OnSurfaceDragOver(object sender, DragEventArgs e)
+    {
+        if (_isIslandHidden || _isDraggingOut)
+        {
+            e.AcceptedOperation = DataPackageOperation.None;
+            return;
+        }
+
+        try
+        {
+            if (!ShelfShellService.CanAcceptDrop(e.DataView))
+            {
+                e.AcceptedOperation = DataPackageOperation.None;
+                return;
+            }
+
+            e.AcceptedOperation = DataPackageOperation.Copy;
+            e.DragUIOverride.Caption = "Rafa Bırak";
+            e.DragUIOverride.IsCaptionVisible = true;
+            _dragLeaveTimer?.Stop();
+            _collapseDelayTimer.Stop();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.OnSurfaceDragOver", ex);
+        }
+    }
+
+    private void OnSurfaceDragLeave(object sender, DragEventArgs e)
+    {
+        if (!_isDragHovering)
+        {
+            return;
+        }
+
+        // Brief 180ms grace timer prevents flicker when cursor crosses internal child controls during drag.
+        _dragLeaveTimer?.Stop();
+        _dragLeaveTimer?.Start();
+    }
+
+    private void OnDragLeaveTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (!_isDragHovering)
+        {
+            return;
+        }
+
+        _isDragHovering = false;
+        _viewModel.IsDragHovering = false;
+        SetDropZonePulseState(active: false);
+
+        if (!_wasExpandedBeforeDrag && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_isPointerOverSurface)
+        {
+            _viewModel.Collapse();
+        }
+    }
+
+    private async void OnSurfaceDrop(object sender, DragEventArgs e)
+    {
+        if (_isDraggingOut)
+        {
+            return;
+        }
+
+        _dragLeaveTimer?.Stop();
+        _isDragHovering = false;
+        _viewModel.IsDragHovering = false;
+        SetDropZonePulseState(active: false);
+
+        var deferral = e.GetDeferral();
+        try
+        {
+            var added = await ShelfShellService.IngestDropAsync(e.DataView, _viewModel.DropShelf);
+            if (added > 0)
+            {
+                TriggerDropAbsorptionPhysics();
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.OnSurfaceDrop", ex);
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private async void OnShelfItemDragStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        if (sender is not FrameworkElement fe || fe.DataContext is not ShelfItemViewModel item)
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        var deferral = args.GetDeferral();
+        try
+        {
+            _isDraggingOut = true;
+            _collapseDelayTimer.Stop();
+            fe.Opacity = 0.45;
+            var ok = await ShelfShellService.PopulateOutgoingDataPackageAsync(args.Data, [item.FilePath]);
+            if (!ok)
+            {
+                args.Cancel = true;
+                fe.Opacity = 1.0;
+                _isDraggingOut = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.OnShelfItemDragStarting", ex);
+            args.Cancel = true;
+            fe.Opacity = 1.0;
+            _isDraggingOut = false;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private async void OnShelfDragAllStarting(UIElement sender, DragStartingEventArgs args)
+    {
+        var paths = _viewModel.GetShelfExistingPaths();
+        if (paths.Count == 0)
+        {
+            args.Cancel = true;
+            return;
+        }
+
+        var deferral = args.GetDeferral();
+        try
+        {
+            _isDraggingOut = true;
+            _collapseDelayTimer.Stop();
+            if (sender is FrameworkElement fe)
+            {
+                fe.Opacity = 0.55;
+            }
+
+            var ok = await ShelfShellService.PopulateOutgoingDataPackageAsync(args.Data, paths);
+            if (!ok)
+            {
+                args.Cancel = true;
+                if (sender is FrameworkElement fe2)
+                {
+                    fe2.Opacity = 1.0;
+                }
+                _isDraggingOut = false;
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.OnShelfDragAllStarting", ex);
+            args.Cancel = true;
+            if (sender is FrameworkElement fe)
+            {
+                fe.Opacity = 1.0;
+            }
+            _isDraggingOut = false;
+        }
+        finally
+        {
+            deferral.Complete();
+        }
+    }
+
+    private void OnShelfItemDropCompleted(UIElement sender, DropCompletedEventArgs args)
+    {
+        if (sender is FrameworkElement fe)
+        {
+            fe.Opacity = 1.0;
+        }
+
+        _isDraggingOut = false;
+        _isInteractingWithControl = false;
+
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
+        {
+            RestartCollapseDelayTimer();
+        }
+    }
+
+    private void OnShelfRemoveItemClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is string itemId && !string.IsNullOrWhiteSpace(itemId))
+        {
+            _viewModel.RemoveShelfItem(itemId);
+        }
+    }
+
+    /// <summary>
+    /// Volume-preserving Apple squash-and-rebound physics when a file lands in the Drop Shelf.
+    /// </summary>
+    private void TriggerDropAbsorptionPhysics()
+    {
+        if (ReducedMotion)
+        {
+            return;
+        }
+
+        try
+        {
+            AnimateSurfaceScale(1.018f, 0.965f, 85);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(90).ConfigureAwait(false);
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        if (!_windowClosed)
+                        {
+                            AnimateSurfaceScale(1.0f, 1.0f, 220);
+                        }
+                    });
+                }
+                catch
+                {
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.TriggerDropAbsorptionPhysics", ex);
+        }
+    }
+
+    private void SetDropZonePulseState(bool active)
+    {
+        if (ShelfDropZoneBorder is null || ReducedMotion)
+        {
+            return;
+        }
+
+        try
+        {
+            AnimateElementScale(ShelfDropZoneBorder, active ? 1.022f : 1.0f, active ? 160 : 180);
+        }
+        catch
+        {
+        }
+    }
 
     private void OnSurfacePointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
@@ -3551,16 +3891,16 @@ public sealed partial class IslandWindow : Window
         int currentIndex = _viewModel.SelectedPageIndex;
         if (step < 0)
         {
-            int nextIndex = (currentIndex + 1) % 3;
+            int nextIndex = (currentIndex + 1) % ExpandedPageCount;
             NavigateToPage(nextIndex, isForward: true);
         }
         else
         {
-            int prevIndex = (currentIndex - 1 + 3) % 3;
+            int prevIndex = (currentIndex - 1 + ExpandedPageCount) % ExpandedPageCount;
             NavigateToPage(prevIndex, isForward: false);
         }
 
-        if (!_isPointerOverSurface && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
+        if (!_isPointerOverSurface && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
         {
             RestartCollapseDelayTimer();
         }
@@ -3568,7 +3908,7 @@ public sealed partial class IslandWindow : Window
 
     private void NavigateToPage(int targetIndex, bool isForward)
     {
-        targetIndex = Math.Clamp(targetIndex, 0, 2);
+        targetIndex = Math.Clamp(targetIndex, 0, ExpandedPageCount - 1);
         int fromIndex = _targetPageIndex;
         if (fromIndex == targetIndex) return;
 
@@ -3592,7 +3932,7 @@ public sealed partial class IslandWindow : Window
 
         // Capture live in-flight positions and velocities for every channel (X, Opacity, Scale)
         // so mid-flight page changes redirect smoothly instead of snapping.
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             bool isTarget = i == toIndex;
             bool wasPanelActive = wasAnimating && (i == _pageAnimFromIndex || i == _pageAnimToIndex || _pageCurrOpacity[i] > 0.01);
@@ -3627,7 +3967,7 @@ public sealed partial class IslandWindow : Window
             _pageToScale[i] = isTarget ? 1 : 0.985;
         }
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             var grid = GetPanelGrid(i);
             var visual = GetPanelVisual(i);
@@ -3659,7 +3999,7 @@ public sealed partial class IslandWindow : Window
         if (!_viewModel.IsExpanded)
         {
             int active = _viewModel.SelectedPageIndex;
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < ExpandedPageCount; i++)
             {
                 var grid = GetPanelGrid(i);
                 var visual = GetPanelVisual(i);
@@ -3698,7 +4038,7 @@ public sealed partial class IslandWindow : Window
         var pageSpring = SelectPageSpring();
         bool settled = true;
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             var grid = GetPanelGrid(i);
             if (grid.Visibility != Visibility.Visible && i != _pageAnimFromIndex && i != _pageAnimToIndex)
@@ -3758,7 +4098,7 @@ public sealed partial class IslandWindow : Window
         Array.Clear(_pageCurrVelScale);
         StopRenderLoopIfIdle();
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             var grid = GetPanelGrid(i);
             var visual = GetPanelVisual(i);
@@ -3776,7 +4116,7 @@ public sealed partial class IslandWindow : Window
         }
     }
 
-    private const double DotStripStartXDip = 5.0;
+    private const double DotStripStartXDip = 6.5;
 
     private void UpdatePageDots(int activeIndex, bool animated)
     {
@@ -3784,18 +4124,20 @@ public sealed partial class IslandWindow : Window
         [
             activeIndex == 0 ? 18.0 : 6.0,
             activeIndex == 1 ? 18.0 : 6.0,
-            activeIndex == 2 ? 18.0 : 6.0
+            activeIndex == 2 ? 18.0 : 6.0,
+            activeIndex == 3 ? 18.0 : 6.0
         ];
         double[] targetOpacities =
         [
             activeIndex == 0 ? 1.0 : 0.35,
             activeIndex == 1 ? 1.0 : 0.35,
-            activeIndex == 2 ? 1.0 : 0.35
+            activeIndex == 2 ? 1.0 : 0.35,
+            activeIndex == 3 ? 1.0 : 0.35
         ];
 
         if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
         {
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < ExpandedPageCount; i++)
             {
                 if (_dotVisualElements[i] is not null)
                 {
@@ -3810,7 +4152,7 @@ public sealed partial class IslandWindow : Window
             Array.Clear(_dotCurrVelWidth);
             Array.Clear(_dotCurrVelOpacity);
             double x = DotStripStartXDip;
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < ExpandedPageCount; i++)
             {
                 _dotCurrWidth[i] = targets[i];
                 _dotTargetWidth[i] = targets[i];
@@ -3823,7 +4165,7 @@ public sealed partial class IslandWindow : Window
             return;
         }
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             _dotStartWidth[i] = _dotCurrWidth[i];
             _dotVelWidth[i] = _isDotAnimating ? _dotCurrVelWidth[i] : 0.0;
@@ -3851,7 +4193,7 @@ public sealed partial class IslandWindow : Window
         var dotSpring = SelectDotSpring();
         bool settled = true;
 
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             var widthState = dotSpring.Evaluate(
                 springElapsedSec,
@@ -3877,7 +4219,7 @@ public sealed partial class IslandWindow : Window
         }
 
         double x = DotStripStartXDip;
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < ExpandedPageCount; i++)
         {
             ApplyDotVisualState(i, x, _dotCurrWidth[i], _dotCurrOpacity[i]);
             x += _dotCurrWidth[i] + 5.0;
@@ -3889,7 +4231,7 @@ public sealed partial class IslandWindow : Window
             Array.Clear(_dotCurrVelWidth);
             Array.Clear(_dotCurrVelOpacity);
             double snapX = DotStripStartXDip;
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < ExpandedPageCount; i++)
             {
                 _dotCurrWidth[i] = _dotTargetWidth[i];
                 _dotCurrOpacity[i] = _dotTargetOpacity[i];
@@ -4713,7 +5055,7 @@ public sealed partial class IslandWindow : Window
     {
         if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
         {
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < ExpandedPageCount; i++)
             {
                 if (_dotVisualElements[i] is not null)
                 {
@@ -4852,7 +5194,7 @@ public sealed partial class IslandWindow : Window
         if (uMsg == WM_KILLFOCUS || uMsg == WM_CAPTURECHANGED)
         {
             _isInteractingWithControl = false;
-            if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel)
+            if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
             {
                 RestartCollapseDelayTimer();
             }

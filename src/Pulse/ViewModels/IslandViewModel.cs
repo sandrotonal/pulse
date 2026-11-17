@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -10,16 +11,20 @@ using Pulse.Core.Models;
 using Pulse.Core.Services;
 using Pulse.Core.Services.Weather;
 using Pulse.Services.Glass;
+using Pulse.Services.System;
 
 namespace Pulse.ViewModels;
 
 public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 {
+    public const int PageCount = 4;
+
     private readonly MediaViewModel _media;
     private readonly IEventRouter _eventRouter;
     private readonly IFocusTimerService _focusTimer;
     private readonly ISystemEventService _systemEvents;
     private readonly IFileOperationService _fileOperations;
+    private readonly IDropShelfService _dropShelf;
     private readonly ISystemControlService? _systemControl;
     private readonly ISettingsService? _settingsService;
     private readonly IWeatherService? _weatherService;
@@ -27,6 +32,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly DispatcherQueueTimer? _idleClockTimer;
     private readonly DispatcherQueueTimer? _idleWeatherTimer;
+    private readonly bool _ownsDropShelf;
+    private bool _isDragHovering;
+    private bool _isShelfZipping;
+    private string _shelfStatusBanner = string.Empty;
+    private int _shelfStatusGeneration;
 
     private IslandEvent? _activeEvent;
     private bool _systemMuted;
@@ -71,7 +81,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         ISystemControlService? systemControl = null,
         ISettingsService? settingsService = null,
         IWeatherService? weatherService = null,
-        ILocationService? locationService = null)
+        ILocationService? locationService = null,
+        IDropShelfService? dropShelf = null)
     {
         _media = media ?? throw new ArgumentNullException(nameof(media));
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
@@ -83,6 +94,17 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _settingsService = settingsService;
         _weatherService = weatherService;
         _locationService = locationService;
+        if (dropShelf is not null)
+        {
+            _dropShelf = dropShelf;
+            _ownsDropShelf = false;
+        }
+        else
+        {
+            _dropShelf = new DropShelfService();
+            _ownsDropShelf = true;
+        }
+        _dropShelf.ItemsChanged += OnDropShelfItemsChanged;
 
         if (_settingsService is not null)
         {
@@ -181,6 +203,77 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OpenSoundSwitcherCommand = new RelayCommand(() => _systemControl?.OpenSoundFlyout());
         OpenSoundSettingsCommand = new RelayCommand(() => _systemControl?.OpenSoundSettings());
 
+        CopyAllShelfCommand = new AsyncCommand(async () =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                var paths = _dropShelf.GetExistingPaths();
+                if (paths.Count == 0)
+                {
+                    return;
+                }
+
+                var copied = await ShelfShellService.CopyPathsToClipboardAsync(paths);
+                if (copied)
+                {
+                    ShowShelfStatus(paths.Count == 1 ? "Panoya kopyalandı" : $"{paths.Count} öğe kopyalandı");
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.CopyAllShelfCommand", ex);
+            }
+        });
+
+        ZipShelfCommand = new AsyncCommand(async () =>
+        {
+            if (_disposed || _isShelfZipping || _dropShelf.Items.Count == 0)
+            {
+                return;
+            }
+
+            _isShelfZipping = true;
+            ShowShelfStatus("ZIP hazırlanıyor...");
+            try
+            {
+                var zip = await _dropShelf.CreateZipArchiveAsync();
+                if (zip is not null)
+                {
+                    _ = await ShelfShellService.CopyPathsToClipboardAsync([zip.FilePath]);
+                    ShowShelfStatus("ZIP hazır ve kopyalandı");
+                }
+                else
+                {
+                    ShowShelfStatus("ZIP oluşturulamadı");
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.ZipShelfCommand", ex);
+                ShowShelfStatus("ZIP hatası");
+            }
+            finally
+            {
+                _isShelfZipping = false;
+            }
+        });
+
+        ClearShelfCommand = new RelayCommand(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _dropShelf.Clear();
+            ShowShelfStatus(string.Empty);
+        });
+
         TakeScreenshotCommand = new AsyncCommand(async () =>
         {
             if (_disposed || _systemControl is null)
@@ -256,7 +349,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         get => _selectedPageIndex;
         set
         {
-            var clamped = Math.Clamp(value, 0, 2);
+            var clamped = Math.Clamp(value, 0, PageCount - 1);
             if (_selectedPageIndex != clamped)
             {
                 _selectedPageIndex = clamped;
@@ -264,11 +357,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(IsMediaPageSelected));
                 OnPropertyChanged(nameof(IsFocusPageSelected));
                 OnPropertyChanged(nameof(IsSystemPageSelected));
+                OnPropertyChanged(nameof(IsShelfPageSelected));
                 OnPropertyChanged(nameof(MediaPageVisibility));
                 OnPropertyChanged(nameof(SpotifyBadgeVisibility));
                 OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
                 OnPropertyChanged(nameof(FocusPageVisibility));
                 OnPropertyChanged(nameof(SystemPageVisibility));
+                OnPropertyChanged(nameof(ShelfPageVisibility));
                 OnPropertyChanged(nameof(ExpandedHeaderTitle));
 
                 if (clamped == 2)
@@ -283,6 +378,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsMediaPageSelected => _selectedPageIndex == 0;
     public bool IsFocusPageSelected => _selectedPageIndex == 1;
     public bool IsSystemPageSelected => _selectedPageIndex == 2;
+    public bool IsShelfPageSelected => _selectedPageIndex == 3;
     public Microsoft.UI.Xaml.Visibility MediaPageVisibility => SelectedPageIndex == 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SpotifyBadgeVisibility => (MediaPageVisibility == Microsoft.UI.Xaml.Visibility.Visible && IsSpotify)
         ? Microsoft.UI.Xaml.Visibility.Visible
@@ -292,17 +388,141 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FocusPageVisibility => SelectedPageIndex == 1 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SystemPageVisibility => SelectedPageIndex == 2 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility ShelfPageVisibility => SelectedPageIndex == 3 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public string ExpandedHeaderTitle => _selectedPageIndex switch
     {
         1 => "Odak Sayacı",
         2 => "Sistem & Denetim",
+        3 => HasShelfItems ? $"Raf ({ShelfCount})" : "Raf",
         _ => AppDisplayName
     };
 
-    public void NextPage() => SelectedPageIndex = (SelectedPageIndex + 1) % 3;
-    public void PreviousPage() => SelectedPageIndex = (SelectedPageIndex - 1 + 3) % 3;
+    public void NextPage() => SelectedPageIndex = (SelectedPageIndex + 1) % PageCount;
+    public void PreviousPage() => SelectedPageIndex = (SelectedPageIndex - 1 + PageCount) % PageCount;
     public void SelectPage(int index) => SelectedPageIndex = index;
+
+    // ---- Drop Shelf ("Raf") State & Commands ----
+
+    public IDropShelfService DropShelf => _dropShelf;
+    public ObservableCollection<ShelfItemViewModel> ShelfItems { get; } = new();
+    public int ShelfCount => ShelfItems.Count;
+    public bool HasShelfItems => ShelfItems.Count > 0;
+    public string ShelfCountText => ShelfCount.ToString(CultureInfo.InvariantCulture);
+    public Visibility ShelfEmptyVisibility => HasShelfItems ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ShelfPopulatedVisibility => HasShelfItems ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility CompactShelfBadgeVisibility => HasShelfItems && !IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+
+    public bool IsDragHovering
+    {
+        get => _isDragHovering;
+        set
+        {
+            if (_isDragHovering != value)
+            {
+                _isDragHovering = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShelfDropPromptText));
+            }
+        }
+    }
+
+    public string ShelfDropPromptText => _isDragHovering
+        ? "Bırak — Rafa Ekle"
+        : "Dosya, görsel veya metin sürükleyip bırak";
+
+    public string ShelfStatusBanner => _shelfStatusBanner;
+    public Visibility ShelfStatusBannerVisibility => string.IsNullOrWhiteSpace(_shelfStatusBanner)
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public AsyncCommand CopyAllShelfCommand { get; }
+    public AsyncCommand ZipShelfCommand { get; }
+    public RelayCommand ClearShelfCommand { get; }
+
+    public void RemoveShelfItem(string itemId)
+    {
+        if (!_disposed && !string.IsNullOrWhiteSpace(itemId))
+        {
+            _dropShelf.Remove(itemId);
+        }
+    }
+
+    public IReadOnlyList<string> GetShelfExistingPaths() => _dropShelf.GetExistingPaths();
+
+    private void OnDropShelfItemsChanged(object? sender, EventArgs e)
+    {
+        ApplyOnUi(SyncShelfItems);
+    }
+
+    private void SyncShelfItems()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var snapshot = _dropShelf.Items;
+        ShelfItems.Clear();
+        foreach (var item in snapshot)
+        {
+            ShelfItems.Add(new ShelfItemViewModel(item));
+        }
+
+        OnPropertyChanged(nameof(ShelfCount));
+        OnPropertyChanged(nameof(HasShelfItems));
+        OnPropertyChanged(nameof(ShelfCountText));
+        OnPropertyChanged(nameof(ShelfEmptyVisibility));
+        OnPropertyChanged(nameof(ShelfPopulatedVisibility));
+        OnPropertyChanged(nameof(CompactShelfBadgeVisibility));
+        OnPropertyChanged(nameof(ExpandedHeaderTitle));
+    }
+
+    private void ShowShelfStatus(string message)
+    {
+        var gen = Interlocked.Increment(ref _shelfStatusGeneration);
+        ApplyOnUi(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _shelfStatusBanner = message;
+            OnPropertyChanged(nameof(ShelfStatusBanner));
+            OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
+        });
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(1800).ConfigureAwait(false);
+                if (_disposed || gen != Volatile.Read(ref _shelfStatusGeneration))
+                {
+                    return;
+                }
+
+                ApplyOnUi(() =>
+                {
+                    if (!_disposed && gen == Volatile.Read(ref _shelfStatusGeneration))
+                    {
+                        _shelfStatusBanner = string.Empty;
+                        OnPropertyChanged(nameof(ShelfStatusBanner));
+                        OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
+                    }
+                });
+            }
+            catch
+            {
+            }
+        });
+    }
 
     private int _masterVolume;
     public int MasterVolume
@@ -1767,10 +1987,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
             NotifySplitStateChanged();
         }
-        else if (e.PropertyName is nameof(MediaViewModel.CurrentIslandState) or nameof(MediaViewModel.CompactVisibility) or nameof(MediaViewModel.IdleVisibility))
+        else if (e.PropertyName is nameof(MediaViewModel.CurrentIslandState) or nameof(MediaViewModel.IsExpanded) or nameof(MediaViewModel.CompactVisibility) or nameof(MediaViewModel.IdleVisibility))
         {
             OnPropertyChanged(nameof(TrackContentVisibility));
             OnPropertyChanged(nameof(CustomIdleVisibility));
+            OnPropertyChanged(nameof(CompactShelfBadgeVisibility));
             NotifySplitStateChanged();
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) or nameof(MediaViewModel.ArtworkAccentColor) or nameof(MediaViewModel.DynamicColorTint))
@@ -1835,6 +2056,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _eventRouter.ActiveEventChanged -= OnActiveEventChanged;
         _focusTimer.Tick -= OnFocusTimerTick;
         _focusTimer.SessionCompleted -= OnFocusSessionCompleted;
+        _dropShelf.ItemsChanged -= OnDropShelfItemsChanged;
+        if (_ownsDropShelf)
+        {
+            _dropShelf.Dispose();
+        }
         _focusTimer.Dispose();
         _systemEvents.Dispose();
         _fileOperations.Dispose();
