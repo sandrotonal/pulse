@@ -507,6 +507,33 @@ public partial class App : Application
                 islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
             }
 
+            if (HasLaunchArg("--demo-shelf") || HasLaunchArg("--sample-shelf"))
+            {
+                islandWindow.DispatcherQueue.TryEnqueue(async () =>
+                {
+                    try
+                    {
+                        var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets");
+                        var iconPath = Path.Combine(assetsDir, "AppIcon.png");
+                        if (File.Exists(iconPath))
+                        {
+                            _dropShelfService.AddPath(iconPath);
+                        }
+                        await _dropShelfService.StageTextAsync("Pulse Drop Shelf v2.2\nApple NotchDrop experience on Windows 11.");
+
+                        _islandViewModel.SelectedPageIndex = 3;
+                        if (!_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        CrashLogger.Write("App.DemoShelf", ex);
+                    }
+                });
+            }
+
             // Initialize tray icon immediately with current setting rather than waiting on slow boot I/O.
             try
             {
