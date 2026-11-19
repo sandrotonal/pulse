@@ -1300,8 +1300,8 @@
                                     Visibility="{Binding ShelfEmptyVisibility}"
                                     Height="152"
                                     CornerRadius="20"
-                                    BorderThickness="1.2"
-                                    BorderBrush="#28FFFFFF"
+                                    BorderThickness="1"
+                                    BorderBrush="#25FFFFFF"
                                     Background="#0CFFFFFF"
                                     VerticalAlignment="Center">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" Padding="14,0">
@@ -1356,7 +1356,7 @@
                                     <TextBlock Text="{Binding ShelfStatusBanner}"
                                                Visibility="{Binding ShelfStatusBannerVisibility}"
                                                FontSize="10.5" FontWeight="SemiBold"
-                                               Foreground="#60A5FA"
+                                               Foreground="#E5E7EB"
                                                HorizontalAlignment="Center" Margin="0,2,0,0" />
                                 </StackPanel>
                             </Border>
@@ -1548,7 +1548,7 @@
                                                    Text="{Binding ShelfStatusBanner}"
                                                    Visibility="{Binding ShelfStatusBannerVisibility}"
                                                    FontSize="10" FontWeight="SemiBold"
-                                                   Foreground="#60A5FA"
+                                                   Foreground="#F3F4F6"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"
@@ -1616,7 +1616,7 @@
                                                     PointerReleased="OnButtonPointerReleased"
                                                     AutomationProperties.Name="Rafı temizle"
                                                     ToolTipService.ToolTip="Rafı Temizle">
-                                                <FontIcon Glyph="&#xE74D;" FontSize="10.5" Foreground="#EF4444" />
+                                                <FontIcon Glyph="&#xE74D;" FontSize="10.5" Foreground="#FF453A" />
                                             </Button>
                                         </StackPanel>
                                     </Grid>
@@ -1628,14 +1628,14 @@
                                     Visibility="{Binding ShelfDragOverlayVisibility}"
                                     CornerRadius="20"
                                     Background="#E6111215"
-                                    BorderBrush="#9060A5FA"
-                                    BorderThickness="1.8"
+                                    BorderBrush="#90FFFFFF"
+                                    BorderThickness="1"
                                     IsHitTestVisible="False"
                                     VerticalAlignment="Stretch"
                                     HorizontalAlignment="Stretch">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
                                     <Grid x:Name="ShelfDropBobIcon" Width="48" Height="48" HorizontalAlignment="Center">
-                                        <Ellipse Width="48" Height="48" Fill="#2060A5FA" Stroke="#60A5FA" StrokeThickness="1.5" />
+                                        <Ellipse Width="48" Height="48" Fill="#1EFFFFFF" Stroke="#90FFFFFF" StrokeThickness="1" />
                                         <FontIcon Glyph="&#xE896;" FontSize="20"
                                                   Foreground="#FFFFFFFF"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
@@ -1655,7 +1655,7 @@
                             <Border x:Name="ShelfDropFlashBorder"
                                     CornerRadius="18"
                                     BorderBrush="#AAFFFFFF"
-                                    BorderThickness="1.5"
+                                    BorderThickness="1"
                                     Background="Transparent"
                                     Opacity="0"
                                     IsHitTestVisible="False" />
