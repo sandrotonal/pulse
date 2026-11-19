@@ -1382,10 +1382,10 @@
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Width="90" Height="106"
-                                                        CornerRadius="16"
-                                                        Background="#16171B"
-                                                        BorderBrush="#25FFFFFF"
+                                                <Border Width="94" Height="110"
+                                                        CornerRadius="14"
+                                                        Background="#14FFFFFF"
+                                                        BorderBrush="#1EFFFFFF"
                                                         BorderThickness="1"
                                                         CanDrag="True"
                                                         Loaded="OnShelfCardLoaded"
@@ -1417,33 +1417,36 @@
                                                     </Border.ContextFlyout>
                                                     <Grid Padding="5">
                                                         <Grid.RowDefinitions>
-                                                            <RowDefinition Height="56" />
+                                                            <RowDefinition Height="60" />
                                                             <RowDefinition Height="*" />
                                                         </Grid.RowDefinitions>
 
                                                         <!-- Preview thumbnail or tinted file glyph -->
                                                         <Border Grid.Row="0"
-                                                                CornerRadius="11"
-                                                                Background="{Binding CategoryBackgroundBrush}"
-                                                                BorderBrush="{Binding CategoryBorderBrush}"
+                                                                CornerRadius="10"
+                                                                Background="#0A0B0E"
+                                                                BorderBrush="#18FFFFFF"
                                                                 BorderThickness="1"
                                                                 HorizontalAlignment="Stretch"
-                                                                VerticalAlignment="Stretch">
+                                                                VerticalAlignment="Stretch"
+                                                                Padding="2">
                                                             <Grid>
                                                                 <Image Source="{Binding Thumbnail}"
-                                                                       Stretch="UniformToFill"
+                                                                       Stretch="Uniform"
+                                                                       HorizontalAlignment="Center"
+                                                                       VerticalAlignment="Center"
                                                                        Visibility="{Binding ThumbnailVisibility}" />
                                                                 <StackPanel Visibility="{Binding GlyphVisibility}"
                                                                             HorizontalAlignment="Center"
                                                                             VerticalAlignment="Center"
-                                                                            Spacing="2">
+                                                                            Spacing="3">
                                                                     <FontIcon Glyph="{Binding IconGlyph}"
-                                                                              FontSize="19"
-                                                                              Foreground="{Binding CategoryForegroundBrush}" />
-                                                                    <Border Background="#33000000" CornerRadius="4" Padding="4,1" HorizontalAlignment="Center">
+                                                                              FontSize="18"
+                                                                              Foreground="#E5E7EB" />
+                                                                    <Border Background="#1CFFFFFF" CornerRadius="4" Padding="5,1" HorizontalAlignment="Center">
                                                                         <TextBlock Text="{Binding ExtensionBadge}"
-                                                                                   FontSize="8" FontWeight="Bold"
-                                                                                   Foreground="{Binding CategoryForegroundBrush}"
+                                                                                   FontSize="7.5" FontWeight="SemiBold"
+                                                                                   Foreground="#9CA3AF"
                                                                                    HorizontalAlignment="Center" />
                                                                     </Border>
                                                                 </StackPanel>
@@ -1458,8 +1461,8 @@
                                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
                                                                 Margin="0,2,2,0"
                                                                 Opacity="0"
-                                                                Background="#D916171B"
-                                                                BorderBrush="#33FFFFFF"
+                                                                Background="#E61A1B20"
+                                                                BorderBrush="#25FFFFFF"
                                                                 BorderThickness="1"
                                                                 Tag="{Binding Id}"
                                                                 PointerPressed="OnButtonPointerPressed"
@@ -1467,7 +1470,7 @@
                                                                 Click="OnShelfRemoveItemClick"
                                                                 AutomationProperties.Name="Raftan kaldır"
                                                                 ToolTipService.ToolTip="Kaldır">
-                                                            <FontIcon Glyph="&#xE711;" FontSize="7.5" Foreground="#FFFFFFFF" />
+                                                            <FontIcon Glyph="&#xE711;" FontSize="7.5" Foreground="#F3F4F6" />
                                                         </Button>
 
                                                         <!-- Hover-revealed quick copy badge -->
@@ -1478,8 +1481,8 @@
                                                                 HorizontalAlignment="Left" VerticalAlignment="Top"
                                                                 Margin="2,2,0,0"
                                                                 Opacity="0"
-                                                                Background="#D916171B"
-                                                                BorderBrush="#33FFFFFF"
+                                                                Background="#E61A1B20"
+                                                                BorderBrush="#25FFFFFF"
                                                                 BorderThickness="1"
                                                                 Tag="{Binding FilePath}"
                                                                 PointerPressed="OnButtonPointerPressed"
@@ -1487,19 +1490,20 @@
                                                                 Click="OnShelfCardCopyClick"
                                                                 AutomationProperties.Name="Kopyala"
                                                                 ToolTipService.ToolTip="Panoya Kopyala">
-                                                            <FontIcon Glyph="&#xE8C8;" FontSize="7.5" Foreground="#FFFFFFFF" />
+                                                            <FontIcon Glyph="&#xE8C8;" FontSize="7.5" Foreground="#F3F4F6" />
                                                         </Button>
 
-                                                        <!-- Filename + Size -->
-                                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="1" Margin="2,2,2,0">
+                                                        <!-- Filename + Subtitle (Type · Size) -->
+                                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="2" Margin="3,3,3,0">
                                                             <TextBlock Text="{Binding DisplayName}"
-                                                                       FontSize="10.5" FontWeight="SemiBold"
-                                                                       Foreground="#FFFFFFFF"
+                                                                       FontSize="10" FontWeight="SemiBold"
+                                                                       Foreground="#F3F4F6"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        MaxLines="1" />
-                                                            <TextBlock Text="{Binding SizeLabel}"
-                                                                       FontSize="9"
+                                                            <TextBlock Text="{Binding SubtitleLabel}"
+                                                                       FontSize="8.5"
                                                                        Foreground="#8E929E"
+                                                                       TextTrimming="CharacterEllipsis"
                                                                        MaxLines="1" />
                                                         </StackPanel>
                                                     </Grid>

@@ -243,7 +243,7 @@ public static class ShelfShellService
         {
             var bitmap = new BitmapImage
             {
-                DecodePixelWidth = 96,
+                DecodePixelWidth = 192,
                 CreateOptions = BitmapCreateOptions.IgnoreImageCache
             };
             bitmap.UriSource = new Uri(item.FilePath, UriKind.Absolute);
