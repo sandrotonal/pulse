@@ -1530,7 +1530,7 @@
                                                 DragStarting="OnShelfDragAllStarting"
                                                 DropCompleted="OnShelfItemDropCompleted"
                                                 AutomationProperties.Name="Raftaki tüm öğeleri sürükle"
-                                                ToolTipService.ToolTip="Tüm öğeleri birlikte başka uygulamaya sürükle">
+                                                ToolTipService.ToolTip="{Binding ShelfTotalSummary}">
                                             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
                                                 <FontIcon Glyph="&#xE7C2;" FontSize="10.5" Foreground="#FFFFFFFF" />
                                                 <TextBlock Text="Hepsini Sürükle"
@@ -1539,20 +1539,16 @@
                                             </StackPanel>
                                         </Border>
 
-                                        <!-- Center Summary / Feedback banner -->
-                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
-                                            <TextBlock Text="{Binding ShelfTotalSummary}"
-                                                       Visibility="{Binding ShelfSummaryVisibility}"
-                                                       FontSize="10" FontWeight="Medium"
-                                                       Foreground="#8E929E"
-                                                       HorizontalAlignment="Center" />
-                                            <TextBlock Text="{Binding ShelfStatusBanner}"
-                                                       Visibility="{Binding ShelfStatusBannerVisibility}"
-                                                       FontSize="10" FontWeight="SemiBold"
-                                                       Foreground="#60A5FA"
-                                                       HorizontalAlignment="Center"
-                                                       TextTrimming="CharacterEllipsis" />
-                                        </StackPanel>
+                                        <!-- Center: Transient feedback banner (only shown during actions like Copy/ZIP/Paste) -->
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding ShelfStatusBanner}"
+                                                   Visibility="{Binding ShelfStatusBannerVisibility}"
+                                                   FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#60A5FA"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="4,0" />
 
                                         <!-- Quick Actions: Paste, Pick, ZIP, Copy, Clear -->
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
