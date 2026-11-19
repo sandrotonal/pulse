@@ -9,6 +9,7 @@ public sealed record SingleInstanceNames(
     string ExpandMediaEventName = SingleInstanceNameResolver.DefaultExpandMediaEventName,
     string ExpandFocusEventName = SingleInstanceNameResolver.DefaultExpandFocusEventName,
     string ExpandSystemEventName = SingleInstanceNameResolver.DefaultExpandSystemEventName,
+    string ExpandShelfEventName = SingleInstanceNameResolver.DefaultExpandShelfEventName,
     string CollapseEventName = SingleInstanceNameResolver.DefaultCollapseEventName,
     string ToggleSplitDemoEventName = SingleInstanceNameResolver.DefaultToggleSplitDemoEventName);
 
@@ -26,6 +27,7 @@ public static class SingleInstanceNameResolver
     public const string DefaultExpandMediaEventName = "Local\\PulseExpandMediaSignal";
     public const string DefaultExpandFocusEventName = "Local\\PulseExpandFocusSignal";
     public const string DefaultExpandSystemEventName = "Local\\PulseExpandSystemSignal";
+    public const string DefaultExpandShelfEventName = "Local\\PulseExpandShelfSignal";
     public const string DefaultCollapseEventName = "Local\\PulseCollapseSignal";
     public const string DefaultToggleSplitDemoEventName = "Local\\PulseToggleSplitDemoSignal";
 
@@ -40,6 +42,7 @@ public static class SingleInstanceNameResolver
                 DefaultExpandMediaEventName,
                 DefaultExpandFocusEventName,
                 DefaultExpandSystemEventName,
+                DefaultExpandShelfEventName,
                 DefaultCollapseEventName,
                 DefaultToggleSplitDemoEventName);
         }
@@ -54,6 +57,7 @@ public static class SingleInstanceNameResolver
                 DefaultExpandMediaEventName,
                 DefaultExpandFocusEventName,
                 DefaultExpandSystemEventName,
+                DefaultExpandShelfEventName,
                 DefaultCollapseEventName,
                 DefaultToggleSplitDemoEventName);
         }
@@ -66,6 +70,7 @@ public static class SingleInstanceNameResolver
             $"{DefaultExpandMediaEventName}_{suffix}",
             $"{DefaultExpandFocusEventName}_{suffix}",
             $"{DefaultExpandSystemEventName}_{suffix}",
+            $"{DefaultExpandShelfEventName}_{suffix}",
             $"{DefaultCollapseEventName}_{suffix}",
             $"{DefaultToggleSplitDemoEventName}_{suffix}");
     }

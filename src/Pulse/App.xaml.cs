@@ -24,6 +24,7 @@ public partial class App : Application
     private readonly FocusTimerService _focusTimerService;
     private readonly SystemEventService _systemEventService;
     private readonly FileOperationService _fileOperationService;
+    private readonly DropShelfService _dropShelfService;
     private readonly WindowsSystemControlService _systemControlService;
     private readonly DownloadsWatcherService _downloadsWatcherService;
     private readonly WindowsToastNotificationService _windowsToastService;
@@ -52,6 +53,8 @@ public partial class App : Application
     private RegisteredWaitHandle? _expandFocusRegistration;
     private EventWaitHandle? _expandSystemSignal;
     private RegisteredWaitHandle? _expandSystemRegistration;
+    private EventWaitHandle? _expandShelfSignal;
+    private RegisteredWaitHandle? _expandShelfRegistration;
     private EventWaitHandle? _collapseSignal;
     private RegisteredWaitHandle? _collapseRegistration;
     private EventWaitHandle? _toggleSplitDemoSignal;
@@ -128,24 +131,46 @@ public partial class App : Application
         _instanceMutex = new Mutex(initiallyOwned: true, _instanceNames.MutexName, out var createdNew);
         if (!createdNew)
         {
-            var targetSignal = HasLaunchArg("--settings")
-                ? _instanceNames.ShowSettingsEventName
-                : HasLaunchArg("--media")
-                ? _instanceNames.ExpandMediaEventName
-                : HasLaunchArg("--focus")
-                ? _instanceNames.ExpandFocusEventName
-                : HasLaunchArg("--system")
-                ? _instanceNames.ExpandSystemEventName
-                : HasLaunchArg("--collapse")
-                ? _instanceNames.CollapseEventName
-                : HasLaunchArg("--split")
-                ? _instanceNames.ToggleSplitDemoEventName
-                : _instanceNames.ShowIslandEventName;
+            // During a rapid restart the previous instance may still be finishing teardown;
+            // wait briefly before assuming a live instance owns the mutex.
+            var acquiredAfterWait = false;
+            try
+            {
+                acquiredAfterWait = _instanceMutex.WaitOne(450);
+            }
+            catch (AbandonedMutexException)
+            {
+                acquiredAfterWait = true;
+            }
+            catch
+            {
+            }
 
-            _ = TrySignalExistingInstance(targetSignal);
+            if (!acquiredAfterWait)
+            {
+                var targetSignal = HasLaunchArg("--settings")
+                    ? _instanceNames.ShowSettingsEventName
+                    : HasLaunchArg("--media")
+                    ? _instanceNames.ExpandMediaEventName
+                    : HasLaunchArg("--focus")
+                    ? _instanceNames.ExpandFocusEventName
+                    : HasLaunchArg("--system")
+                    ? _instanceNames.ExpandSystemEventName
+                    : (HasLaunchArg("--shelf") || HasLaunchArg("--raf"))
+                    ? _instanceNames.ExpandShelfEventName
+                    : HasLaunchArg("--collapse")
+                    ? _instanceNames.CollapseEventName
+                    : HasLaunchArg("--split")
+                    ? _instanceNames.ToggleSplitDemoEventName
+                    : _instanceNames.ShowIslandEventName;
 
-            Environment.Exit(0);
-            return;
+                _ = TrySignalExistingInstance(targetSignal);
+
+                try { _instanceMutex.Dispose(); } catch { }
+                _instanceMutex = null;
+                Environment.Exit(0);
+                return;
+            }
         }
 
         InitializeComponent();
@@ -190,6 +215,7 @@ public partial class App : Application
         _focusTimerService = new FocusTimerService(_eventRouter);
         _systemEventService = new SystemEventService(_eventRouter, _settingsService);
         _fileOperationService = new FileOperationService(_eventRouter);
+        _dropShelfService = new DropShelfService();
         _systemControlService = new WindowsSystemControlService(dispatcherQueue);
         _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
         _windowsToastService = new WindowsToastNotificationService(_systemEventService, _settingsService);
@@ -218,7 +244,8 @@ public partial class App : Application
             _systemControlService,
             _settingsService,
             _weatherService,
-            _locationService);
+            _locationService,
+            _dropShelfService);
 
         RegisterInstanceSignals(dispatcherQueue);
     }
@@ -347,6 +374,25 @@ public partial class App : Application
                 Timeout.Infinite,
                 executeOnlyOnce: false);
 
+            _expandShelfSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandShelfEventName);
+            _expandShelfRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _expandShelfSignal,
+                (_, _) =>
+                {
+                    if (_exiting || _islandWindow is not { } window) return;
+                    window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _islandViewModel.SelectedPageIndex = 3;
+                        if (!_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    });
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
             _collapseSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.CollapseEventName);
             _collapseRegistration = ThreadPool.RegisterWaitForSingleObject(
                 _collapseSignal,
@@ -417,6 +463,35 @@ public partial class App : Application
             _islandWindow.ShowIsland();
             _islandViewModel.StartIdleMonitoring();
 
+            // Defer heavy OS/COM/WinRT watchers off the UI thread AFTER the island is visible
+            // so Windows boot contention never delays the first painted frame.
+            _ = _systemControlService.PrimeAsync();
+            _ = Task.Run(() =>
+            {
+                if (_exiting)
+                {
+                    return;
+                }
+
+                try
+                {
+                    _windowsToastService.Start();
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Write("App.WindowsToastService.Start", ex);
+                }
+
+                try
+                {
+                    _bluetoothWatcherService.Start();
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Write("App.BluetoothWatcherService.Start", ex);
+                }
+            });
+
             var mediaInitTask = _mediaViewModel.InitializeAsync();
             var startupReconcileTask = ReconcileStartupAsync();
 
@@ -432,18 +507,38 @@ public partial class App : Application
                 islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
             }
 
-            var startupEnabled = await startupReconcileTask;
-            await mediaInitTask;
-
-            if (_exiting)
+            if (HasLaunchArg("--demo-shelf") || HasLaunchArg("--sample-shelf"))
             {
-                return;
+                islandWindow.DispatcherQueue.TryEnqueue(async () =>
+                {
+                    try
+                    {
+                        var assetsDir = Path.Combine(AppContext.BaseDirectory, "Assets");
+                        var iconPath = Path.Combine(assetsDir, "AppIcon.png");
+                        if (File.Exists(iconPath))
+                        {
+                            _dropShelfService.AddPath(iconPath);
+                        }
+                        await _dropShelfService.StageTextAsync("Pulse Drop Shelf v2.2\nApple NotchDrop experience on Windows 11.");
+
+                        _islandViewModel.SelectedPageIndex = 3;
+                        if (!_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        CrashLogger.Write("App.DemoShelf", ex);
+                    }
+                });
             }
 
+            // Initialize tray icon immediately with current setting rather than waiting on slow boot I/O.
             try
             {
                 var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.ico");
-                _trayService = new TrayService(iconPath, startupEnabled);
+                _trayService = new TrayService(iconPath, _settingsService.Current.StartWithWindows);
                 _trayService.ShowRequested += (_, _) =>
                     SurfaceIsland(toggleIfAlreadyVisible: true, activateWindow: false);
                 _trayService.IslandToggleRequested += (_, _) => _islandWindow?.ToggleHideIsland();
@@ -461,6 +556,14 @@ public partial class App : Application
             {
                 CrashLogger.Write("App.TrayService", ex);
             }
+
+            var startupEnabled = await startupReconcileTask;
+            if (!_exiting)
+            {
+                _trayService?.SetStartupEnabled(startupEnabled);
+            }
+
+            await mediaInitTask;
         }
         catch (Exception ex)
         {
@@ -737,13 +840,23 @@ public partial class App : Application
             _trayService?.Dispose();
             _settingsWindow?.Close();
             _islandWindow?.Close();
+
+            // Release the single-instance mutex immediately so a rapid restart never collides with teardown.
+            if (_instanceMutex is { } mutex)
+            {
+                _instanceMutex = null;
+                try { mutex.ReleaseMutex(); } catch { }
+                try { mutex.Dispose(); } catch { }
+            }
+
             _islandViewModel.Dispose();
+            _dropShelfService.Dispose();
             _downloadsWatcherService.Dispose();
             _windowsToastService.Dispose();
             _bluetoothWatcherService.Dispose();
             _screenshotWatcherService.Dispose();
-            await _mediaViewModel.DisposeAsync();
-            await _mediaSessionService.DisposeAsync();
+            await Task.WhenAny(_mediaViewModel.DisposeAsync().AsTask(), Task.Delay(1200));
+            await Task.WhenAny(_mediaSessionService.DisposeAsync().AsTask(), Task.Delay(1200));
             _artworkCacheService.Dispose();
             _systemControlService.Dispose();
             _weatherService.Dispose();
@@ -755,6 +868,13 @@ public partial class App : Application
         {
             CrashLogger.Write("App.OnExitRequested.Cleanup", ex);
         }
+
+        // Watchdog ensures background COM/WinRT threads can never keep a zombie process alive after Exit().
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(2000).ConfigureAwait(false);
+            Environment.Exit(0);
+        });
 
         Exit();
     }

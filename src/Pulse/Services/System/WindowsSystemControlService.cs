@@ -28,6 +28,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
     private readonly DispatcherQueue? _dispatcherQueue;
     private readonly VolumeCallbackSink _volumeCallback;
     private readonly DeviceNotificationClient _deviceCallback;
+    private int _deviceChangeGeneration;
 
     private IMMDeviceEnumerator? _deviceEnumerator;
     private IAudioEndpointVolume? _endpointVolume;
@@ -39,9 +40,48 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         _dispatcherQueue = dispatcherQueue;
         _volumeCallback = new VolumeCallbackSink(OnVolumeNotify);
         _deviceCallback = new DeviceNotificationClient(OnDefaultRenderDeviceChanged);
+    }
 
-        // Prime endpoint & callbacks lazily if audio subsystem is already online.
-        _ = GetEndpointVolume();
+    /// <summary>
+    /// Primes the WASAPI audio endpoint and notification callbacks off the UI thread
+    /// so window creation is never blocked during Windows boot.
+    /// </summary>
+    public Task PrimeAsync()
+    {
+        return Task.Run(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                var endpoint = GetEndpointVolume();
+                if (endpoint is null || _disposed)
+                {
+                    return;
+                }
+
+                var volume = GetMasterVolume();
+                var muted = IsMuted();
+                var (deviceName, deviceGlyph) = GetActiveAudioDevice();
+                var (isHeadphones, headphoneName) = GetHeadphoneStatus();
+                AudioStateChanged?.Invoke(this, new AudioStateChangedEventArgs(
+                    volume,
+                    muted,
+                    IsSelfOriginated: false,
+                    IsDeviceSwitch: true,
+                    DeviceName: deviceName,
+                    DeviceGlyph: deviceGlyph,
+                    AreHeadphonesConnected: isHeadphones,
+                    HeadphoneDeviceName: headphoneName));
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("WindowsSystemControlService.PrimeAsync", ex);
+            }
+        });
     }
 
     public event EventHandler<AudioStateChangedEventArgs>? AudioStateChanged;
@@ -201,10 +241,12 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             ReleaseEndpoint_NoLock();
         }
 
-        // Rebind on a worker so COM MTA notifications return immediately, then report current level.
-        _ = Task.Run(() =>
+        var gen = Interlocked.Increment(ref _deviceChangeGeneration);
+        // Debounce on a worker so COM MTA notifications return immediately and burst events collapse into one
+        _ = Task.Run(async () =>
         {
-            if (_disposed)
+            await Task.Delay(120).ConfigureAwait(false);
+            if (_disposed || gen != Volatile.Read(ref _deviceChangeGeneration))
             {
                 return;
             }
@@ -390,29 +432,37 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
                     _ = GetEndpointVolume();
                 }
 
-                if (_deviceEnumerator is not null &&
-                    _deviceEnumerator.EnumAudioEndpoints(EDataFlow.eRender, 1 /* DEVICE_STATE_ACTIVE */, out var collection) == 0 &&
-                    collection is not null)
+                if (_deviceEnumerator is null)
+                {
+                    return (false, null);
+                }
+
+                var hrEnum = _deviceEnumerator.EnumAudioEndpoints(EDataFlow.eRender, 1 /* DEVICE_STATE_ACTIVE */, out var collection);
+                if (hrEnum == 0 && collection is not null)
                 {
                     try
                     {
-                        if (collection.GetCount(out var count) == 0 && count > 0)
+                        var hrCount = collection.GetCount(out var count);
+                        if (hrCount == 0 && count > 0)
                         {
                             var keyFriendlyName = new PropertyKey { fmtid = new Guid("A45C254E-DF1C-4EFD-8020-67D146A850E0"), pid = 14 };
                             var keyFormFactor = new PropertyKey { fmtid = new Guid("1DA5D803-D492-4EDD-8C23-E0C0FFEE7F0E"), pid = 0 };
 
                             for (uint i = 0; i < count; i++)
                             {
-                                if (collection.Item(i, out var dev) == 0 && dev is not null)
+                                var hrItem = collection.Item(i, out var dev);
+                                if (hrItem == 0 && dev is not null)
                                 {
                                     try
                                     {
-                                        if (dev.OpenPropertyStore(0 /* STGM_READ */, out var store) == 0 && store is not null)
+                                        var hrStore = dev.OpenPropertyStore(0 /* STGM_READ */, out var store);
+                                        if (hrStore == 0 && store is not null)
                                         {
                                             try
                                             {
                                                 var name = string.Empty;
-                                                if (store.GetValue(ref keyFriendlyName, out var pvName) == 0)
+                                                var hrName = store.GetValue(ref keyFriendlyName, out var pvName);
+                                                if (hrName == 0)
                                                 {
                                                     if (pvName.vt == 31 && pvName.pwszVal != IntPtr.Zero)
                                                     {
@@ -422,7 +472,8 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
                                                 }
 
                                                 uint formFactor = 0;
-                                                if (store.GetValue(ref keyFormFactor, out var pvForm) == 0)
+                                                var hrForm = store.GetValue(ref keyFormFactor, out var pvForm);
+                                                if (hrForm == 0)
                                                 {
                                                     formFactor = pvForm.uintVal;
                                                     _ = PropVariantClear(ref pvForm);
@@ -1380,7 +1431,9 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         int Commit();
     }
 
-    [StructLayout(LayoutKind.Explicit)]
+    // PROPVARIANT is 24 bytes on x64 (16 bytes on x86). Undersizing to 16 bytes on x64
+    // causes IPropertyStore::GetValue to overwrite 8 bytes of the caller's stack frame.
+    [StructLayout(LayoutKind.Explicit, Size = 24)]
     private struct PropVariant
     {
         [FieldOffset(0)] public ushort vt;
@@ -1389,6 +1442,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         [FieldOffset(6)] public ushort wReserved3;
         [FieldOffset(8)] public IntPtr pwszVal;
         [FieldOffset(8)] public uint uintVal;
+        [FieldOffset(16)] public long reservedPadding;
     }
 
     [ComImport, Guid("5CDF2C82-841E-4546-9722-0CF74078229A"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]

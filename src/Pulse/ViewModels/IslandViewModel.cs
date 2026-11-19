@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
 using System.Runtime.CompilerServices;
@@ -10,16 +11,20 @@ using Pulse.Core.Models;
 using Pulse.Core.Services;
 using Pulse.Core.Services.Weather;
 using Pulse.Services.Glass;
+using Pulse.Services.System;
 
 namespace Pulse.ViewModels;
 
 public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 {
+    public const int PageCount = 4;
+
     private readonly MediaViewModel _media;
     private readonly IEventRouter _eventRouter;
     private readonly IFocusTimerService _focusTimer;
     private readonly ISystemEventService _systemEvents;
     private readonly IFileOperationService _fileOperations;
+    private readonly IDropShelfService _dropShelf;
     private readonly ISystemControlService? _systemControl;
     private readonly ISettingsService? _settingsService;
     private readonly IWeatherService? _weatherService;
@@ -27,6 +32,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly DispatcherQueueTimer? _idleClockTimer;
     private readonly DispatcherQueueTimer? _idleWeatherTimer;
+    private readonly bool _ownsDropShelf;
+    private bool _isDragHovering;
+    private bool _isShelfZipping;
+    private string _shelfStatusBanner = string.Empty;
+    private int _shelfStatusGeneration;
 
     private IslandEvent? _activeEvent;
     private bool _systemMuted;
@@ -71,7 +81,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         ISystemControlService? systemControl = null,
         ISettingsService? settingsService = null,
         IWeatherService? weatherService = null,
-        ILocationService? locationService = null)
+        ILocationService? locationService = null,
+        IDropShelfService? dropShelf = null)
     {
         _media = media ?? throw new ArgumentNullException(nameof(media));
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
@@ -83,6 +94,17 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _settingsService = settingsService;
         _weatherService = weatherService;
         _locationService = locationService;
+        if (dropShelf is not null)
+        {
+            _dropShelf = dropShelf;
+            _ownsDropShelf = false;
+        }
+        else
+        {
+            _dropShelf = new DropShelfService();
+            _ownsDropShelf = true;
+        }
+        _dropShelf.ItemsChanged += OnDropShelfItemsChanged;
 
         if (_settingsService is not null)
         {
@@ -171,22 +193,106 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             NotifySplitStateChanged();
         });
 
-        // Real system audio controls (endpoint volume), replacing the demo reporting path
+        // Real system audio controls (endpoint volume) — subscribe immediately and
+        // query WASAPI asynchronously so window startup is never blocked on boot.
         if (_systemControl is not null)
         {
-            _masterVolume = _systemControl.GetMasterVolume();
-            _systemMuted = _systemControl.IsMuted();
-            var (devName, devGlyph) = _systemControl.GetActiveAudioDevice();
-            _activeAudioDeviceName = devName;
-            _activeAudioDeviceGlyph = devGlyph;
-            var (hpConn, hpName) = _systemControl.GetHeadphoneStatus();
-            _areHeadphonesConnected = hpConn;
-            _headphoneDeviceName = hpName;
             _systemControl.AudioStateChanged += OnSystemAudioStateChanged;
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
         OpenSoundSwitcherCommand = new RelayCommand(() => _systemControl?.OpenSoundFlyout());
         OpenSoundSettingsCommand = new RelayCommand(() => _systemControl?.OpenSoundSettings());
+
+        CopyAllShelfCommand = new AsyncCommand(async () =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                var paths = _dropShelf.GetExistingPaths();
+                if (paths.Count == 0)
+                {
+                    return;
+                }
+
+                var copied = await ShelfShellService.CopyPathsToClipboardAsync(paths);
+                if (copied)
+                {
+                    ShowShelfStatus(paths.Count == 1 ? "Panoya kopyalandı" : $"{paths.Count} öğe kopyalandı");
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.CopyAllShelfCommand", ex);
+            }
+        });
+
+        ZipShelfCommand = new AsyncCommand(async () =>
+        {
+            if (_disposed || _isShelfZipping || _dropShelf.Items.Count == 0)
+            {
+                return;
+            }
+
+            _isShelfZipping = true;
+            ShowShelfStatus("ZIP hazırlanıyor...");
+            try
+            {
+                var zip = await _dropShelf.CreateZipArchiveAsync();
+                if (zip is not null)
+                {
+                    _ = await ShelfShellService.CopyPathsToClipboardAsync([zip.FilePath]);
+                    ShowShelfStatus("ZIP hazır ve kopyalandı");
+                }
+                else
+                {
+                    ShowShelfStatus("ZIP oluşturulamadı");
+                }
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.ZipShelfCommand", ex);
+                ShowShelfStatus("ZIP hatası");
+            }
+            finally
+            {
+                _isShelfZipping = false;
+            }
+        });
+
+        ClearShelfCommand = new RelayCommand(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _dropShelf.Clear();
+            ShowShelfStatus(string.Empty);
+        });
+
+        PasteToShelfCommand = new AsyncCommand(async () =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            try
+            {
+                var added = await ShelfShellService.PasteFromClipboardAsync(_dropShelf);
+                ShowShelfStatus(added > 0
+                    ? (added == 1 ? "Panodan eklendi" : $"{added} öğe eklendi")
+                    : "Panoda eklenecek öğe yok");
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.PasteToShelfCommand", ex);
+            }
+        });
 
         TakeScreenshotCommand = new AsyncCommand(async () =>
         {
@@ -263,7 +369,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         get => _selectedPageIndex;
         set
         {
-            var clamped = Math.Clamp(value, 0, 2);
+            var clamped = Math.Clamp(value, 0, PageCount - 1);
             if (_selectedPageIndex != clamped)
             {
                 _selectedPageIndex = clamped;
@@ -271,11 +377,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(IsMediaPageSelected));
                 OnPropertyChanged(nameof(IsFocusPageSelected));
                 OnPropertyChanged(nameof(IsSystemPageSelected));
+                OnPropertyChanged(nameof(IsShelfPageSelected));
                 OnPropertyChanged(nameof(MediaPageVisibility));
                 OnPropertyChanged(nameof(SpotifyBadgeVisibility));
                 OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
                 OnPropertyChanged(nameof(FocusPageVisibility));
                 OnPropertyChanged(nameof(SystemPageVisibility));
+                OnPropertyChanged(nameof(ShelfPageVisibility));
                 OnPropertyChanged(nameof(ExpandedHeaderTitle));
 
                 if (clamped == 2)
@@ -290,6 +398,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsMediaPageSelected => _selectedPageIndex == 0;
     public bool IsFocusPageSelected => _selectedPageIndex == 1;
     public bool IsSystemPageSelected => _selectedPageIndex == 2;
+    public bool IsShelfPageSelected => _selectedPageIndex == 3;
     public Microsoft.UI.Xaml.Visibility MediaPageVisibility => SelectedPageIndex == 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SpotifyBadgeVisibility => (MediaPageVisibility == Microsoft.UI.Xaml.Visibility.Visible && IsSpotify)
         ? Microsoft.UI.Xaml.Visibility.Visible
@@ -299,17 +408,225 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FocusPageVisibility => SelectedPageIndex == 1 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SystemPageVisibility => SelectedPageIndex == 2 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility ShelfPageVisibility => SelectedPageIndex == 3 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public string ExpandedHeaderTitle => _selectedPageIndex switch
     {
         1 => "Odak Sayacı",
         2 => "Sistem & Denetim",
+        3 => HasShelfItems ? $"Raf ({ShelfCount})" : "Raf",
         _ => AppDisplayName
     };
 
-    public void NextPage() => SelectedPageIndex = (SelectedPageIndex + 1) % 3;
-    public void PreviousPage() => SelectedPageIndex = (SelectedPageIndex - 1 + 3) % 3;
+    public void NextPage() => SelectedPageIndex = (SelectedPageIndex + 1) % PageCount;
+    public void PreviousPage() => SelectedPageIndex = (SelectedPageIndex - 1 + PageCount) % PageCount;
     public void SelectPage(int index) => SelectedPageIndex = index;
+
+    // ---- Drop Shelf ("Raf") State & Commands ----
+
+    public IDropShelfService DropShelf => _dropShelf;
+    public ObservableCollection<ShelfItemViewModel> ShelfItems { get; } = new();
+    public int ShelfCount => ShelfItems.Count;
+    public bool HasShelfItems => ShelfItems.Count > 0;
+    public string ShelfCountText => ShelfCount.ToString(CultureInfo.InvariantCulture);
+    public Visibility ShelfEmptyVisibility => HasShelfItems ? Visibility.Collapsed : Visibility.Visible;
+    public Visibility ShelfPopulatedVisibility => HasShelfItems ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility CompactShelfBadgeVisibility => HasShelfItems && !IsExpanded ? Visibility.Visible : Visibility.Collapsed;
+
+    public bool IsDragHovering
+    {
+        get => _isDragHovering;
+        set
+        {
+            if (_isDragHovering != value)
+            {
+                _isDragHovering = value;
+                OnPropertyChanged();
+                OnPropertyChanged(nameof(ShelfDropPromptText));
+                OnPropertyChanged(nameof(ShelfDragOverlayVisibility));
+            }
+        }
+    }
+
+    public Visibility ShelfDragOverlayVisibility => _isDragHovering ? Visibility.Visible : Visibility.Collapsed;
+
+    public string ShelfDropPromptText => _isDragHovering
+        ? "Bırak — Rafa Ekle"
+        : "Dosya, görsel veya metin sürükleyip bırak";
+
+    public string ShelfTotalSummary
+    {
+        get
+        {
+            if (ShelfItems.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            long totalBytes = 0;
+            foreach (var item in ShelfItems)
+            {
+                totalBytes += item.Model.FileSizeBytes;
+            }
+
+            var countLabel = $"{ShelfItems.Count} öğe";
+            return totalBytes > 0 ? $"{countLabel} · {ShelfItem.FormatByteSize(totalBytes)}" : countLabel;
+        }
+    }
+
+    public string ShelfStatusBanner => _shelfStatusBanner;
+    public Visibility ShelfStatusBannerVisibility => string.IsNullOrWhiteSpace(_shelfStatusBanner)
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+    public Visibility ShelfSummaryVisibility => ShelfStatusBannerVisibility == Visibility.Visible
+        ? Visibility.Collapsed
+        : Visibility.Visible;
+
+    public AsyncCommand CopyAllShelfCommand { get; }
+    public AsyncCommand ZipShelfCommand { get; }
+    public RelayCommand ClearShelfCommand { get; }
+    public AsyncCommand PasteToShelfCommand { get; }
+
+    public void AddShelfPaths(IEnumerable<string> paths)
+    {
+        if (_disposed || paths is null)
+        {
+            return;
+        }
+
+        var added = 0;
+        foreach (var path in paths)
+        {
+            if (!string.IsNullOrWhiteSpace(path) && _dropShelf.AddPath(path) is not null)
+            {
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            ShowShelfStatus($"{added} öğe eklendi");
+        }
+    }
+
+    public void RemoveShelfItem(string itemId)
+    {
+        if (!_disposed && !string.IsNullOrWhiteSpace(itemId))
+        {
+            _dropShelf.Remove(itemId);
+        }
+    }
+
+    public void OpenShelfItemInExplorer(string filePath)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        _ = _systemControl?.TryOpenPath(filePath);
+    }
+
+    public async Task CopySingleShelfItemAsync(string filePath)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var ok = await ShelfShellService.CopyPathsToClipboardAsync([filePath]);
+            if (ok)
+            {
+                ShowShelfStatus("Panoya kopyalandı");
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.CopySingleShelfItemAsync", ex);
+        }
+    }
+
+    public IReadOnlyList<string> GetShelfExistingPaths() => _dropShelf.GetExistingPaths();
+
+    private void OnDropShelfItemsChanged(object? sender, EventArgs e)
+    {
+        ApplyOnUi(SyncShelfItems);
+    }
+
+    private void SyncShelfItems()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        var snapshot = _dropShelf.Items;
+        ShelfItems.Clear();
+        foreach (var item in snapshot)
+        {
+            ShelfItems.Add(new ShelfItemViewModel(item));
+        }
+
+        OnPropertyChanged(nameof(ShelfCount));
+        OnPropertyChanged(nameof(HasShelfItems));
+        OnPropertyChanged(nameof(ShelfCountText));
+        OnPropertyChanged(nameof(ShelfTotalSummary));
+        OnPropertyChanged(nameof(ShelfEmptyVisibility));
+        OnPropertyChanged(nameof(ShelfPopulatedVisibility));
+        OnPropertyChanged(nameof(CompactShelfBadgeVisibility));
+        OnPropertyChanged(nameof(ExpandedHeaderTitle));
+        NotifySplitStateChanged();
+    }
+
+    private void ShowShelfStatus(string message)
+    {
+        var gen = Interlocked.Increment(ref _shelfStatusGeneration);
+        ApplyOnUi(() =>
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _shelfStatusBanner = message;
+            OnPropertyChanged(nameof(ShelfStatusBanner));
+            OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
+            OnPropertyChanged(nameof(ShelfSummaryVisibility));
+        });
+
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(1800).ConfigureAwait(false);
+                if (_disposed || gen != Volatile.Read(ref _shelfStatusGeneration))
+                {
+                    return;
+                }
+
+                ApplyOnUi(() =>
+                {
+                    if (!_disposed && gen == Volatile.Read(ref _shelfStatusGeneration))
+                    {
+                        _shelfStatusBanner = string.Empty;
+                        OnPropertyChanged(nameof(ShelfStatusBanner));
+                        OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
+                        OnPropertyChanged(nameof(ShelfSummaryVisibility));
+                    }
+                });
+            }
+            catch
+            {
+            }
+        });
+    }
 
     private int _masterVolume;
     public int MasterVolume
@@ -357,8 +674,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneConnectedDarkBrush = new(Windows.UI.Color.FromArgb(255, 48, 209, 88));   // iOS Emerald Green #30D158
     private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneConnectedLightBrush = new(Windows.UI.Color.FromArgb(255, 52, 199, 89));  // iOS Green Light
-    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedDarkBrush = new(Windows.UI.Color.FromArgb(160, 142, 142, 147)); // Muted Gray Dark #8E8E93
-    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedLightBrush = new(Windows.UI.Color.FromArgb(160, 108, 108, 112)); // Muted Gray Light
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedDarkBrush = new(Windows.UI.Color.FromArgb(255, 175, 175, 180)); // Crisp Clear Silver #AFAFB4
+    private static readonly Microsoft.UI.Xaml.Media.SolidColorBrush HeadphoneDisconnectedLightBrush = new(Windows.UI.Color.FromArgb(255, 100, 100, 105)); // Crisp Slate Gray
 
     public string ActiveAudioDeviceName => _activeAudioDeviceName;
 
@@ -370,7 +687,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     public string HeadphoneBadgeGlyph => "\uE7F6";
 
-    public double HeadphoneIconOpacity => _areHeadphonesConnected ? 1.0 : 0.45;
+    public double HeadphoneIconOpacity => _areHeadphonesConnected ? 1.0 : 0.80;
 
     public Microsoft.UI.Xaml.Visibility HeadphoneHaloVisibility => _areHeadphonesConnected
         ? Microsoft.UI.Xaml.Visibility.Visible
@@ -720,12 +1037,33 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         HasTrack,
         IsFocusTimerActive,
         IsNotificationActive,
-        IsFileOperationActive);
+        IsFileOperationActive,
+        HasShelfItems);
     public Microsoft.UI.Xaml.Visibility SplitModeVisibility => IsSplitModeActive ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
-    public string DetachedGlyph => IsFocusTimerActive ? "\uE916" : (IsNotificationActive ? NotificationGlyph : (_isSplitDemoForced ? "\uE916" : "\uE896"));
-    public string DetachedBadgeText => IsFocusTimerActive ? FocusTimerText : (IsNotificationActive ? "!" : (_isSplitDemoForced ? "25:00" : $"{FileOperationProgress:F0}%"));
-    public string DetachedToolTip => IsFocusTimerActive ? "Odak Sayacı" : (IsNotificationActive ? NotificationTitle : (_isSplitDemoForced ? "Odak Sayacı (Demo)" : FileOperationName));
+    public string DetachedGlyph => IsFocusTimerActive
+        ? "\uE916"
+        : (IsNotificationActive
+            ? NotificationGlyph
+            : (_isSplitDemoForced
+                ? "\uE916"
+                : (HasShelfItems ? "\uE896" : "\uE896")));
+
+    public string DetachedBadgeText => IsFocusTimerActive
+        ? FocusTimerText
+        : (IsNotificationActive
+            ? "!"
+            : (_isSplitDemoForced
+                ? "25:00"
+                : (HasShelfItems ? ShelfCountText : $"{FileOperationProgress:F0}%")));
+
+    public string DetachedToolTip => IsFocusTimerActive
+        ? "Odak Sayacı"
+        : (IsNotificationActive
+            ? NotificationTitle
+            : (_isSplitDemoForced
+                ? "Odak Sayacı (Demo)"
+                : (HasShelfItems ? $"Dosya Rafı ({ShelfTotalSummary})" : FileOperationName)));
 
     public void OnDetachedPillClicked()
     {
@@ -736,6 +1074,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         else if (IsNotificationActive || IsFileOperationActive)
         {
             SelectedPageIndex = 2;
+        }
+        else if (HasShelfItems)
+        {
+            SelectedPageIndex = 3;
         }
         ToggleExpanded();
     }
@@ -1678,47 +2020,72 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         });
     }
 
-    /// <summary>Re-reads endpoint volume and mute state from the real audio device.</summary>
-    private void RefreshSystemAudio()
+    /// <summary>Re-reads endpoint volume, active audio device, and headphone state off the UI thread.</summary>
+    public void RefreshSystemAudio()
     {
-        if (_systemControl is null)
+        var control = _systemControl;
+        if (control is null || _disposed)
         {
             return;
         }
 
-        var volume = _systemControl.GetMasterVolume();
-        var muted = _systemControl.IsMuted();
-        if (_masterVolume != volume)
+        _ = Task.Run(() =>
         {
-            _masterVolume = volume;
-            OnPropertyChanged(nameof(MasterVolume));
-            OnPropertyChanged(nameof(MasterVolumeLabel));
-        }
+            if (_disposed)
+            {
+                return;
+            }
 
-        if (_systemMuted != muted)
-        {
-            _systemMuted = muted;
-            OnPropertyChanged(nameof(IsSystemMuted));
-            OnPropertyChanged(nameof(SystemMuteGlyph));
-        }
+            try
+            {
+                var volume = control.GetMasterVolume();
+                var muted = control.IsMuted();
+                var (devName, devGlyph) = control.GetActiveAudioDevice();
+                var (hpConn, hpName) = control.GetHeadphoneStatus();
 
-        var (devName, devGlyph) = _systemControl.GetActiveAudioDevice();
-        if (_activeAudioDeviceName != devName || _activeAudioDeviceGlyph != devGlyph)
-        {
-            _activeAudioDeviceName = devName;
-            _activeAudioDeviceGlyph = devGlyph;
-            OnPropertyChanged(nameof(ActiveAudioDeviceName));
-            OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
-            OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
-        }
+                ApplyOnUi(() =>
+                {
+                    if (_disposed)
+                    {
+                        return;
+                    }
 
-        var (hpConn, hpName) = _systemControl.GetHeadphoneStatus();
-        if (_areHeadphonesConnected != hpConn || _headphoneDeviceName != hpName)
-        {
-            _areHeadphonesConnected = hpConn;
-            _headphoneDeviceName = hpName;
-            NotifyHeadphoneStateChanged();
-        }
+                    if (_masterVolume != volume)
+                    {
+                        _masterVolume = volume;
+                        OnPropertyChanged(nameof(MasterVolume));
+                        OnPropertyChanged(nameof(MasterVolumeLabel));
+                    }
+
+                    if (_systemMuted != muted)
+                    {
+                        _systemMuted = muted;
+                        OnPropertyChanged(nameof(IsSystemMuted));
+                        OnPropertyChanged(nameof(SystemMuteGlyph));
+                    }
+
+                    if (_activeAudioDeviceName != devName || _activeAudioDeviceGlyph != devGlyph)
+                    {
+                        _activeAudioDeviceName = devName;
+                        _activeAudioDeviceGlyph = devGlyph;
+                        OnPropertyChanged(nameof(ActiveAudioDeviceName));
+                        OnPropertyChanged(nameof(ActiveAudioDeviceShortName));
+                        OnPropertyChanged(nameof(ActiveAudioDeviceGlyph));
+                    }
+
+                    if (_areHeadphonesConnected != hpConn || _headphoneDeviceName != hpName)
+                    {
+                        _areHeadphonesConnected = hpConn;
+                        _headphoneDeviceName = hpName;
+                        NotifyHeadphoneStateChanged();
+                    }
+                });
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("IslandViewModel.RefreshSystemAudio", ex);
+            }
+        });
     }
 
     private void OnMediaPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -1749,10 +2116,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
             NotifySplitStateChanged();
         }
-        else if (e.PropertyName is nameof(MediaViewModel.CurrentIslandState) or nameof(MediaViewModel.CompactVisibility) or nameof(MediaViewModel.IdleVisibility))
+        else if (e.PropertyName is nameof(MediaViewModel.CurrentIslandState) or nameof(MediaViewModel.IsExpanded) or nameof(MediaViewModel.CompactVisibility) or nameof(MediaViewModel.IdleVisibility))
         {
             OnPropertyChanged(nameof(TrackContentVisibility));
             OnPropertyChanged(nameof(CustomIdleVisibility));
+            OnPropertyChanged(nameof(CompactShelfBadgeVisibility));
             NotifySplitStateChanged();
         }
         else if (e.PropertyName is nameof(MediaViewModel.Theme) or nameof(MediaViewModel.ArtworkAccentColor) or nameof(MediaViewModel.DynamicColorTint))
@@ -1817,6 +2185,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _eventRouter.ActiveEventChanged -= OnActiveEventChanged;
         _focusTimer.Tick -= OnFocusTimerTick;
         _focusTimer.SessionCompleted -= OnFocusSessionCompleted;
+        _dropShelf.ItemsChanged -= OnDropShelfItemsChanged;
+        if (_ownsDropShelf)
+        {
+            _dropShelf.Dispose();
+        }
         _focusTimer.Dispose();
         _systemEvents.Dispose();
         _fileOperations.Dispose();

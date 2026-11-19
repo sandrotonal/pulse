@@ -159,6 +159,11 @@
               HorizontalAlignment="Center"
               VerticalAlignment="Top"
               Background="{x:Null}"
+              AllowDrop="True"
+              DragEnter="OnSurfaceDragEnter"
+              DragOver="OnSurfaceDragOver"
+              DragLeave="OnSurfaceDragLeave"
+              Drop="OnSurfaceDrop"
               PointerEntered="OnPointerEntered"
               PointerExited="OnPointerExited"
               PointerPressed="OnSurfacePointerPressed"
@@ -285,14 +290,14 @@
 
                         <!-- Specular sheen scaled on GPU via Composition Visual.Scale -->
                         <Rectangle x:Name="FrostSheen"
-                                   Height="18"
+                                   Height="10"
                                    Visibility="Collapsed"
                                    HorizontalAlignment="Stretch"
                                    VerticalAlignment="Top"
                                    IsHitTestVisible="False">
                             <Rectangle.Fill>
                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                    <GradientStop x:Name="FrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
+                                    <GradientStop x:Name="FrostSheenTopStop" Color="#12FFFFFF" Offset="0" />
                                     <GradientStop Color="#00FFFFFF" Offset="1" />
                                 </LinearGradientBrush>
                             </Rectangle.Fill>
@@ -733,6 +738,11 @@
                                     <Ellipse Width="22" Height="22" Fill="{ThemeResource PillControlBackground}" />
                                     <FontIcon Glyph="&#xE713;" FontSize="11" Foreground="{ThemeResource PrimaryText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Grid>
+                                <!-- Drop Shelf Badge -->
+                                <Grid x:Name="ShelfHeaderBadge" Visibility="{Binding ShelfPageVisibility}">
+                                    <Ellipse Width="22" Height="22" Fill="{ThemeResource PillControlBackground}" />
+                                    <FontIcon Glyph="&#xE896;" FontSize="11" Foreground="{ThemeResource PrimaryText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                </Grid>
                             </Grid>
 
                             <TextBlock Text="{Binding ExpandedHeaderTitle, TargetNullValue='Pulse'}"
@@ -746,9 +756,9 @@
                                        Margin="8,0,0,0" />
                         </StackPanel>
 
-                        <!-- Center: True-Centered iOS-style Interactive Carousel Page Indicators -->
+                        <!-- Center: True-Centered iOS-style Interactive Carousel Page Indicators (4 pages) -->
                         <Grid Grid.Column="0" Grid.ColumnSpan="3"
-                              Width="50" Height="24"
+                              Width="64" Height="24"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center">
                             <Border x:Name="PageDotVisual0"
@@ -774,8 +784,16 @@
                                     Background="{ThemeResource PrimaryText}"
                                     Opacity="0.35"
                                     IsHitTestVisible="False" />
+                            <Border x:Name="PageDotVisual3"
+                                    Width="24" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    IsHitTestVisible="False" />
 
-                            <StackPanel Orientation="Horizontal" Spacing="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <StackPanel Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Button x:Name="PageDot0"
                                         Style="{StaticResource IslandButtonStyle}"
                                         Width="16" Height="24"
@@ -806,6 +824,16 @@
                                         Click="OnPageDot2Click"
                                         AutomationProperties.Name="Sistem ve Denetim sayfası"
                                         ToolTipService.ToolTip="Sistem &amp; Denetim" />
+                                <Button x:Name="PageDot3"
+                                        Style="{StaticResource IslandButtonStyle}"
+                                        Width="16" Height="24"
+                                        Background="Transparent"
+                                        Padding="0"
+                                        PointerPressed="OnButtonPointerPressed"
+                                        PointerReleased="OnButtonPointerReleased"
+                                        Click="OnPageDot3Click"
+                                        AutomationProperties.Name="Dosya Rafı sayfası"
+                                        ToolTipService.ToolTip="Raf (Dosya Bırakma Alanı)" />
                             </StackPanel>
                         </Grid>
 
@@ -1219,26 +1247,25 @@
                                         <Button Style="{StaticResource IslandButtonStyle}"
                                                 Height="28" CornerRadius="14"
                                                 MinWidth="0"
-                                                Padding="10,0"
                                                 Background="{ThemeResource PillControlBackground}"
                                                 Command="{Binding OpenSoundSwitcherCommand}"
                                                 PointerPressed="OnButtonPointerPressed"
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Ses çıkış aygıtı"
                                                 ToolTipService.ToolTip="{Binding ActiveAudioDeviceName}">
-                                            <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                                <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="11"
+                                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="{Binding ActiveAudioDeviceGlyph}" FontSize="11.5"
                                                           Foreground="{ThemeResource PrimaryText}" />
                                                 <TextBlock Text="{Binding ActiveAudioDeviceShortName}"
-                                                           FontSize="11" FontWeight="Medium"
-                                                           MaxWidth="130" TextTrimming="CharacterEllipsis"
+                                                           FontSize="11.5" FontWeight="Medium"
+                                                           MaxWidth="120" TextTrimming="CharacterEllipsis"
                                                            Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
 
                                         <!-- Animated Headphone Connection Indicator (replaces screenshot button) -->
                                         <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="28" Width="30" CornerRadius="14"
+                                                Height="28" Width="28" CornerRadius="14"
                                                 MinWidth="0" Padding="0"
                                                 Background="{ThemeResource PillControlBackground}"
                                                 Command="{Binding OpenSoundSwitcherCommand}"
@@ -1246,29 +1273,388 @@
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="{Binding HeadphoneStatusTooltip}"
                                                 ToolTipService.ToolTip="{Binding HeadphoneStatusTooltip}">
-                                            <Grid Width="22" Height="22" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Grid Width="24" Height="24" HorizontalAlignment="Center" VerticalAlignment="Center">
                                                 <!-- Pulse halo animated when headphones connected -->
                                                 <Ellipse x:Name="HeadphoneBeaconHalo"
-                                                         Width="20" Height="20"
+                                                         Width="24" Height="24"
                                                          Fill="{Binding HeadphoneStatusBrush}"
                                                          Opacity="0.0"
                                                          Visibility="{Binding HeadphoneHaloVisibility}"
                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                <!-- Headphone glyph -->
-                                                <FontIcon Glyph="&#xE7F6;" FontSize="11"
+                                                <!-- Headphone glyph: Segoe MDL2 Assets E7F6 -->
+                                                <FontIcon Glyph="&#xE7F6;" FontSize="13"
                                                           Foreground="{Binding HeadphoneStatusBrush}"
                                                           Opacity="{Binding HeadphoneIconOpacity}"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
-                                                <!-- Micro status dot -->
-                                                <Ellipse Width="4" Height="4"
-                                                         Fill="{Binding HeadphoneStatusBrush}"
-                                                         HorizontalAlignment="Right" VerticalAlignment="Bottom"
-                                                         Margin="0,0,1,1" />
                                             </Grid>
                                         </Button>
                                     </StackPanel>
                                 </Grid>
                             </StackPanel>
+                        </Grid>
+
+                        <!-- Panel 3: Drop Shelf / Dosya Rafı (Apple NotchDrop flagship shelf) -->
+                        <Grid x:Name="ShelfExpandedPanel" Visibility="Collapsed" Margin="4,0">
+                            <!-- Empty Drop Zone: Apple Obsidian Glass Aperture -->
+                            <Border x:Name="ShelfDropZoneBorder"
+                                    Visibility="{Binding ShelfEmptyVisibility}"
+                                    Height="152"
+                                    CornerRadius="20"
+                                    BorderThickness="1.2"
+                                    BorderBrush="#28FFFFFF"
+                                    Background="#0CFFFFFF"
+                                    VerticalAlignment="Center">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" Padding="14,0">
+                                    <!-- Concentric Frosted Drop Target -->
+                                    <Grid Width="46" Height="46" HorizontalAlignment="Center">
+                                        <Ellipse Width="46" Height="46" Fill="#14FFFFFF" Stroke="#28FFFFFF" StrokeThickness="1" />
+                                        <FontIcon Glyph="&#xE896;" FontSize="18"
+                                                  Foreground="#FFFFFFFF"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock Text="Dosya, görsel veya metin bırak"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#FFFFFFFF"
+                                               HorizontalAlignment="Center"
+                                               TextAlignment="Center" />
+                                    <TextBlock Text="Pencereler arası anında transfer rafı"
+                                               FontSize="11" FontWeight="Normal"
+                                               Foreground="#8E929E"
+                                               HorizontalAlignment="Center"
+                                               TextAlignment="Center" />
+                                    <!-- Action Capsules -->
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,5,0,0">
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="28" CornerRadius="14"
+                                                MinWidth="0"
+                                                Background="#16FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1"
+                                                Command="{Binding PasteToShelfCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Panodan rafa ekle"
+                                                ToolTipService.ToolTip="Panodaki dosya veya metni ekle (Ctrl+V)">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE77F;" FontSize="11" Foreground="#FFFFFFFF" />
+                                                <TextBlock Text="Panodan Ekle" FontSize="11" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="28" CornerRadius="14"
+                                                MinWidth="0"
+                                                Background="#16FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1"
+                                                Click="OnShelfBrowseFilesClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Bilgisayardan dosya seç"
+                                                ToolTipService.ToolTip="Bilgisayardan dosya seçip rafa koy">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE8E5;" FontSize="11" Foreground="#FFFFFFFF" />
+                                                <TextBlock Text="Dosya Seç" FontSize="11" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding ShelfStatusBanner}"
+                                               Visibility="{Binding ShelfStatusBannerVisibility}"
+                                               FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="#60A5FA"
+                                               HorizontalAlignment="Center" Margin="0,2,0,0" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Populated Shelf Cards + Bottom Action Strip -->
+                            <Grid Visibility="{Binding ShelfPopulatedVisibility}"
+                                  RowDefinitions="*,Auto"
+                                  VerticalAlignment="Stretch">
+                                <!-- Horizontal draggable tile carousel (mouse wheel scrolls smoothly horizontally) -->
+                                <ScrollViewer x:Name="ShelfScrollViewer"
+                                              Grid.Row="0"
+                                              HorizontalScrollMode="Auto"
+                                              HorizontalScrollBarVisibility="Hidden"
+                                              VerticalScrollMode="Disabled"
+                                              VerticalScrollBarVisibility="Disabled"
+                                              VerticalAlignment="Center"
+                                              Margin="0,2,0,4">
+                                    <ItemsControl ItemsSource="{Binding ShelfItems}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <StackPanel Orientation="Horizontal" Spacing="8" Padding="2,4" />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Border Width="90" Height="106"
+                                                        CornerRadius="16"
+                                                        Background="#16171B"
+                                                        BorderBrush="#25FFFFFF"
+                                                        BorderThickness="1"
+                                                        CanDrag="True"
+                                                        Loaded="OnShelfCardLoaded"
+                                                        PointerEntered="OnShelfCardPointerEntered"
+                                                        PointerExited="OnShelfCardPointerExited"
+                                                        DoubleTapped="OnShelfCardDoubleTapped"
+                                                        DragStarting="OnShelfItemDragStarting"
+                                                        DropCompleted="OnShelfItemDropCompleted"
+                                                        ToolTipService.ToolTip="{Binding TooltipText}">
+                                                    <Border.ContextFlyout>
+                                                        <MenuFlyout>
+                                                            <MenuFlyoutItem Text="Panoya Kopyala"
+                                                                            Tag="{Binding FilePath}"
+                                                                            Click="OnShelfCardCopyClick">
+                                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                            <MenuFlyoutItem Text="Klasörde Göster"
+                                                                            Tag="{Binding FilePath}"
+                                                                            Click="OnShelfCardRevealClick">
+                                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8B7;" /></MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                            <MenuFlyoutSeparator />
+                                                            <MenuFlyoutItem Text="Raftan Kaldır"
+                                                                            Tag="{Binding Id}"
+                                                                            Click="OnShelfRemoveItemClick">
+                                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE74D;" /></MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                        </MenuFlyout>
+                                                    </Border.ContextFlyout>
+                                                    <Grid Padding="5">
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="56" />
+                                                            <RowDefinition Height="*" />
+                                                        </Grid.RowDefinitions>
+
+                                                        <!-- Preview thumbnail or tinted file glyph -->
+                                                        <Border Grid.Row="0"
+                                                                CornerRadius="11"
+                                                                Background="{Binding CategoryBackgroundBrush}"
+                                                                BorderBrush="{Binding CategoryBorderBrush}"
+                                                                BorderThickness="1"
+                                                                HorizontalAlignment="Stretch"
+                                                                VerticalAlignment="Stretch">
+                                                            <Grid>
+                                                                <Image Source="{Binding Thumbnail}"
+                                                                       Stretch="UniformToFill"
+                                                                       Visibility="{Binding ThumbnailVisibility}" />
+                                                                <StackPanel Visibility="{Binding GlyphVisibility}"
+                                                                            HorizontalAlignment="Center"
+                                                                            VerticalAlignment="Center"
+                                                                            Spacing="2">
+                                                                    <FontIcon Glyph="{Binding IconGlyph}"
+                                                                              FontSize="19"
+                                                                              Foreground="{Binding CategoryForegroundBrush}" />
+                                                                    <Border Background="#33000000" CornerRadius="4" Padding="4,1" HorizontalAlignment="Center">
+                                                                        <TextBlock Text="{Binding ExtensionBadge}"
+                                                                                   FontSize="8" FontWeight="Bold"
+                                                                                   Foreground="{Binding CategoryForegroundBrush}"
+                                                                                   HorizontalAlignment="Center" />
+                                                                    </Border>
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+
+                                                        <!-- Hover-revealed quick remove badge -->
+                                                        <Button x:Name="CardRemoveButton"
+                                                                Grid.Row="0"
+                                                                Style="{StaticResource IslandButtonStyle}"
+                                                                Width="18" Height="18" CornerRadius="9"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                                Margin="0,2,2,0"
+                                                                Opacity="0"
+                                                                Background="#D916171B"
+                                                                BorderBrush="#33FFFFFF"
+                                                                BorderThickness="1"
+                                                                Tag="{Binding Id}"
+                                                                PointerPressed="OnButtonPointerPressed"
+                                                                PointerReleased="OnButtonPointerReleased"
+                                                                Click="OnShelfRemoveItemClick"
+                                                                AutomationProperties.Name="Raftan kaldır"
+                                                                ToolTipService.ToolTip="Kaldır">
+                                                            <FontIcon Glyph="&#xE711;" FontSize="7.5" Foreground="#FFFFFFFF" />
+                                                        </Button>
+
+                                                        <!-- Hover-revealed quick copy badge -->
+                                                        <Button x:Name="CardCopyButton"
+                                                                Grid.Row="0"
+                                                                Style="{StaticResource IslandButtonStyle}"
+                                                                Width="18" Height="18" CornerRadius="9"
+                                                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                                Margin="2,2,0,0"
+                                                                Opacity="0"
+                                                                Background="#D916171B"
+                                                                BorderBrush="#33FFFFFF"
+                                                                BorderThickness="1"
+                                                                Tag="{Binding FilePath}"
+                                                                PointerPressed="OnButtonPointerPressed"
+                                                                PointerReleased="OnButtonPointerReleased"
+                                                                Click="OnShelfCardCopyClick"
+                                                                AutomationProperties.Name="Kopyala"
+                                                                ToolTipService.ToolTip="Panoya Kopyala">
+                                                            <FontIcon Glyph="&#xE8C8;" FontSize="7.5" Foreground="#FFFFFFFF" />
+                                                        </Button>
+
+                                                        <!-- Filename + Size -->
+                                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="1" Margin="2,2,2,0">
+                                                            <TextBlock Text="{Binding DisplayName}"
+                                                                       FontSize="10.5" FontWeight="SemiBold"
+                                                                       Foreground="#FFFFFFFF"
+                                                                       TextTrimming="CharacterEllipsis"
+                                                                       MaxLines="1" />
+                                                            <TextBlock Text="{Binding SizeLabel}"
+                                                                       FontSize="9"
+                                                                       Foreground="#8E929E"
+                                                                       MaxLines="1" />
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </ScrollViewer>
+
+                                <!-- Elevated Frosted Action Dock: Drag All, Status, Paste, Pick, ZIP, Copy, Clear -->
+                                <Border Grid.Row="1"
+                                        Height="34" CornerRadius="17"
+                                        Background="#0EFFFFFF"
+                                        BorderBrush="#1AFFFFFF"
+                                        BorderThickness="1"
+                                        Padding="4,0"
+                                        Margin="0,4,0,2"
+                                        VerticalAlignment="Center">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <!-- Drag All Handle -->
+                                        <Border Grid.Column="0"
+                                                Height="26" CornerRadius="13"
+                                                Background="#18FFFFFF"
+                                                BorderBrush="#25FFFFFF"
+                                                BorderThickness="1"
+                                                Padding="8,0"
+                                                CanDrag="True"
+                                                DragStarting="OnShelfDragAllStarting"
+                                                DropCompleted="OnShelfItemDropCompleted"
+                                                AutomationProperties.Name="Raftaki tüm öğeleri sürükle"
+                                                ToolTipService.ToolTip="{Binding ShelfTotalSummary}">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE7C2;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                                <TextBlock Text="Hepsini Sürükle"
+                                                           FontSize="10.5" FontWeight="SemiBold"
+                                                           Foreground="#FFFFFFFF" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Center: Transient feedback banner (only shown during actions like Copy/ZIP/Paste) -->
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding ShelfStatusBanner}"
+                                                   Visibility="{Binding ShelfStatusBannerVisibility}"
+                                                   FontSize="10" FontWeight="SemiBold"
+                                                   Foreground="#60A5FA"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   Margin="4,0" />
+
+                                        <!-- Quick Actions: Paste, Pick, ZIP, Copy, Clear -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding PasteToShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Panodan rafa ekle"
+                                                    ToolTipService.ToolTip="Panodan Ekle (Ctrl+V içeriği)">
+                                                <FontIcon Glyph="&#xE77F;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Click="OnShelfBrowseFilesClick"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Dosya seç ve ekle"
+                                                    ToolTipService.ToolTip="Dosya Seçip Ekle">
+                                                <FontIcon Glyph="&#xE8E5;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Height="26" CornerRadius="13"
+                                                    MinWidth="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding ZipShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Tümünü ZIP olarak paketle"
+                                                    ToolTipService.ToolTip="ZIP yap &amp; panoya kopyala">
+                                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="7,0" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xF012;" FontSize="10" Foreground="#FFFFFFFF" />
+                                                    <TextBlock Text="ZIP" FontSize="10" FontWeight="SemiBold" Foreground="#FFFFFFFF" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding CopyAllShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Tüm öğeleri panoya kopyala"
+                                                    ToolTipService.ToolTip="Panoya Kopyala (Ctrl+V)">
+                                                <FontIcon Glyph="&#xE8C8;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding ClearShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Rafı temizle"
+                                                    ToolTipService.ToolTip="Rafı Temizle">
+                                                <FontIcon Glyph="&#xE74D;" FontSize="10.5" Foreground="#EF4444" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </Grid>
+
+                            <!-- Active Magnetic Drop Overlay (works whether shelf is empty OR already populated!) -->
+                            <Border x:Name="ShelfActiveDropOverlay"
+                                    Visibility="{Binding ShelfDragOverlayVisibility}"
+                                    CornerRadius="20"
+                                    Background="#E6111215"
+                                    BorderBrush="#9060A5FA"
+                                    BorderThickness="1.8"
+                                    IsHitTestVisible="False"
+                                    VerticalAlignment="Stretch"
+                                    HorizontalAlignment="Stretch">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                                    <Grid x:Name="ShelfDropBobIcon" Width="48" Height="48" HorizontalAlignment="Center">
+                                        <Ellipse Width="48" Height="48" Fill="#2060A5FA" Stroke="#60A5FA" StrokeThickness="1.5" />
+                                        <FontIcon Glyph="&#xE896;" FontSize="20"
+                                                  Foreground="#FFFFFFFF"
+                                                  HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                    </Grid>
+                                    <TextBlock Text="Şimdi Bırakın — Rafa Eklensin"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#FFFFFFFF"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Text="Birden fazla dosya veya görsel desteklenir"
+                                               FontSize="10.5"
+                                               Foreground="#8E929E"
+                                               HorizontalAlignment="Center" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Drop Absorption Luminous Rim Flash -->
+                            <Border x:Name="ShelfDropFlashBorder"
+                                    CornerRadius="18"
+                                    BorderBrush="#AAFFFFFF"
+                                    BorderThickness="1.5"
+                                    Background="Transparent"
+                                    Opacity="0"
+                                    IsHitTestVisible="False" />
                         </Grid>
                     </Grid>
                 </Grid>
@@ -1287,6 +1673,11 @@
                 BorderThickness="1"
                 Opacity="0"
                 Visibility="Collapsed"
+                AllowDrop="True"
+                DragEnter="OnSurfaceDragEnter"
+                DragOver="OnSurfaceDragOver"
+                DragLeave="OnSurfaceDragLeave"
+                Drop="OnSurfaceDrop"
                 PointerEntered="OnDetachedPillPointerEntered"
                 PointerExited="OnDetachedPillPointerExited"
                 PointerPressed="OnDetachedPillPointerPressed"
@@ -1308,14 +1699,14 @@
                            IsHitTestVisible="False" />
 
                 <Rectangle x:Name="DetachedFrostSheen"
-                           Height="16"
+                           Height="10"
                            Visibility="Collapsed"
                            HorizontalAlignment="Stretch"
                            VerticalAlignment="Top"
                            IsHitTestVisible="False">
                     <Rectangle.Fill>
                         <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                            <GradientStop x:Name="DetachedFrostSheenTopStop" Color="#2EFFFFFF" Offset="0" />
+                            <GradientStop x:Name="DetachedFrostSheenTopStop" Color="#12FFFFFF" Offset="0" />
                             <GradientStop Color="#00FFFFFF" Offset="1" />
                         </LinearGradientBrush>
                     </Rectangle.Fill>

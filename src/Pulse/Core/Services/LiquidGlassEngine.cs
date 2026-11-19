@@ -53,18 +53,19 @@ public static class LiquidGlassEngine
     {
         var clampedTransparency = Math.Clamp(transparencyLevel, 0, 100);
         var clampedTintStrength = Math.Clamp(artworkTintStrength, 0, 100);
-        var rawAccent = dynamicColorTint && (artworkAccentColor & 0x00FFFFFFu) != 0
+        var hasArtworkAccent = dynamicColorTint && (artworkAccentColor & 0x00FFFFFFu) != 0;
+        var rawAccent = hasArtworkAccent
             ? (0xFF000000u | (artworkAccentColor & 0x00FFFFFFu))
             : DefaultAccentArgb;
 
         // Keep UI accents vivid without washing out white glyphs on bright covers.
         var uiAccent = EnsureAccentReadability(rawAccent, isLightTheme);
 
-        // Liquid glass surface base (pure RGB, alpha applied separately so backdrop and frost never double-stack).
-        var baseSurfaceRgb = isLightTheme ? 0xFFF4F6FAu : 0xFF0C1018u;
+        // Liquid glass surface base (pure neutral Apple Obsidian #111215 in dark mode, untouched #F4F6FA in light mode).
+        var baseSurfaceRgb = isLightTheme ? 0xFFF4F6FAu : 0xFF111215u;
 
-        // Cap tint mix so extreme ArtworkTintStrength preserves crisp Dark/Light surface hierarchy & WCAG contrast.
-        var effectiveTintMix = dynamicColorTint
+        // Only tint the surface when real album artwork accent is active; idle surfaces stay pure neutral monochrome.
+        var effectiveTintMix = hasArtworkAccent
             ? (clampedTintStrength / 100.0) * (isLightTheme ? 0.28 : 0.46)
             : 0.0;
         var mixedSurfaceRgb = BlendRgb(baseSurfaceRgb, uiAccent, effectiveTintMix);
@@ -142,14 +143,16 @@ public static class LiquidGlassEngine
         }
         else
         {
-            rimTop = useTransparency ? BlendArgb(0x46FFFFFFu, uiAccent, 0.22) : 0x28FFFFFFu;
-            rimBottom = useTransparency ? 0x14FFFFFFu : 0x10FFFFFFu;
-            sheenTop = useTransparency ? 0x2EFFFFFFu : 0x12FFFFFFu;
+            rimTop = useTransparency
+                ? (hasArtworkAccent ? BlendArgb(0x26FFFFFFu, uiAccent, 0.16) : 0x1CFFFFFFu)
+                : 0x1AFFFFFFu;
+            rimBottom = useTransparency ? 0x0CFFFFFFu : 0x0AFFFFFFu;
+            sheenTop = useTransparency ? 0x12FFFFFFu : 0x0AFFFFFFu;
         }
 
         var pillControlBg = isLightTheme
             ? (useTransparency ? 0x1A000000u : 0x14000000u)
-            : BlendArgb(useTransparency ? 0x28FFFFFFu : 0x22FFFFFFu, uiAccent, dynamicColorTint ? 0.14 : 0.0);
+            : BlendArgb(useTransparency ? 0x1FFFFFFFu : 0x1AFFFFFFu, uiAccent, hasArtworkAccent ? 0.14 : 0.0);
 
         var playBg = uiAccent;
         var playFg = PickContrastingForeground(playBg);

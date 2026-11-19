@@ -21,13 +21,26 @@ public static class AudioDeviceResolver
                lower.Contains("kulaklık") ||
                lower.Contains("kulaklik") ||
                lower.Contains("headset") ||
-               lower.Contains("airpods") ||
+               lower.Contains("head-set") ||
+               lower.Contains("airpod") ||
                lower.Contains("buds") ||
+               lower.Contains("earbud") ||
                lower.Contains("earphone") ||
                lower.Contains("freebuds") ||
+               lower.Contains("in-ear") ||
+               lower.Contains("inear") ||
+               lower.Contains("beats") ||
+               lower.Contains("bose") ||
+               lower.Contains("jabra") ||
+               lower.Contains("sennheiser") ||
+               lower.Contains("soundcore") ||
+               lower.Contains("hyperx") ||
+               lower.Contains("steelseries") ||
+               lower.Contains("tws") ||
+               lower.Contains("hands-free") ||
+               lower.Contains("handsfree") ||
                lower.Contains("wh-") ||
-               lower.Contains("wf-") ||
-               lower.Contains("pixel buds");
+               lower.Contains("wf-");
     }
 
     public static string ResolveGlyph(string? deviceName, uint formFactor = 0)

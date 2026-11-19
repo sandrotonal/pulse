@@ -191,4 +191,25 @@ public sealed class LiquidGlassEngineTests
 
         Assert.Equal(LiquidGlassEngine.DefaultAccentArgb, palette.AccentArgb);
     }
+
+    [Fact]
+    public void ComputeIslandPalette_IdleWithDynamicTintEnabled_StaysNeutralObsidianWithoutBlueCast()
+    {
+        var palette = LiquidGlassEngine.ComputeIslandPalette(
+            isLightTheme: false,
+            useTransparency: true,
+            transparencyLevel: 100,
+            dynamicColorTint: true,
+            artworkAccentColor: 0x00000000u,
+            artworkTintStrength: 96,
+            hasFrostBitmap: true);
+
+        Assert.Equal(0xFF111215u, palette.FrostTintRgb);
+        // Verify dark rim highlight stays neutral monochrome (R == G == B)
+        var rimR = (palette.BorderRimTopArgb >> 16) & 0xFF;
+        var rimG = (palette.BorderRimTopArgb >> 8) & 0xFF;
+        var rimB = palette.BorderRimTopArgb & 0xFF;
+        Assert.Equal(rimR, rimG);
+        Assert.Equal(rimG, rimB);
+    }
 }

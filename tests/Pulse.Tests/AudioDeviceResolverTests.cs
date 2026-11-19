@@ -35,6 +35,10 @@ public sealed class AudioDeviceResolverTests
 
     [Theory]
     [InlineData("AirPods Pro", true)]
+    [InlineData("Kulaklıklar (AirPods)", true)]
+    [InlineData("Beats Studio Pro", true)]
+    [InlineData("Bose QuietComfort 45", true)]
+    [InlineData("Soundcore Liberty 4", true)]
     [InlineData("Sony WH-1000XM4 Headset", true)]
     [InlineData("Kulaklık (Realtek Audio)", true)]
     [InlineData("Galaxy Buds2 Pro", true)]

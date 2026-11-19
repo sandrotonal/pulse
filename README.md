@@ -7,10 +7,10 @@
 [![NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![WinUI 3](https://img.shields.io/badge/WinUI-3.0-0078D4?style=for-the-badge&logo=windows11)](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/)
 [![Windows App SDK](https://img.shields.io/badge/WindowsAppSDK-2.5.1-0078D4?style=for-the-badge)](https://github.com/microsoft/windowsappsdk)
-[![Tests](https://img.shields.io/badge/Tests-342%20Passing-30D158?style=for-the-badge)](tests/Pulse.Tests)
+[![Tests](https://img.shields.io/badge/Tests-369%20Passing-30D158?style=for-the-badge)](tests/Pulse.Tests)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-*Pulse brings a sleek, GPU-animated Liquid Glass Dynamic Island experience to Windows 11 — combining native system media control, synced lyrics, adaptive album-art frost, a monochrome Pomodoro focus timer, a matching system control panel, real-time OS notifications, and a smart idle strip for time, date and weather.*
+*Pulse brings a sleek, GPU-animated Liquid Glass Dynamic Island experience to Windows 11 — combining native system media control, synced lyrics, adaptive album-art frost, a monochrome Pomodoro focus timer, a matching system control panel, a NotchDrop-style cross-app Drop Shelf, real-time OS notifications, and a smart idle strip for time, date and weather.*
 
 ---
 
@@ -36,9 +36,16 @@
 <br />
 
 <p>
-  <img src="docs/images/island-expanded-system.png" width="480" alt="Pulse system controls panel with volume slider, battery percentage, and screenshot capture" />
+  <img src="docs/images/island-expanded-system.png" width="480" alt="Pulse system controls panel with volume slider, battery percentage, audio switcher, and live headphone indicator" />
 </p>
-<p><em><strong>System &amp; Control Panel:</strong> Monochrome WASAPI master volume slider with mute toggle, semantic battery telemetry (green charging pulse, red low-battery warning), active Audio Output Endpoint switcher capsule (`Kulaklık / Hoparlör`), and one-click screenshot capture.</em></p>
+<p><em><strong>System &amp; Control Panel:</strong> Monochrome WASAPI master volume slider with mute toggle, semantic battery telemetry (green charging pulse, red low-battery warning), active Audio Output Endpoint switcher capsule (`Kulaklık / Hoparlör`), and live animated Headphone connection status indicator.</em></p>
+
+<br />
+
+<p>
+  <img src="docs/images/island-expanded-shelf.png" width="480" alt="Pulse Drop Shelf panel staging dragged files, app icons, and clipboard text with instant cross-app drag-and-drop and ZIP packaging" />
+</p>
+<p><em><strong>Drop Shelf (Apple NotchDrop Experience):</strong> Drag and drop any files, screenshots, or text snippets straight to the island to stage them across apps. Spring-loaded drag-in capture, horizontal card carousel with category badges and image thumbnails, full OLE drag-out back to WhatsApp, Discord, VS Code, or Explorer, clipboard paste staging, and instant one-tap ZIP archive creation.</em></p>
 
 <br />
 
@@ -75,6 +82,7 @@
 - **Split Island**: Concurrent media playback and an active focus countdown automatically split into paired left/right capsules and merge seamlessly when either finishes.
 - **Focus Timer (Pomodoro)**: Monochrome preset chips (`25/50` work, `5/15` break), custom duration picker (`1–180` min), tabular countdown digits, session auto-switching, pinned capsule visibility, and optional completion chime.
 - **System & Control Panel**: Stepwise WASAPI master volume slider with neutral mute state, live audio output endpoint detection & quick switcher flyout, live battery & AC charging detection (green while charging with subtle pulse, red when low), and instant screenshot capture saved locally and copied to the clipboard.
+- **Drop Shelf (Apple NotchDrop Experience)**: Drag and drop files, screenshots, or text snippets directly to the top island to hold them in temporary staging. Supports spring-loaded capture physics, horizontal card carousel with image previews and file kind badges, OLE drag-and-drop straight into WhatsApp, Discord, Chrome, or Explorer, clipboard paste staging, and one-tap ZIP archive packaging.
 - **Real OS Event Awareness**:
   - **Windows Toast Listener**: Surfaces WhatsApp, Discord, browser, and system toast notifications directly inside the island.
   - **Bluetooth Device Alerts**: Announces headset and peripheral connections/battery level via Bluetooth radio monitoring.
@@ -82,7 +90,7 @@
 - **Apple-Style Alert Takeover & Deep Links**: Transient alerts briefly take over the pill and hand back to ongoing playback/focus cleanly; tapping artwork opens the source media app, and tapping alert capsules opens their file or folder.
 - **Fullscreen & Game Mode Recovery**: Automatically hides for exclusive and borderless fullscreen games (excluding normal maximized windows) and cleanly recovers island/playback state when exiting fullscreen.
 - **Single-Instance Guard & Tray Integration**: Re-launching Pulse brings up the existing instance, `--settings` routes directly to a single Settings window, global hotkeys (`Win+Alt+I`, `Win+Shift+F`), unstealable topmost `WM_WINDOWPOSCHANGING` handling, Windows Startup registry management, and full Reduced Motion compliance.
-- **Unit Tested Architecture**: Clean MVVM separation with platform-decoupled core state, animation layout, Liquid Glass math, and weather services (**342 automated xUnit tests**).
+- **Unit Tested Architecture**: Clean MVVM separation with platform-decoupled core state, animation layout, Liquid Glass math, and weather services (**369 automated xUnit tests**).
 
 ---
 
@@ -95,17 +103,18 @@
 - **Notifications & System APIs**: `UserNotificationListener` (Windows toasts), Bluetooth radio/device watcher, WASAPI endpoint volume, `GetSystemPowerStatus`, `FileSystemWatcher`, Win32 `SetWindowRgn` & global hotkeys
 - **Weather & Location**: Open-Meteo forecast & geocoding APIs, `ipwho.is` IP lookup, JSON disk caches
 - **MVVM & Serialization**: `CommunityToolkit.Mvvm`, source-generated `System.Text.Json` contexts
-- **Testing**: xUnit with Moq (342 unit tests)
+- **Testing**: xUnit with Moq (369 unit tests)
 
 ---
 
 ## Screens Flow
 
-While expanded, scroll the mouse wheel over the island panel to switch seamlessly between the three pages:
+While expanded, scroll the mouse wheel over the island panel to switch seamlessly between the four pages:
 
 1. **Media** — playback metadata, drag-to-seek timeline, synced lyrics, and transport controls.
 2. **Focus Timer** — monochrome Pomodoro focus timer with presets and custom duration picker.
 3. **System & Control** — monochrome master volume, semantic charging/low battery status, and screenshot capture.
+4. **Drop Shelf** — NotchDrop-style cross-app file & snippet staging, horizontal card carousel, drag-to-external-app, and one-tap ZIP archiving.
 
 Clicking the collapsed pill expands the dashboard; clicking outside or pressing the collapse chevron returns to compact mode. Right-click the island or use the tray icon to expand the island, open Settings, trigger Focus shortcuts, or Hide/Show the island.
 
