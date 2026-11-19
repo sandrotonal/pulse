@@ -1295,48 +1295,69 @@
 
                         <!-- Panel 3: Drop Shelf / Dosya Rafı (Apple NotchDrop flagship shelf) -->
                         <Grid x:Name="ShelfExpandedPanel" Visibility="Collapsed" Margin="4,0">
-                            <!-- Empty Drop Zone -->
+                            <!-- Empty Drop Zone: Apple Obsidian Glass Aperture -->
                             <Border x:Name="ShelfDropZoneBorder"
                                     Visibility="{Binding ShelfEmptyVisibility}"
-                                    Height="144"
-                                    CornerRadius="18"
+                                    Height="152"
+                                    CornerRadius="20"
                                     BorderThickness="1.2"
-                                    BorderBrush="{ThemeResource IslandBorder}"
-                                    Background="{ThemeResource PillControlBackground}"
+                                    BorderBrush="#28FFFFFF"
+                                    Background="#0CFFFFFF"
                                     VerticalAlignment="Center">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" Padding="14,0">
-                                    <Grid Width="34" Height="34" HorizontalAlignment="Center">
-                                        <Ellipse Width="34" Height="34" Fill="{ThemeResource PillControlBackground}" />
-                                        <FontIcon Glyph="&#xE896;" FontSize="15"
-                                                  Foreground="{ThemeResource PrimaryText}"
+                                    <!-- Concentric Frosted Drop Target -->
+                                    <Grid Width="46" Height="46" HorizontalAlignment="Center">
+                                        <Ellipse Width="46" Height="46" Fill="#14FFFFFF" Stroke="#28FFFFFF" StrokeThickness="1" />
+                                        <FontIcon Glyph="&#xE896;" FontSize="18"
+                                                  Foreground="#FFFFFFFF"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Grid>
-                                    <TextBlock Text="{Binding ShelfDropPromptText}"
-                                               FontSize="12" FontWeight="SemiBold"
-                                               Foreground="{ThemeResource PrimaryText}"
+                                    <TextBlock Text="Dosya, görsel veya metin bırak"
+                                               FontSize="13" FontWeight="SemiBold"
+                                               Foreground="#FFFFFFFF"
                                                HorizontalAlignment="Center"
                                                TextAlignment="Center" />
-                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,2,0,0">
+                                    <TextBlock Text="Pencereler arası anında transfer rafı"
+                                               FontSize="11" FontWeight="Normal"
+                                               Foreground="#8E929E"
+                                               HorizontalAlignment="Center"
+                                               TextAlignment="Center" />
+                                    <!-- Action Capsules -->
+                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,5,0,0">
                                         <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="26" CornerRadius="13"
+                                                Height="28" CornerRadius="14"
                                                 MinWidth="0"
-                                                Background="{ThemeResource PillControlBackground}"
+                                                Background="#16FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1"
                                                 Command="{Binding PasteToShelfCommand}"
                                                 PointerPressed="OnButtonPointerPressed"
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Panodan rafa ekle"
-                                                ToolTipService.ToolTip="Kopyaladığın dosya, ekran görüntüsü veya metni rafa ekle">
+                                                ToolTipService.ToolTip="Panodaki dosya veya metni ekle (Ctrl+V)">
                                             <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xE77F;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
-                                                <TextBlock Text="Panodan Ekle" FontSize="10.5" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
+                                                <FontIcon Glyph="&#xE77F;" FontSize="11" Foreground="#FFFFFFFF" />
+                                                <TextBlock Text="Panodan Ekle" FontSize="11" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="28" CornerRadius="14"
+                                                MinWidth="0"
+                                                Background="#16FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1"
+                                                Click="OnShelfBrowseFilesClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Bilgisayardan dosya seç"
+                                                ToolTipService.ToolTip="Bilgisayardan dosya seçip rafa koy">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE8E5;" FontSize="11" Foreground="#FFFFFFFF" />
+                                                <TextBlock Text="Dosya Seç" FontSize="11" FontWeight="Medium" Foreground="#FFFFFFFF" />
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
                                     <TextBlock Text="{Binding ShelfStatusBanner}"
                                                Visibility="{Binding ShelfStatusBannerVisibility}"
-                                               FontSize="10"
-                                               Foreground="{ThemeResource SecondaryText}"
-                                               HorizontalAlignment="Center" />
+                                               FontSize="10.5" FontWeight="SemiBold"
+                                               Foreground="#60A5FA"
+                                               HorizontalAlignment="Center" Margin="0,2,0,0" />
                                 </StackPanel>
                             </Border>
 
@@ -1351,19 +1372,20 @@
                                               HorizontalScrollBarVisibility="Hidden"
                                               VerticalScrollMode="Disabled"
                                               VerticalScrollBarVisibility="Disabled"
-                                              VerticalAlignment="Center">
+                                              VerticalAlignment="Center"
+                                              Margin="0,2,0,4">
                                     <ItemsControl ItemsSource="{Binding ShelfItems}">
                                         <ItemsControl.ItemsPanel>
                                             <ItemsPanelTemplate>
-                                                <StackPanel Orientation="Horizontal" Spacing="8" Padding="2,6" />
+                                                <StackPanel Orientation="Horizontal" Spacing="8" Padding="2,4" />
                                             </ItemsPanelTemplate>
                                         </ItemsControl.ItemsPanel>
                                         <ItemsControl.ItemTemplate>
                                             <DataTemplate>
-                                                <Border Width="82" Height="98"
-                                                        CornerRadius="14"
-                                                        Background="{ThemeResource PillControlBackground}"
-                                                        BorderBrush="{ThemeResource IslandBorder}"
+                                                <Border Width="90" Height="106"
+                                                        CornerRadius="16"
+                                                        Background="#16171B"
+                                                        BorderBrush="#25FFFFFF"
                                                         BorderThickness="1"
                                                         CanDrag="True"
                                                         Loaded="OnShelfCardLoaded"
@@ -1393,16 +1415,18 @@
                                                             </MenuFlyoutItem>
                                                         </MenuFlyout>
                                                     </Border.ContextFlyout>
-                                                    <Grid Padding="6">
+                                                    <Grid Padding="5">
                                                         <Grid.RowDefinitions>
-                                                            <RowDefinition Height="52" />
+                                                            <RowDefinition Height="56" />
                                                             <RowDefinition Height="*" />
                                                         </Grid.RowDefinitions>
 
-                                                        <!-- Preview thumbnail or monochrome file glyph -->
+                                                        <!-- Preview thumbnail or tinted file glyph -->
                                                         <Border Grid.Row="0"
-                                                                CornerRadius="9"
-                                                                Background="#1A000000"
+                                                                CornerRadius="11"
+                                                                Background="{Binding CategoryBackgroundBrush}"
+                                                                BorderBrush="{Binding CategoryBorderBrush}"
+                                                                BorderThickness="1"
                                                                 HorizontalAlignment="Stretch"
                                                                 VerticalAlignment="Stretch">
                                                             <Grid>
@@ -1414,44 +1438,68 @@
                                                                             VerticalAlignment="Center"
                                                                             Spacing="2">
                                                                     <FontIcon Glyph="{Binding IconGlyph}"
-                                                                              FontSize="18"
-                                                                              Foreground="{ThemeResource PrimaryText}" />
-                                                                    <TextBlock Text="{Binding ExtensionBadge}"
-                                                                               FontSize="8.5" FontWeight="SemiBold"
-                                                                               Foreground="{ThemeResource SecondaryText}"
-                                                                               HorizontalAlignment="Center" />
+                                                                              FontSize="19"
+                                                                              Foreground="{Binding CategoryForegroundBrush}" />
+                                                                    <Border Background="#33000000" CornerRadius="4" Padding="4,1" HorizontalAlignment="Center">
+                                                                        <TextBlock Text="{Binding ExtensionBadge}"
+                                                                                   FontSize="8" FontWeight="Bold"
+                                                                                   Foreground="{Binding CategoryForegroundBrush}"
+                                                                                   HorizontalAlignment="Center" />
+                                                                    </Border>
                                                                 </StackPanel>
                                                             </Grid>
                                                         </Border>
 
-                                                        <!-- Hover-revealed quick remove badge (clean gallery look at rest) -->
+                                                        <!-- Hover-revealed quick remove badge -->
                                                         <Button x:Name="CardRemoveButton"
                                                                 Grid.Row="0"
                                                                 Style="{StaticResource IslandButtonStyle}"
                                                                 Width="18" Height="18" CornerRadius="9"
                                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
-                                                                Margin="0,-2,-2,0"
+                                                                Margin="0,2,2,0"
                                                                 Opacity="0"
-                                                                Background="#CC111215"
+                                                                Background="#D916171B"
+                                                                BorderBrush="#33FFFFFF"
+                                                                BorderThickness="1"
                                                                 Tag="{Binding Id}"
                                                                 PointerPressed="OnButtonPointerPressed"
                                                                 PointerReleased="OnButtonPointerReleased"
                                                                 Click="OnShelfRemoveItemClick"
                                                                 AutomationProperties.Name="Raftan kaldır"
                                                                 ToolTipService.ToolTip="Kaldır">
-                                                            <FontIcon Glyph="&#xE711;" FontSize="8" Foreground="#FFFFFFFF" />
+                                                            <FontIcon Glyph="&#xE711;" FontSize="7.5" Foreground="#FFFFFFFF" />
+                                                        </Button>
+
+                                                        <!-- Hover-revealed quick copy badge -->
+                                                        <Button x:Name="CardCopyButton"
+                                                                Grid.Row="0"
+                                                                Style="{StaticResource IslandButtonStyle}"
+                                                                Width="18" Height="18" CornerRadius="9"
+                                                                HorizontalAlignment="Left" VerticalAlignment="Top"
+                                                                Margin="2,2,0,0"
+                                                                Opacity="0"
+                                                                Background="#D916171B"
+                                                                BorderBrush="#33FFFFFF"
+                                                                BorderThickness="1"
+                                                                Tag="{Binding FilePath}"
+                                                                PointerPressed="OnButtonPointerPressed"
+                                                                PointerReleased="OnButtonPointerReleased"
+                                                                Click="OnShelfCardCopyClick"
+                                                                AutomationProperties.Name="Kopyala"
+                                                                ToolTipService.ToolTip="Panoya Kopyala">
+                                                            <FontIcon Glyph="&#xE8C8;" FontSize="7.5" Foreground="#FFFFFFFF" />
                                                         </Button>
 
                                                         <!-- Filename + Size -->
-                                                        <StackPanel Grid.Row="1" VerticalAlignment="Bottom" Spacing="1" Margin="1,3,1,0">
+                                                        <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="1" Margin="2,2,2,0">
                                                             <TextBlock Text="{Binding DisplayName}"
-                                                                       FontSize="10.5" FontWeight="Medium"
-                                                                       Foreground="{ThemeResource PrimaryText}"
+                                                                       FontSize="10.5" FontWeight="SemiBold"
+                                                                       Foreground="#FFFFFFFF"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        MaxLines="1" />
                                                             <TextBlock Text="{Binding SizeLabel}"
                                                                        FontSize="9"
-                                                                       Foreground="{ThemeResource SecondaryText}"
+                                                                       Foreground="#8E929E"
                                                                        MaxLines="1" />
                                                         </StackPanel>
                                                     </Grid>
@@ -1461,115 +1509,144 @@
                                     </ItemsControl>
                                 </ScrollViewer>
 
-                                <!-- Bottom Action Bar: Drag All, Status, Paste, ZIP, Copy, Clear -->
-                                <Grid Grid.Row="1" ColumnDefinitions="Auto,*,Auto" Margin="0,6,0,2" VerticalAlignment="Center">
-                                    <!-- Drag All Handle -->
-                                    <Border Grid.Column="0"
-                                            Height="28" CornerRadius="14"
-                                            Background="{ThemeResource PillControlBackground}"
-                                            BorderBrush="{ThemeResource IslandBorder}"
-                                            BorderThickness="1"
-                                            Padding="9,0"
-                                            CanDrag="True"
-                                            DragStarting="OnShelfDragAllStarting"
-                                            DropCompleted="OnShelfItemDropCompleted"
-                                            AutomationProperties.Name="Raftaki tüm öğeleri sürükle"
-                                            ToolTipService.ToolTip="Tüm öğeleri birlikte başka uygulamaya sürükle">
-                                        <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                                            <FontIcon Glyph="&#xE7C2;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
-                                            <TextBlock Text="Hepsini Sürükle"
-                                                       FontSize="10.5" FontWeight="Medium"
-                                                       Foreground="{ThemeResource PrimaryText}" />
-                                        </StackPanel>
-                                    </Border>
-
-                                    <!-- Transient feedback banner -->
-                                    <TextBlock Grid.Column="1"
-                                               Text="{Binding ShelfStatusBanner}"
-                                               Visibility="{Binding ShelfStatusBannerVisibility}"
-                                               FontSize="10" FontWeight="Medium"
-                                               Foreground="{ThemeResource SecondaryText}"
-                                               HorizontalAlignment="Center"
-                                               VerticalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               Margin="4,0" />
-
-                                    <!-- Quick Actions: Paste, ZIP, Copy, Clear -->
-                                    <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
-                                        <Button Style="{StaticResource IslandButtonStyle}"
-                                                Width="28" Height="28" CornerRadius="14"
-                                                MinWidth="0" Padding="0"
-                                                Background="{ThemeResource PillControlBackground}"
-                                                Command="{Binding PasteToShelfCommand}"
-                                                PointerPressed="OnButtonPointerPressed"
-                                                PointerReleased="OnButtonPointerReleased"
-                                                AutomationProperties.Name="Panodan rafa ekle"
-                                                ToolTipService.ToolTip="Panodan Ekle (Ctrl+V içeriği)">
-                                            <FontIcon Glyph="&#xE77F;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
-                                        </Button>
-
-                                        <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="28" CornerRadius="14"
-                                                MinWidth="0"
-                                                Background="{ThemeResource PillControlBackground}"
-                                                Command="{Binding ZipShelfCommand}"
-                                                PointerPressed="OnButtonPointerPressed"
-                                                PointerReleased="OnButtonPointerReleased"
-                                                AutomationProperties.Name="Tümünü ZIP olarak paketle"
-                                                ToolTipService.ToolTip="ZIP yap &amp; panoya kopyala">
-                                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xF012;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
-                                                <TextBlock Text="ZIP" FontSize="10.5" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                <!-- Elevated Frosted Action Dock: Drag All, Status, Paste, Pick, ZIP, Copy, Clear -->
+                                <Border Grid.Row="1"
+                                        Height="34" CornerRadius="17"
+                                        Background="#0EFFFFFF"
+                                        BorderBrush="#1AFFFFFF"
+                                        BorderThickness="1"
+                                        Padding="4,0"
+                                        Margin="0,4,0,2"
+                                        VerticalAlignment="Center">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <!-- Drag All Handle -->
+                                        <Border Grid.Column="0"
+                                                Height="26" CornerRadius="13"
+                                                Background="#18FFFFFF"
+                                                BorderBrush="#25FFFFFF"
+                                                BorderThickness="1"
+                                                Padding="8,0"
+                                                CanDrag="True"
+                                                DragStarting="OnShelfDragAllStarting"
+                                                DropCompleted="OnShelfItemDropCompleted"
+                                                AutomationProperties.Name="Raftaki tüm öğeleri sürükle"
+                                                ToolTipService.ToolTip="Tüm öğeleri birlikte başka uygulamaya sürükle">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE7C2;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                                <TextBlock Text="Hepsini Sürükle"
+                                                           FontSize="10.5" FontWeight="SemiBold"
+                                                           Foreground="#FFFFFFFF" />
                                             </StackPanel>
-                                        </Button>
+                                        </Border>
 
-                                        <Button Style="{StaticResource IslandButtonStyle}"
-                                                Width="28" Height="28" CornerRadius="14"
-                                                MinWidth="0" Padding="0"
-                                                Background="{ThemeResource PillControlBackground}"
-                                                Command="{Binding CopyAllShelfCommand}"
-                                                PointerPressed="OnButtonPointerPressed"
-                                                PointerReleased="OnButtonPointerReleased"
-                                                AutomationProperties.Name="Tüm öğeleri panoya kopyala"
-                                                ToolTipService.ToolTip="Panoya Kopyala (Ctrl+V)">
-                                            <FontIcon Glyph="&#xE8C8;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
-                                        </Button>
+                                        <!-- Center Summary / Feedback banner -->
+                                        <StackPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="6,0">
+                                            <TextBlock Text="{Binding ShelfTotalSummary}"
+                                                       Visibility="{Binding ShelfSummaryVisibility}"
+                                                       FontSize="10" FontWeight="Medium"
+                                                       Foreground="#8E929E"
+                                                       HorizontalAlignment="Center" />
+                                            <TextBlock Text="{Binding ShelfStatusBanner}"
+                                                       Visibility="{Binding ShelfStatusBannerVisibility}"
+                                                       FontSize="10" FontWeight="SemiBold"
+                                                       Foreground="#60A5FA"
+                                                       HorizontalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
+                                        </StackPanel>
 
-                                        <Button Style="{StaticResource IslandButtonStyle}"
-                                                Width="28" Height="28" CornerRadius="14"
-                                                MinWidth="0" Padding="0"
-                                                Background="{ThemeResource PillControlBackground}"
-                                                Command="{Binding ClearShelfCommand}"
-                                                PointerPressed="OnButtonPointerPressed"
-                                                PointerReleased="OnButtonPointerReleased"
-                                                AutomationProperties.Name="Rafı temizle"
-                                                ToolTipService.ToolTip="Rafı Temizle">
-                                            <FontIcon Glyph="&#xE74D;" FontSize="11" Foreground="{ThemeResource SecondaryText}" />
-                                        </Button>
-                                    </StackPanel>
-                                </Grid>
+                                        <!-- Quick Actions: Paste, Pick, ZIP, Copy, Clear -->
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding PasteToShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Panodan rafa ekle"
+                                                    ToolTipService.ToolTip="Panodan Ekle (Ctrl+V içeriği)">
+                                                <FontIcon Glyph="&#xE77F;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Click="OnShelfBrowseFilesClick"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Dosya seç ve ekle"
+                                                    ToolTipService.ToolTip="Dosya Seçip Ekle">
+                                                <FontIcon Glyph="&#xE8E5;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Height="26" CornerRadius="13"
+                                                    MinWidth="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding ZipShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Tümünü ZIP olarak paketle"
+                                                    ToolTipService.ToolTip="ZIP yap &amp; panoya kopyala">
+                                                <StackPanel Orientation="Horizontal" Spacing="4" Margin="7,0" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xF012;" FontSize="10" Foreground="#FFFFFFFF" />
+                                                    <TextBlock Text="ZIP" FontSize="10" FontWeight="SemiBold" Foreground="#FFFFFFFF" />
+                                                </StackPanel>
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding CopyAllShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Tüm öğeleri panoya kopyala"
+                                                    ToolTipService.ToolTip="Panoya Kopyala (Ctrl+V)">
+                                                <FontIcon Glyph="&#xE8C8;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                            </Button>
+
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Command="{Binding ClearShelfCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Rafı temizle"
+                                                    ToolTipService.ToolTip="Rafı Temizle">
+                                                <FontIcon Glyph="&#xE74D;" FontSize="10.5" Foreground="#EF4444" />
+                                            </Button>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
                             </Grid>
 
                             <!-- Active Magnetic Drop Overlay (works whether shelf is empty OR already populated!) -->
                             <Border x:Name="ShelfActiveDropOverlay"
                                     Visibility="{Binding ShelfDragOverlayVisibility}"
-                                    CornerRadius="18"
-                                    Background="#D8111215"
-                                    BorderBrush="#88FFFFFF"
-                                    BorderThickness="1.5"
+                                    CornerRadius="20"
+                                    Background="#E6111215"
+                                    BorderBrush="#9060A5FA"
+                                    BorderThickness="1.8"
                                     IsHitTestVisible="False"
                                     VerticalAlignment="Stretch"
                                     HorizontalAlignment="Stretch">
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6">
-                                    <Grid x:Name="ShelfDropBobIcon" Width="38" Height="38" HorizontalAlignment="Center">
-                                        <Ellipse Width="38" Height="38" Fill="#28FFFFFF" />
-                                        <FontIcon Glyph="&#xE896;" FontSize="17"
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
+                                    <Grid x:Name="ShelfDropBobIcon" Width="48" Height="48" HorizontalAlignment="Center">
+                                        <Ellipse Width="48" Height="48" Fill="#2060A5FA" Stroke="#60A5FA" StrokeThickness="1.5" />
+                                        <FontIcon Glyph="&#xE896;" FontSize="20"
                                                   Foreground="#FFFFFFFF"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Grid>
-                                    <TextBlock Text="Bırak — Rafa Ekle"
-                                               FontSize="12.5" FontWeight="SemiBold"
+                                    <TextBlock Text="Şimdi Bırakın — Rafa Eklensin"
+                                               FontSize="13" FontWeight="SemiBold"
                                                Foreground="#FFFFFFFF"
+                                               HorizontalAlignment="Center" />
+                                    <TextBlock Text="Birden fazla dosya veya görsel desteklenir"
+                                               FontSize="10.5"
+                                               Foreground="#8E929E"
                                                HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Border>

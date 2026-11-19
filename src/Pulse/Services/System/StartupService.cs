@@ -12,6 +12,8 @@ public sealed class StartupService : IStartupService
     private const string TaskId = "PulseStartup";
     private const string RunKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Run";
     private const string ApprovedKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run";
+    private const string SerializeKeyPath = @"Software\Microsoft\Windows\CurrentVersion\Explorer\Serialize";
+    private const string StartupDelayValueName = "StartupDelayInMSec";
     private const string ValueName = "Pulse";
 
     public async Task<bool> IsEnabledAsync()
@@ -94,10 +96,15 @@ public sealed class StartupService : IStartupService
 
                 // Heal stale Run paths after app upgrade / directory relocation.
                 var exePath = Environment.ProcessPath;
-                if (!string.IsNullOrWhiteSpace(exePath) &&
-                    !StartupCommandHelper.IsMatchingCommand(existingCommand, exePath))
+                if (!string.IsNullOrWhiteSpace(exePath))
                 {
-                    runKey!.SetValue(ValueName, StartupCommandHelper.BuildRunCommand(exePath), RegistryValueKind.String);
+                    if (!StartupCommandHelper.IsMatchingCommand(existingCommand, exePath))
+                    {
+                        runKey!.SetValue(ValueName, StartupCommandHelper.BuildRunCommand(exePath), RegistryValueKind.String);
+                    }
+
+                    EnsureZeroStartupDelay();
+                    EnsureStartupShortcut(exePath, true);
                 }
 
                 return true;
@@ -108,6 +115,7 @@ public sealed class StartupService : IStartupService
                 return SetUnpackagedStartupEnabled(true);
             }
 
+            EnsureStartupShortcut(string.Empty, false);
             return false;
         }
         catch (Exception ex)
@@ -163,6 +171,9 @@ public sealed class StartupService : IStartupService
                 using var approvedKey = Registry.CurrentUser.CreateSubKey(ApprovedKeyPath, writable: true);
                 approvedKey?.SetValue(ValueName, StartupCommandHelper.CreateEnabledApprovalValue(), RegistryValueKind.Binary);
 
+                EnsureZeroStartupDelay();
+                EnsureStartupShortcut(exePath, true);
+
                 return IsUnpackagedStartupEnabled();
             }
 
@@ -172,12 +183,71 @@ public sealed class StartupService : IStartupService
             using var existingApprovedKey = Registry.CurrentUser.OpenSubKey(ApprovedKeyPath, writable: true);
             existingApprovedKey?.DeleteValue(ValueName, throwOnMissingValue: false);
 
+            EnsureStartupShortcut(string.Empty, false);
+
             return true;
         }
         catch (Exception ex) when (ex is SecurityException or UnauthorizedAccessException or IOException or ArgumentException)
         {
             CrashLogger.Write("StartupService.SetUnpackagedStartupEnabled", ex);
             return false;
+        }
+    }
+
+    private static void EnsureZeroStartupDelay()
+    {
+        try
+        {
+            using var key = Registry.CurrentUser.CreateSubKey(SerializeKeyPath, writable: true);
+            key?.SetValue(StartupDelayValueName, 0, RegistryValueKind.DWord);
+        }
+        catch (Exception ex) when (ex is SecurityException or UnauthorizedAccessException or IOException)
+        {
+            CrashLogger.Write("StartupService.EnsureZeroStartupDelay", ex);
+        }
+    }
+
+    private static void EnsureStartupShortcut(string exePath, bool enabled)
+    {
+        try
+        {
+            var startupFolder = Environment.GetFolderPath(Environment.SpecialFolder.Startup);
+            if (string.IsNullOrWhiteSpace(startupFolder) || !Directory.Exists(startupFolder))
+            {
+                return;
+            }
+
+            var shortcutPath = Path.Combine(startupFolder, "Pulse.lnk");
+            if (!enabled)
+            {
+                if (File.Exists(shortcutPath))
+                {
+                    File.Delete(shortcutPath);
+                }
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(exePath) || !File.Exists(exePath))
+            {
+                return;
+            }
+
+            var shellType = Type.GetTypeFromProgID("WScript.Shell");
+            if (shellType is null)
+            {
+                return;
+            }
+
+            dynamic shell = Activator.CreateInstance(shellType)!;
+            var shortcut = shell.CreateShortcut(shortcutPath);
+            shortcut.TargetPath = exePath;
+            shortcut.WorkingDirectory = Path.GetDirectoryName(exePath) ?? string.Empty;
+            shortcut.Description = "Pulse Dynamic Island";
+            shortcut.Save();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("StartupService.EnsureStartupShortcut", ex);
         }
     }
 

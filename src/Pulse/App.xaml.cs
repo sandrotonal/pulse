@@ -53,6 +53,8 @@ public partial class App : Application
     private RegisteredWaitHandle? _expandFocusRegistration;
     private EventWaitHandle? _expandSystemSignal;
     private RegisteredWaitHandle? _expandSystemRegistration;
+    private EventWaitHandle? _expandShelfSignal;
+    private RegisteredWaitHandle? _expandShelfRegistration;
     private EventWaitHandle? _collapseSignal;
     private RegisteredWaitHandle? _collapseRegistration;
     private EventWaitHandle? _toggleSplitDemoSignal;
@@ -154,6 +156,8 @@ public partial class App : Application
                     ? _instanceNames.ExpandFocusEventName
                     : HasLaunchArg("--system")
                     ? _instanceNames.ExpandSystemEventName
+                    : (HasLaunchArg("--shelf") || HasLaunchArg("--raf"))
+                    ? _instanceNames.ExpandShelfEventName
                     : HasLaunchArg("--collapse")
                     ? _instanceNames.CollapseEventName
                     : HasLaunchArg("--split")
@@ -360,6 +364,25 @@ public partial class App : Application
                     window.DispatcherQueue.TryEnqueue(() =>
                     {
                         _islandViewModel.SelectedPageIndex = 2;
+                        if (!_islandViewModel.IsExpanded)
+                        {
+                            _islandViewModel.ToggleExpanded();
+                        }
+                    });
+                },
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+
+            _expandShelfSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandShelfEventName);
+            _expandShelfRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _expandShelfSignal,
+                (_, _) =>
+                {
+                    if (_exiting || _islandWindow is not { } window) return;
+                    window.DispatcherQueue.TryEnqueue(() =>
+                    {
+                        _islandViewModel.SelectedPageIndex = 3;
                         if (!_islandViewModel.IsExpanded)
                         {
                             _islandViewModel.ToggleExpanded();

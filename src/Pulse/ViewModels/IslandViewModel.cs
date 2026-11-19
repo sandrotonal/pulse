@@ -478,11 +478,36 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Visibility ShelfStatusBannerVisibility => string.IsNullOrWhiteSpace(_shelfStatusBanner)
         ? Visibility.Collapsed
         : Visibility.Visible;
+    public Visibility ShelfSummaryVisibility => ShelfStatusBannerVisibility == Visibility.Visible
+        ? Visibility.Collapsed
+        : Visibility.Visible;
 
     public AsyncCommand CopyAllShelfCommand { get; }
     public AsyncCommand ZipShelfCommand { get; }
     public RelayCommand ClearShelfCommand { get; }
     public AsyncCommand PasteToShelfCommand { get; }
+
+    public void AddShelfPaths(IEnumerable<string> paths)
+    {
+        if (_disposed || paths is null)
+        {
+            return;
+        }
+
+        var added = 0;
+        foreach (var path in paths)
+        {
+            if (!string.IsNullOrWhiteSpace(path) && _dropShelf.AddPath(path) is not null)
+            {
+                added++;
+            }
+        }
+
+        if (added > 0)
+        {
+            ShowShelfStatus($"{added} öğe eklendi");
+        }
+    }
 
     public void RemoveShelfItem(string itemId)
     {
@@ -568,6 +593,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _shelfStatusBanner = message;
             OnPropertyChanged(nameof(ShelfStatusBanner));
             OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
+            OnPropertyChanged(nameof(ShelfSummaryVisibility));
         });
 
         if (string.IsNullOrWhiteSpace(message))
@@ -592,6 +618,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                         _shelfStatusBanner = string.Empty;
                         OnPropertyChanged(nameof(ShelfStatusBanner));
                         OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
+                        OnPropertyChanged(nameof(ShelfSummaryVisibility));
                     }
                 });
             }

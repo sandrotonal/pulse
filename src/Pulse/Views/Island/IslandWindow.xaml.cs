@@ -148,6 +148,7 @@ public sealed partial class IslandWindow : Window
     private long _frostGeneration;
     private bool _hasFrostBitmap;
     private readonly FullscreenStabilityTracker _fullscreenTracker = new(exitConfirmationThreshold: 2);
+    private readonly long _launchTicks = System.Diagnostics.Stopwatch.GetTimestamp();
     private const int DwmwaCloaked = 14;
     private string? _lastPulseTrackKey;
 
@@ -1019,6 +1020,20 @@ public sealed partial class IslandWindow : Window
         return fgMonitor == IntPtr.Zero || fgMonitor == islandMonitor;
     }
 
+    private bool IsExclusiveD3DFullscreenRunning()
+    {
+        try
+        {
+            return SHQueryUserNotificationState(out var state) == 0 &&
+                   state == FullscreenNotificationState.RunningD3DFullScreen &&
+                   IsForegroundMonitorSameAsIsland();
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
     private void UpdateBackgroundPollTimerState()
     {
         if (_fullscreenPollTimer is null || _windowClosed)
@@ -1105,19 +1120,42 @@ public sealed partial class IslandWindow : Window
             {
                 if (!IsForegroundScreenshotOverlay())
                 {
-                    if (SHQueryUserNotificationState(out var state) == 0 && FullscreenNotificationState.IsFullscreen(state))
+                    if (SHQueryUserNotificationState(out var state) == 0)
                     {
-                        rawIsFullscreen = IsForegroundMonitorSameAsIsland();
+                        if (state == FullscreenNotificationState.RunningD3DFullScreen)
+                        {
+                            rawIsFullscreen = IsForegroundMonitorSameAsIsland();
+                        }
+                        else if (FullscreenNotificationState.IsFullscreen(state))
+                        {
+                            // Busy (2) or PresentationMode (4) can occur during Windows boot, user logon,
+                            // or Focus Assist/DND. Never auto-hide for desktop/taskbar/explorer.
+                            // Only hide if an actual foreground window is verified covering the monitor.
+                            rawIsFullscreen = IsBorderlessFullscreenForeground();
+                        }
+                        else
+                        {
+                            rawIsFullscreen = IsBorderlessFullscreenForeground();
+                        }
                     }
-
-                    // Exclusive fullscreen is not the only case: borderless/windowed fullscreen
-                    // games report QUNS_ACCEPTS_NOTIFICATIONS, so check the foreground window too.
-                    rawIsFullscreen = rawIsFullscreen || IsBorderlessFullscreenForeground();
+                    else
+                    {
+                        rawIsFullscreen = IsBorderlessFullscreenForeground();
+                    }
                 }
             }
             catch
             {
                 // Shell API is best-effort; a failure must never break the island.
+            }
+
+            // During initial startup grace period (first 15 seconds), protect the island from
+            // disappearing during Windows logon/boot transitions unless an exclusive D3D game is active.
+            var isStartupGracePeriod = (System.Diagnostics.Stopwatch.GetTimestamp() - _launchTicks) <
+                                       (15 * System.Diagnostics.Stopwatch.Frequency);
+            if (isStartupGracePeriod && !IsExclusiveD3DFullscreenRunning())
+            {
+                rawIsFullscreen = false;
             }
 
             var isFullscreen = _fullscreenTracker.Update(rawIsFullscreen);
@@ -3868,6 +3906,24 @@ public sealed partial class IslandWindow : Window
                 }
             }
 
+            var copyBtn = FindDescendantByName<Button>(card, "CardCopyButton");
+            if (copyBtn is not null)
+            {
+                if (ReducedMotion)
+                {
+                    copyBtn.Opacity = hovered ? 1.0 : 0.0;
+                }
+                else
+                {
+                    var btnVisual = ElementCompositionPreview.GetElementVisual(copyBtn);
+                    var fade = btnVisual.Compositor.CreateScalarKeyFrameAnimation();
+                    fade.Duration = TimeSpan.FromMilliseconds(110);
+                    fade.InsertKeyFrame(1f, hovered ? 1f : 0f);
+                    btnVisual.StartAnimation("Opacity", fade);
+                    copyBtn.Opacity = hovered ? 1.0 : 0.0;
+                }
+            }
+
             if (ReducedMotion)
             {
                 return;
@@ -3961,6 +4017,27 @@ public sealed partial class IslandWindow : Window
         if (!_windowClosed)
         {
             _viewModel.RemoveShelfItem(itemId);
+        }
+    }
+
+    private async void OnShelfBrowseFilesClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var picker = new Windows.Storage.Pickers.FileOpenPicker();
+            picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.Downloads;
+            picker.FileTypeFilter.Add("*");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+            var files = await picker.PickMultipleFilesAsync();
+            if (files is { Count: > 0 })
+            {
+                var paths = files.Select(f => f.Path).Where(p => !string.IsNullOrWhiteSpace(p)).ToArray();
+                _viewModel.AddShelfPaths(paths);
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.OnShelfBrowseFilesClick", ex);
         }
     }
 
