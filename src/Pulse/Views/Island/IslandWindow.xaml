@@ -1702,6 +1702,12 @@
                            VerticalAlignment="Stretch"
                            IsHitTestVisible="False" />
 
+                <Rectangle x:Name="DetachedArtworkAmbientLayer"
+                           Visibility="Collapsed"
+                           HorizontalAlignment="Stretch"
+                           VerticalAlignment="Stretch"
+                           IsHitTestVisible="False" />
+
                 <Rectangle x:Name="DetachedFrostSheen"
                            Height="10"
                            Visibility="Collapsed"
