@@ -4121,9 +4121,10 @@ public sealed partial class IslandWindow : Window
         {
             FrostTintLayer.Visibility = visible;
         }
+        var sheenVisible = (_glassEnabled && !isDynamicMusic) ? Visibility.Visible : Visibility.Collapsed;
         if (FrostSheen is not null)
         {
-            FrostSheen.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
+            FrostSheen.Visibility = sheenVisible;
         }
         if (DetachedFrostLayer is not null)
         {
@@ -4135,7 +4136,7 @@ public sealed partial class IslandWindow : Window
         }
         if (DetachedFrostSheen is not null)
         {
-            DetachedFrostSheen.Visibility = _glassEnabled ? Visibility.Visible : Visibility.Collapsed;
+            DetachedFrostSheen.Visibility = sheenVisible;
         }
         if (_glassEnabled)
         {
@@ -4194,10 +4195,6 @@ public sealed partial class IslandWindow : Window
             {
                 ArtworkAmbientLayer.Fill = _ambientBrush;
             }
-            if (DetachedArtworkAmbientLayer is not null && DetachedArtworkAmbientLayer.Fill != _ambientBrush)
-            {
-                DetachedArtworkAmbientLayer.Fill = _ambientBrush;
-            }
             return;
         }
 
@@ -4220,10 +4217,6 @@ public sealed partial class IslandWindow : Window
         _ambientBrush.GradientStops.Add(_ambientEndStop);
 
         ArtworkAmbientLayer.Fill = _ambientBrush;
-        if (DetachedArtworkAmbientLayer is not null)
-        {
-            DetachedArtworkAmbientLayer.Fill = _ambientBrush;
-        }
     }
 
     private void UpdateArtworkAmbientGlow(GlassSurfacePalette palette)
@@ -4259,6 +4252,10 @@ public sealed partial class IslandWindow : Window
                         {
                             FrostTintLayer.Visibility = Visibility.Visible;
                         }
+                        if (FrostSheen is not null)
+                        {
+                            FrostSheen.Visibility = Visibility.Visible;
+                        }
                         if (DetachedFrostLayer is not null)
                         {
                             DetachedFrostLayer.Visibility = Visibility.Visible;
@@ -4266,6 +4263,10 @@ public sealed partial class IslandWindow : Window
                         if (DetachedFrostTintLayer is not null)
                         {
                             DetachedFrostTintLayer.Visibility = Visibility.Visible;
+                        }
+                        if (DetachedFrostSheen is not null)
+                        {
+                            DetachedFrostSheen.Visibility = Visibility.Visible;
                         }
                     }
                     StopRenderLoopIfIdle();
@@ -4293,6 +4294,10 @@ public sealed partial class IslandWindow : Window
                         {
                             FrostTintLayer.Visibility = Visibility.Visible;
                         }
+                        if (FrostSheen is not null)
+                        {
+                            FrostSheen.Visibility = Visibility.Visible;
+                        }
                         if (DetachedFrostLayer is not null)
                         {
                             DetachedFrostLayer.Visibility = Visibility.Visible;
@@ -4300,6 +4305,10 @@ public sealed partial class IslandWindow : Window
                         if (DetachedFrostTintLayer is not null)
                         {
                             DetachedFrostTintLayer.Visibility = Visibility.Visible;
+                        }
+                        if (DetachedFrostSheen is not null)
+                        {
+                            DetachedFrostSheen.Visibility = Visibility.Visible;
                         }
                     }
                     StopRenderLoopIfIdle();
@@ -4313,6 +4322,10 @@ public sealed partial class IslandWindow : Window
             {
                 FrostTintLayer.Visibility = Visibility.Collapsed;
             }
+            if (FrostSheen is not null)
+            {
+                FrostSheen.Visibility = Visibility.Collapsed;
+            }
             if (DetachedFrostLayer is not null)
             {
                 DetachedFrostLayer.Visibility = Visibility.Collapsed;
@@ -4321,11 +4334,15 @@ public sealed partial class IslandWindow : Window
             {
                 DetachedFrostTintLayer.Visibility = Visibility.Collapsed;
             }
+            if (DetachedFrostSheen is not null)
+            {
+                DetachedFrostSheen.Visibility = Visibility.Collapsed;
+            }
 
             ArtworkAmbientLayer.Visibility = Visibility.Visible;
             if (DetachedArtworkAmbientLayer is not null)
             {
-                DetachedArtworkAmbientLayer.Visibility = Visibility.Visible;
+                DetachedArtworkAmbientLayer.Visibility = Visibility.Collapsed;
             }
 
             var accentColor = DesktopFrostService.ToColor(palette.AccentArgb);
@@ -4428,6 +4445,14 @@ public sealed partial class IslandWindow : Window
                     if (DetachedFrostTintLayer is not null)
                     {
                         DetachedFrostTintLayer.Visibility = Visibility.Visible;
+                    }
+                    if (FrostSheen is not null)
+                    {
+                        FrostSheen.Visibility = Visibility.Visible;
+                    }
+                    if (DetachedFrostSheen is not null)
+                    {
+                        DetachedFrostSheen.Visibility = Visibility.Visible;
                     }
                 }
             }
@@ -4675,14 +4700,9 @@ public sealed partial class IslandWindow : Window
             HiddenAnchorPill.Background = DesktopFrostService.CreateBrush(palette.HiddenAnchorArgb);
         }
 
-        var hasFrostBitmap = _glassEnabled && _hasFrostBitmap && FrostLayer.Fill is Microsoft.UI.Xaml.Media.ImageBrush;
         if (DetachedPill is not null)
         {
-            var detachedBg = isDynamicMusic
-                ? palette.FallbackBackgroundArgb
-                : (hasFrostBitmap ? palette.DetachedTintArgb : palette.FallbackBackgroundArgb);
-
-            DetachedPill.Background = DesktopFrostService.CreateBrush(detachedBg);
+            DetachedPill.Background = DesktopFrostService.CreateBrush(surfaceBg);
             DetachedPill.BorderBrush = DesktopFrostService.CreateVerticalGradientBrush(palette.BorderRimTopArgb, palette.BorderRimBottomArgb);
             DetachedPill.BorderThickness = new Thickness(1);
             if (DetachedFrostSheenTopStop is not null)
