@@ -75,21 +75,7 @@ public sealed class EventRouter : IEventRouter
                 _events[@event.Id] = new TrackedEntry(@event, now, ++_nextSequence);
             }
 
-            var previousActive = CurrentActiveEvent;
-            var newActive = DetermineActiveEvent_NoLock(now);
-
-            if (!ReferenceEquals(previousActive, newActive))
-            {
-                CurrentActiveEvent = newActive;
-                _pendingNotifications.Enqueue(newActive);
-                if (!_isDispatchingNotifications)
-                {
-                    _isDispatchingNotifications = true;
-                    shouldDrain = true;
-                }
-            }
-
-            EnsureActiveTimerStarted_NoLock(newActive, now);
+            shouldDrain = UpdateActiveEvent_NoLock(now);
         }
 
         if (shouldDrain)
@@ -118,21 +104,7 @@ public sealed class EventRouter : IEventRouter
             }
 
             var now = DateTimeOffset.UtcNow;
-            var previousActive = CurrentActiveEvent;
-            var newActive = DetermineActiveEvent_NoLock(now);
-
-            if (!ReferenceEquals(previousActive, newActive))
-            {
-                CurrentActiveEvent = newActive;
-                _pendingNotifications.Enqueue(newActive);
-                if (!_isDispatchingNotifications)
-                {
-                    _isDispatchingNotifications = true;
-                    shouldDrain = true;
-                }
-            }
-
-            EnsureActiveTimerStarted_NoLock(newActive, now);
+            shouldDrain = UpdateActiveEvent_NoLock(now);
         }
 
         if (shouldDrain)
@@ -159,21 +131,7 @@ public sealed class EventRouter : IEventRouter
 
             _isInteractionLocked = false;
             var now = DateTimeOffset.UtcNow;
-            var previousActive = CurrentActiveEvent;
-            var newActive = DetermineActiveEvent_NoLock(now);
-
-            if (!ReferenceEquals(previousActive, newActive))
-            {
-                CurrentActiveEvent = newActive;
-                _pendingNotifications.Enqueue(newActive);
-                if (!_isDispatchingNotifications)
-                {
-                    _isDispatchingNotifications = true;
-                    shouldDrain = true;
-                }
-            }
-
-            EnsureActiveTimerStarted_NoLock(newActive, now);
+            shouldDrain = UpdateActiveEvent_NoLock(now);
         }
 
         if (shouldDrain)
@@ -236,27 +194,34 @@ public sealed class EventRouter : IEventRouter
                 }
             }
 
-            var previousActive = CurrentActiveEvent;
-            var newActive = DetermineActiveEvent_NoLock(now);
-
-            if (!ReferenceEquals(previousActive, newActive))
-            {
-                CurrentActiveEvent = newActive;
-                _pendingNotifications.Enqueue(newActive);
-                if (!_isDispatchingNotifications)
-                {
-                    _isDispatchingNotifications = true;
-                    shouldDrain = true;
-                }
-            }
-
-            EnsureActiveTimerStarted_NoLock(newActive, now);
+            shouldDrain = UpdateActiveEvent_NoLock(now);
         }
 
         if (shouldDrain)
         {
             DrainNotifications();
         }
+    }
+
+    private bool UpdateActiveEvent_NoLock(DateTimeOffset now)
+    {
+        var previousActive = CurrentActiveEvent;
+        var newActive = DetermineActiveEvent_NoLock(now);
+        var shouldDrain = false;
+
+        if (!ReferenceEquals(previousActive, newActive))
+        {
+            CurrentActiveEvent = newActive;
+            _pendingNotifications.Enqueue(newActive);
+            if (!_isDispatchingNotifications)
+            {
+                _isDispatchingNotifications = true;
+                shouldDrain = true;
+            }
+        }
+
+        EnsureActiveTimerStarted_NoLock(newActive, now);
+        return shouldDrain;
     }
 
     private void DrainNotifications()

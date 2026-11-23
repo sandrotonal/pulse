@@ -254,182 +254,132 @@ public partial class App : Application
     {
         try
         {
-            _showIslandSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowIslandEventName);
-            _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _showIslandSignal,
-                (_, _) =>
+            RegisterSignal(out _showIslandSignal, out _showIslandRegistration, _instanceNames.ShowIslandEventName, (_, _) =>
+            {
+                if (_exiting) return;
+
+                if (_islandWindow is { } window)
                 {
-                    if (_exiting)
-                    {
-                        return;
-                    }
-
-                    if (_islandWindow is { } window)
-                    {
-                        window.DispatcherQueue.TryEnqueue(() =>
-                            SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
-                    }
-                    else
-                    {
-                        Interlocked.Exchange(ref _pendingShowIslandSignal, 1);
-                        dispatcherQueue.TryEnqueue(() =>
-                        {
-                            if (_islandWindow is not null &&
-                                Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
-                            {
-                                SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true);
-                            }
-                        });
-                    }
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
-
-            _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowSettingsEventName);
-            _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _showSettingsSignal,
-                (_, _) =>
-                {
-                    if (_exiting)
-                    {
-                        return;
-                    }
-
-                    if (_islandWindow is { } window)
-                    {
-                        window.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
-                    }
-                    else
-                    {
-                        Interlocked.Exchange(ref _pendingShowSettingsSignal, 1);
-                        dispatcherQueue.TryEnqueue(() =>
-                        {
-                            if (_islandWindow is not null &&
-                                Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
-                            {
-                                OnSettingsRequested(this, EventArgs.Empty);
-                            }
-                        });
-                    }
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
-
-            _expandMediaSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandMediaEventName);
-            _expandMediaRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandMediaSignal,
-                (_, _) =>
-                {
-                    if (_exiting || _islandWindow is not { } window) return;
                     window.DispatcherQueue.TryEnqueue(() =>
+                        SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
+                }
+                else
+                {
+                    Interlocked.Exchange(ref _pendingShowIslandSignal, 1);
+                    dispatcherQueue.TryEnqueue(() =>
                     {
-                        _islandViewModel.SelectedPageIndex = 0;
-                        if (!_islandViewModel.IsExpanded)
+                        if (_islandWindow is not null &&
+                            Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
                         {
-                            _islandViewModel.ToggleExpanded();
+                            SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true);
                         }
                     });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                }
+            });
 
-            _expandFocusSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandFocusEventName);
-            _expandFocusRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandFocusSignal,
-                (_, _) =>
+            RegisterSignal(out _showSettingsSignal, out _showSettingsRegistration, _instanceNames.ShowSettingsEventName, (_, _) =>
+            {
+                if (_exiting) return;
+
+                if (_islandWindow is { } window)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
+                    window.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
+                }
+                else
+                {
+                    Interlocked.Exchange(ref _pendingShowSettingsSignal, 1);
+                    dispatcherQueue.TryEnqueue(() =>
                     {
-                        _islandViewModel.SelectedPageIndex = 1;
-                        if (!_islandViewModel.IsExpanded)
+                        if (_islandWindow is not null &&
+                            Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
                         {
-                            _islandViewModel.ToggleExpanded();
+                            OnSettingsRequested(this, EventArgs.Empty);
                         }
                     });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                }
+            });
 
-            _expandSystemSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandSystemEventName);
-            _expandSystemRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandSystemSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandMediaSignal, out _expandMediaRegistration, _instanceNames.ExpandMediaEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 0;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        _islandViewModel.SelectedPageIndex = 2;
-                        if (!_islandViewModel.IsExpanded)
-                        {
-                            _islandViewModel.ToggleExpanded();
-                        }
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
 
-            _expandShelfSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandShelfEventName);
-            _expandShelfRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandShelfSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandFocusSignal, out _expandFocusRegistration, _instanceNames.ExpandFocusEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 1;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        _islandViewModel.SelectedPageIndex = 3;
-                        if (!_islandViewModel.IsExpanded)
-                        {
-                            _islandViewModel.ToggleExpanded();
-                        }
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
 
-            _collapseSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.CollapseEventName);
-            _collapseRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _collapseSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandSystemSignal, out _expandSystemRegistration, _instanceNames.ExpandSystemEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 2;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        if (_islandViewModel.IsExpanded)
-                        {
-                            _islandViewModel.ToggleExpanded();
-                        }
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
 
-            _toggleSplitDemoSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ToggleSplitDemoEventName);
-            _toggleSplitDemoRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _toggleSplitDemoSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandShelfSignal, out _expandShelfRegistration, _instanceNames.ExpandShelfEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 3;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        _islandViewModel.IsSplitDemoForced = !_islandViewModel.IsSplitDemoForced;
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
+
+            RegisterIslandWindowSignal(out _collapseSignal, out _collapseRegistration, _instanceNames.CollapseEventName, () =>
+            {
+                if (_islandViewModel.IsExpanded)
+                {
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
+
+            RegisterIslandWindowSignal(out _toggleSplitDemoSignal, out _toggleSplitDemoRegistration, _instanceNames.ToggleSplitDemoEventName, () =>
+            {
+                _islandViewModel.IsSplitDemoForced = !_islandViewModel.IsSplitDemoForced;
+            });
         }
         catch (Exception ex)
         {
             CrashLogger.Write("App.RegisterInstanceSignals", ex);
         }
+    }
+
+    private static void RegisterSignal(
+        out EventWaitHandle handle,
+        out RegisteredWaitHandle registration,
+        string signalName,
+        WaitOrTimerCallback callback)
+    {
+        handle = new EventWaitHandle(false, EventResetMode.AutoReset, signalName);
+        registration = ThreadPool.RegisterWaitForSingleObject(
+            handle,
+            callback,
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: false);
+    }
+
+    private void RegisterIslandWindowSignal(
+        out EventWaitHandle handle,
+        out RegisteredWaitHandle registration,
+        string signalName,
+        Action action)
+    {
+        RegisterSignal(out handle, out registration, signalName, (_, _) =>
+        {
+            if (_exiting || _islandWindow is not { } window) return;
+            window.DispatcherQueue.TryEnqueue(() => action());
+        });
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -833,6 +783,8 @@ public partial class App : Application
             _expandFocusSignal?.Dispose();
             _expandSystemRegistration?.Unregister(null);
             _expandSystemSignal?.Dispose();
+            _expandShelfRegistration?.Unregister(null);
+            _expandShelfSignal?.Dispose();
             _collapseRegistration?.Unregister(null);
             _collapseSignal?.Dispose();
             _toggleSplitDemoRegistration?.Unregister(null);
