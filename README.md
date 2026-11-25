@@ -7,10 +7,10 @@
 [![NET 9](https://img.shields.io/badge/.NET-9.0-512BD4?style=for-the-badge&logo=dotnet)](https://dotnet.microsoft.com/)
 [![WinUI 3](https://img.shields.io/badge/WinUI-3.0-0078D4?style=for-the-badge&logo=windows11)](https://learn.microsoft.com/en-us/windows/apps/winui/winui3/)
 [![Windows App SDK](https://img.shields.io/badge/WindowsAppSDK-2.5.1-0078D4?style=for-the-badge)](https://github.com/microsoft/windowsappsdk)
-[![Tests](https://img.shields.io/badge/Tests-369%20Passing-30D158?style=for-the-badge)](tests/Pulse.Tests)
+[![Tests](https://img.shields.io/badge/Tests-375%20Passing-30D158?style=for-the-badge)](tests/Pulse.Tests)
 [![License](https://img.shields.io/badge/License-MIT-green?style=for-the-badge)](LICENSE)
 
-*Pulse brings a sleek, GPU-animated Liquid Glass Dynamic Island experience to Windows 11 — combining native system media control, synced lyrics, adaptive album-art frost, a monochrome Pomodoro focus timer, a matching system control panel, a NotchDrop-style cross-app Drop Shelf, real-time OS notifications, and a smart idle strip for time, date and weather.*
+*Pulse brings a sleek, GPU-animated Liquid Glass Dynamic Island experience to Windows 11 — combining native system media control, synced lyrics, adaptive album-art frost, a monochrome Pomodoro focus timer with Focus Auto-DND, a matching system control panel with one-tap Global Mic Mute, a NotchDrop-style cross-app Drop Shelf (with Screenshot-to-Shelf, Pinning, Quick Note, Quick Look, and offline Windows OCR), real-time OS notifications, and a smart idle strip for time, date and weather.*
 
 ---
 
@@ -38,14 +38,14 @@
 <p>
   <img src="docs/images/island-expanded-system.png" width="480" alt="Pulse system controls panel with volume slider, battery percentage, audio switcher, and live headphone indicator" />
 </p>
-<p><em><strong>System &amp; Control Panel:</strong> Monochrome WASAPI master volume slider with mute toggle, semantic battery telemetry (green charging pulse, red low-battery warning), active Audio Output Endpoint switcher capsule (`Kulaklık / Hoparlör`), and live animated Headphone connection status indicator.</em></p>
+<p><em><strong>System &amp; Control Panel:</strong> Monochrome WASAPI master volume slider with mute toggle, one-tap Global Microphone Mute with live muted indicator dot, semantic battery telemetry (green charging pulse, red low-battery warning), active Audio Output Endpoint switcher capsule (`Kulaklık / Hoparlör`), and live animated Headphone connection status indicator.</em></p>
 
 <br />
 
 <p>
-  <img src="docs/images/island-expanded-shelf.png" width="480" alt="Pulse Drop Shelf panel staging dragged files, app icons, and clipboard text with instant cross-app drag-and-drop and ZIP packaging" />
+  <img src="docs/images/island-expanded-shelf.png" width="480" alt="Pulse Drop Shelf panel staging dragged files, screenshots, quick notes, and clipboard text with pinning, Quick Look, offline OCR, and ZIP packaging" />
 </p>
-<p><em><strong>Drop Shelf (Apple NotchDrop Experience):</strong> Drag and drop any files, screenshots, or text snippets straight to the island to stage them across apps. Spring-loaded drag-in capture, horizontal card carousel with category badges and image thumbnails, full OLE drag-out back to WhatsApp, Discord, VS Code, or Explorer, clipboard paste staging, and instant one-tap ZIP archive creation.</em></p>
+<p><em><strong>Drop Shelf (Apple NotchDrop Experience):</strong> Drag and drop files, screenshots, or text snippets straight to the island—or let OS screenshots land there automatically. Includes item Pinning (protected from Clear), inline Quick Note staging, in-island Quick Look preview, offline Windows OCR text extraction from images, full OLE drag-out back to WhatsApp, Discord, VS Code, or Explorer, and one-tap ZIP archive creation.</em></p>
 
 <br />
 
@@ -80,9 +80,9 @@
 - **Smart Idle Strip**: When no media is playing, the compact pill displays a live clock, Turkish date, and Open-Meteo local weather (15-minute refresh, automatic `ipwho.is` IP lookup or manually verified city). Clock, date, and weather can each be toggled independently.
 - **Live Media Session Control**: Automatic integration with Windows System Media Transport Controls (GSMTC) for Spotify, Apple Music, YouTube, browsers, VLC, and more — featuring dynamic artwork caching, seekable progress bar with floating timestamp tooltip preview, ±15s skip controls, synced lyrics powered by `lrclib`, and active audio route switching.
 - **Split Island**: Concurrent media playback and an active focus countdown automatically split into paired left/right capsules and merge seamlessly when either finishes.
-- **Focus Timer (Pomodoro)**: Monochrome preset chips (`25/50` work, `5/15` break), custom duration picker (`1–180` min), tabular countdown digits, session auto-switching, pinned capsule visibility, and optional completion chime.
-- **System & Control Panel**: Stepwise WASAPI master volume slider with neutral mute state, live audio output endpoint detection & quick switcher flyout, live battery & AC charging detection (green while charging with subtle pulse, red when low), and instant screenshot capture saved locally and copied to the clipboard.
-- **Drop Shelf (Apple NotchDrop Experience)**: Drag and drop files, screenshots, or text snippets directly to the top island to hold them in temporary staging. Supports spring-loaded capture physics, horizontal card carousel with image previews and file kind badges, OLE drag-and-drop straight into WhatsApp, Discord, Chrome, or Explorer, clipboard paste staging, and one-tap ZIP archive packaging.
+- **Focus Timer (Pomodoro & Focus Ritual)**: Monochrome preset chips (`25/50` work, `5/15` break), custom duration picker (`1–180` min), tabular countdown digits, session auto-switching, optional **Focus Auto-DND** (automatically silences routine alerts during focus and restores DND afterward), and optional completion chime.
+- **System & Control Panel**: Stepwise WASAPI master volume slider with neutral mute state, one-tap **Global Microphone Mute** (`eCapture`), live audio output endpoint detection & quick switcher flyout, live battery & AC charging detection (green while charging with subtle pulse, red when low), and instant screenshot capture saved locally and copied to the clipboard.
+- **Drop Shelf (Apple NotchDrop Experience)**: Drag and drop files, screenshots, or text snippets directly to the top island, or enable **Screenshot-to-Shelf** so `Win+Shift+S` captures land automatically. Supports **Item Pinning** (survives Clear & capacity eviction), inline **Quick Note** input, in-island **Quick Look** preview (images & code/text), offline **`Windows.Media.Ocr`** text copy from images, OLE drag-and-drop into any app, and one-tap ZIP archive packaging.
 - **Real OS Event Awareness**:
   - **Windows Toast Listener**: Surfaces WhatsApp, Discord, browser, and system toast notifications directly inside the island.
   - **Bluetooth Device Alerts**: Announces headset and peripheral connections/battery level via Bluetooth radio monitoring.
@@ -90,7 +90,7 @@
 - **Apple-Style Alert Takeover & Deep Links**: Transient alerts briefly take over the pill and hand back to ongoing playback/focus cleanly; tapping artwork opens the source media app, and tapping alert capsules opens their file or folder.
 - **Fullscreen & Game Mode Recovery**: Automatically hides for exclusive and borderless fullscreen games (excluding normal maximized windows) and cleanly recovers island/playback state when exiting fullscreen.
 - **Single-Instance Guard & Tray Integration**: Re-launching Pulse brings up the existing instance, `--settings` routes directly to a single Settings window, global hotkeys (`Win+Alt+I`, `Win+Shift+F`), unstealable topmost `WM_WINDOWPOSCHANGING` handling, Windows Startup registry management, and full Reduced Motion compliance.
-- **Unit Tested Architecture**: Clean MVVM separation with platform-decoupled core state, animation layout, Liquid Glass math, and weather services (**369 automated xUnit tests**).
+- **Unit Tested Architecture**: Clean MVVM separation with platform-decoupled core state, animation layout, Liquid Glass math, and weather services (**375 automated xUnit tests**).
 
 ---
 
@@ -103,7 +103,7 @@
 - **Notifications & System APIs**: `UserNotificationListener` (Windows toasts), Bluetooth radio/device watcher, WASAPI endpoint volume, `GetSystemPowerStatus`, `FileSystemWatcher`, Win32 `SetWindowRgn` & global hotkeys
 - **Weather & Location**: Open-Meteo forecast & geocoding APIs, `ipwho.is` IP lookup, JSON disk caches
 - **MVVM & Serialization**: `CommunityToolkit.Mvvm`, source-generated `System.Text.Json` contexts
-- **Testing**: xUnit with Moq (369 unit tests)
+- **Testing**: xUnit with Moq (375 unit tests)
 
 ---
 
