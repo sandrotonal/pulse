@@ -205,6 +205,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _systemControl.AudioStateChanged += OnSystemAudioStateChanged;
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
+        ToggleMicMuteCommand = new RelayCommand(ToggleMicMute);
         OpenSoundSwitcherCommand = new RelayCommand(() => _systemControl?.OpenSoundFlyout());
         OpenSoundSettingsCommand = new RelayCommand(() => _systemControl?.OpenSoundSettings());
 
@@ -438,8 +439,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public int ShelfCount => ShelfItems.Count;
     public bool HasShelfItems => ShelfItems.Count > 0;
     public string ShelfCountText => ShelfCount.ToString(CultureInfo.InvariantCulture);
-    public Visibility ShelfEmptyVisibility => HasShelfItems ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility ShelfPopulatedVisibility => HasShelfItems && !IsQuickLookOpen ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ShelfEmptyVisibility => !HasShelfItems && !IsQuickLookOpen && !IsQuickNoteOpen ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ShelfPopulatedVisibility => HasShelfItems && !IsQuickLookOpen && !IsQuickNoteOpen ? Visibility.Visible : Visibility.Collapsed;
     public Visibility CompactShelfBadgeVisibility => HasShelfItems && !IsExpanded ? Visibility.Visible : Visibility.Collapsed;
 
     public bool IsDragHovering
@@ -583,6 +584,79 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 _quickLookTextPreview = value;
                 OnPropertyChanged(nameof(QuickLookTextPreview));
             }
+        }
+    }
+
+    private bool _isQuickNoteOpen;
+    private string _quickNoteText = string.Empty;
+
+    public bool IsQuickNoteOpen
+    {
+        get => _isQuickNoteOpen;
+        private set
+        {
+            if (_isQuickNoteOpen != value)
+            {
+                _isQuickNoteOpen = value;
+                OnPropertyChanged(nameof(IsQuickNoteOpen));
+                OnPropertyChanged(nameof(QuickNoteOverlayVisibility));
+                OnPropertyChanged(nameof(ShelfEmptyVisibility));
+                OnPropertyChanged(nameof(ShelfPopulatedVisibility));
+            }
+        }
+    }
+
+    public Visibility QuickNoteOverlayVisibility => _isQuickNoteOpen ? Visibility.Visible : Visibility.Collapsed;
+
+    public string QuickNoteText
+    {
+        get => _quickNoteText;
+        set
+        {
+            if (!string.Equals(_quickNoteText, value, StringComparison.Ordinal))
+            {
+                _quickNoteText = value;
+                OnPropertyChanged(nameof(QuickNoteText));
+            }
+        }
+    }
+
+    public void OpenQuickNote()
+    {
+        if (_disposed) return;
+        CloseQuickLook();
+        QuickNoteText = string.Empty;
+        IsQuickNoteOpen = true;
+    }
+
+    public void CloseQuickNote()
+    {
+        IsQuickNoteOpen = false;
+        QuickNoteText = string.Empty;
+    }
+
+    public async Task SubmitQuickNoteAsync()
+    {
+        if (_disposed) return;
+        var text = QuickNoteText.Trim();
+        CloseQuickNote();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            var staged = await _dropShelf.StageTextAsync(text);
+            if (!_disposed && staged is not null)
+            {
+                ShowShelfStatus("Not rafa eklendi");
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.SubmitQuickNoteAsync", ex);
+            ShowShelfStatus("Not eklenemedi");
         }
     }
 
@@ -828,6 +902,34 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public string SystemMuteGlyph => _systemMuted ? "\uE74F" : "\uE995";
 
     public RelayCommand SystemToggleMuteCommand { get; }
+
+    private bool _micMuted;
+    public bool IsMicMuted => _micMuted;
+    public string MicMuteGlyph => _micMuted ? "\uF781" : "\uE720";
+    public string MicMuteToolTip => _micMuted ? "Mikrofon Kapalı (Aç)" : "Mikrofon Açık (Sessize Al)";
+    public Visibility MicMutedDotVisibility => _micMuted ? Visibility.Visible : Visibility.Collapsed;
+    public RelayCommand ToggleMicMuteCommand { get; }
+
+    private void ToggleMicMute()
+    {
+        if (_disposed || _systemControl is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _micMuted = _systemControl.ToggleMicMute();
+            OnPropertyChanged(nameof(IsMicMuted));
+            OnPropertyChanged(nameof(MicMuteGlyph));
+            OnPropertyChanged(nameof(MicMuteToolTip));
+            OnPropertyChanged(nameof(MicMutedDotVisibility));
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.ToggleMicMute", ex);
+        }
+    }
 
     private void ToggleSystemMute()
     {
@@ -1448,6 +1550,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public void Collapse()
     {
         CloseQuickLook();
+        CloseQuickNote();
         _media.Collapse();
     }
     public void CompleteCollapse() => _media.CompleteCollapse();
@@ -2132,6 +2235,16 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(SystemMuteGlyph));
                 _systemEvents.ReportAudioStatus(volume, muted);
             }
+
+            var micMuted = _systemControl.IsMicMuted();
+            if (micMuted != _micMuted)
+            {
+                _micMuted = micMuted;
+                OnPropertyChanged(nameof(IsMicMuted));
+                OnPropertyChanged(nameof(MicMuteGlyph));
+                OnPropertyChanged(nameof(MicMuteToolTip));
+                OnPropertyChanged(nameof(MicMutedDotVisibility));
+            }
         }
         catch
         {
@@ -2232,6 +2345,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             {
                 var volume = control.GetMasterVolume();
                 var muted = control.IsMuted();
+                var micMuted = control.IsMicMuted();
                 var (devName, devGlyph) = control.GetActiveAudioDevice();
                 var (hpConn, hpName) = control.GetHeadphoneStatus();
 
@@ -2254,6 +2368,15 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                         _systemMuted = muted;
                         OnPropertyChanged(nameof(IsSystemMuted));
                         OnPropertyChanged(nameof(SystemMuteGlyph));
+                    }
+
+                    if (_micMuted != micMuted)
+                    {
+                        _micMuted = micMuted;
+                        OnPropertyChanged(nameof(IsMicMuted));
+                        OnPropertyChanged(nameof(MicMuteGlyph));
+                        OnPropertyChanged(nameof(MicMuteToolTip));
+                        OnPropertyChanged(nameof(MicMutedDotVisibility));
                     }
 
                     if (_activeAudioDeviceName != devName || _activeAudioDeviceGlyph != devGlyph)
@@ -2328,6 +2451,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(HasArtwork));
             OnPropertyChanged(nameof(ArtworkFallbackVisibility));
             OnPropertyChanged(nameof(ArtworkAccentColor));
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.FocusCustomMinutes) && _settingsService is not null)
+        {
+            CustomFocusMinutes = _settingsService.Current.FocusCustomMinutes;
         }
     }
 

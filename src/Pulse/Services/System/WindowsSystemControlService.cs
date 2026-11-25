@@ -341,6 +341,94 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
 
     public void ToggleMute() => SetMute(!IsMuted());
 
+    public bool IsMicMuted()
+    {
+        lock (_audioLock)
+        {
+            if (_disposed || _deviceEnumerator is null)
+            {
+                return false;
+            }
+
+            IMMDevice? captureDevice = null;
+            IAudioEndpointVolume? captureVolume = null;
+            try
+            {
+                if (_deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture, ERole.eConsole, out captureDevice) != 0 ||
+                    captureDevice is null)
+                {
+                    return false;
+                }
+
+                var iid = IidIAudioEndpointVolume;
+                if (captureDevice.Activate(ref iid, CLSCTX.CLSCTX_ALL, IntPtr.Zero, out var raw) != 0 ||
+                    raw is not IAudioEndpointVolume vol)
+                {
+                    return false;
+                }
+
+                captureVolume = vol;
+                return captureVolume.GetMute(out var muted) == 0 && muted;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("WindowsSystemControlService.IsMicMuted", ex);
+                return false;
+            }
+            finally
+            {
+                if (captureVolume is not null) { try { Marshal.ReleaseComObject(captureVolume); } catch { } }
+                if (captureDevice is not null) { try { Marshal.ReleaseComObject(captureDevice); } catch { } }
+            }
+        }
+    }
+
+    public bool ToggleMicMute()
+    {
+        lock (_audioLock)
+        {
+            if (_disposed || _deviceEnumerator is null)
+            {
+                return false;
+            }
+
+            IMMDevice? captureDevice = null;
+            IAudioEndpointVolume? captureVolume = null;
+            try
+            {
+                if (_deviceEnumerator.GetDefaultAudioEndpoint(EDataFlow.eCapture, ERole.eConsole, out captureDevice) != 0 ||
+                    captureDevice is null)
+                {
+                    return false;
+                }
+
+                var iid = IidIAudioEndpointVolume;
+                if (captureDevice.Activate(ref iid, CLSCTX.CLSCTX_ALL, IntPtr.Zero, out var raw) != 0 ||
+                    raw is not IAudioEndpointVolume vol)
+                {
+                    return false;
+                }
+
+                captureVolume = vol;
+                var current = captureVolume.GetMute(out var muted) == 0 && muted;
+                var next = !current;
+                var ctx = SelfEventContext;
+                _ = captureVolume.SetMute(next, ref ctx);
+                return next;
+            }
+            catch (Exception ex)
+            {
+                CrashLogger.Write("WindowsSystemControlService.ToggleMicMute", ex);
+                return false;
+            }
+            finally
+            {
+                if (captureVolume is not null) { try { Marshal.ReleaseComObject(captureVolume); } catch { } }
+                if (captureDevice is not null) { try { Marshal.ReleaseComObject(captureDevice); } catch { } }
+            }
+        }
+    }
+
     public (string Name, string Glyph) GetActiveAudioDevice()
     {
         lock (_audioLock)

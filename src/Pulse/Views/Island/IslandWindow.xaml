@@ -197,6 +197,11 @@
                                           Click="OnDoNotDisturbToggleClick">
                         <ToggleMenuFlyoutItem.Icon><FontIcon Glyph="&#xE708;" /></ToggleMenuFlyoutItem.Icon>
                     </ToggleMenuFlyoutItem>
+                    <MenuFlyoutItem x:Name="MicMuteContextItem"
+                                  Text="Mikrofonu Sessize Al"
+                                  Command="{Binding ToggleMicMuteCommand}">
+                        <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE720;" /></MenuFlyoutItem.Icon>
+                    </MenuFlyoutItem>
                     <MenuFlyoutSeparator />
 
                     <!-- Odak Sayacı (Pomodoro) -->
@@ -1261,8 +1266,30 @@
                                         </Grid>
                                     </StackPanel>
 
-                                    <!-- Audio Output Endpoint Switcher Pill & Headphone Status Live Indicator -->
+                                    <!-- Audio Output Endpoint Switcher Pill, Mic Mute & Headphone Status -->
                                     <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                        <Button x:Name="SystemMicMuteButton"
+                                                Style="{StaticResource IslandButtonStyle}"
+                                                Height="28" Width="28" CornerRadius="14"
+                                                MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding ToggleMicMuteCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="{Binding MicMuteToolTip}"
+                                                ToolTipService.ToolTip="{Binding MicMuteToolTip}">
+                                            <Grid Width="24" Height="24">
+                                                <FontIcon Glyph="{Binding MicMuteGlyph}" FontSize="11.5"
+                                                          Foreground="{ThemeResource PrimaryText}"
+                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                <Ellipse Width="5" Height="5"
+                                                         Fill="#FF453A"
+                                                         Visibility="{Binding MicMutedDotVisibility}"
+                                                         HorizontalAlignment="Right" VerticalAlignment="Top"
+                                                         Margin="0,3,3,0" />
+                                            </Grid>
+                                        </Button>
+
                                         <Button Style="{StaticResource IslandButtonStyle}"
                                                 Height="28" CornerRadius="14"
                                                 MinWidth="0"
@@ -1369,6 +1396,20 @@
                                             <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
                                                 <FontIcon Glyph="&#xE8E5;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
                                                 <TextBlock Text="Dosya Seç" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="28" CornerRadius="14"
+                                                MinWidth="0"
+                                                Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
+                                                Click="OnShelfOpenQuickNoteClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Hızlı not ekle"
+                                                ToolTipService.ToolTip="Rafa hızlı metin notu yaz">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE70B;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Hızlı Not" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -1637,8 +1678,20 @@
                                                    TextTrimming="CharacterEllipsis"
                                                    Margin="4,0" />
 
-                                        <!-- Quick Actions: Paste, Pick, ZIP, Copy, Clear -->
+                                        <!-- Quick Actions: Note, Paste, Pick, ZIP, Copy, Clear -->
                                         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                            <Button Style="{StaticResource IslandButtonStyle}"
+                                                    Width="26" Height="26" CornerRadius="13"
+                                                    MinWidth="0" Padding="0"
+                                                    Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
+                                                    Click="OnShelfOpenQuickNoteClick"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    AutomationProperties.Name="Hızlı not ekle"
+                                                    ToolTipService.ToolTip="Rafa Hızlı Not Ekle">
+                                                <FontIcon Glyph="&#xE70B;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
+                                            </Button>
+
                                             <Button Style="{StaticResource IslandButtonStyle}"
                                                     Width="26" Height="26" CornerRadius="13"
                                                     MinWidth="0" Padding="0"
@@ -1705,6 +1758,68 @@
                                     </Grid>
                                 </Border>
                             </Grid>
+
+                            <!-- In-Island Quick Note Input -->
+                            <Border x:Name="ShelfQuickNoteOverlay"
+                                    Visibility="{Binding QuickNoteOverlayVisibility}"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    VerticalAlignment="Stretch"
+                                    HorizontalAlignment="Stretch">
+                                <Grid RowDefinitions="Auto,*,Auto">
+                                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="0,2,0,8">
+                                        <Button Grid.Column="0"
+                                                Style="{StaticResource IslandButtonStyle}"
+                                                Height="26" CornerRadius="13" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                BorderThickness="1"
+                                                Click="OnShelfQuickNoteCancelClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Vazgeç">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE72B;" FontSize="9.5" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Geri" FontSize="10.5" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="Hızlı Not (Enter ile rafa ekle)"
+                                                   FontSize="11" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource SecondaryText}"
+                                                   VerticalAlignment="Center"
+                                                   Margin="10,0,0,0" />
+                                    </Grid>
+                                    <TextBox x:Name="QuickNoteInputBox"
+                                             Grid.Row="1"
+                                             Text="{Binding QuickNoteText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PlaceholderText="Kod, link veya kısa bir not yaz..."
+                                             AcceptsReturn="False"
+                                             TextWrapping="Wrap"
+                                             CornerRadius="12"
+                                             Background="{ThemeResource ShelfThumbnailBackground}"
+                                             BorderBrush="{ThemeResource ShelfCardBorder}"
+                                             Foreground="{ThemeResource PrimaryText}"
+                                             KeyDown="OnQuickNoteKeyDown"
+                                             GotFocus="OnQuickNoteGotFocus"
+                                             LostFocus="OnQuickNoteLostFocus"
+                                             AutomationProperties.Name="Hızlı not metin kutusu" />
+                                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,8,0,2">
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="26" CornerRadius="13" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PlayButtonBackground}"
+                                                Click="OnShelfQuickNoteSaveClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Notu rafa ekle">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="12,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE73E;" FontSize="10" Foreground="{ThemeResource PlayButtonForeground}" />
+                                                <TextBlock Text="Rafa Ekle" FontSize="10.5" FontWeight="SemiBold" Foreground="{ThemeResource PlayButtonForeground}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
 
                             <!-- In-Island Quick Look Overlay (Double-Click or Context Menu) -->
                             <Border x:Name="ShelfQuickLookOverlay"

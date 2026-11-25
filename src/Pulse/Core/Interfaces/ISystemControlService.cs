@@ -30,6 +30,12 @@ public interface ISystemControlService
 
     void SetMute(bool muted);
 
+    /// <summary>Returns true when the default capture (microphone) endpoint is muted.</summary>
+    bool IsMicMuted() => false;
+
+    /// <summary>Toggles the default capture (microphone) endpoint mute state and returns the new muted state.</summary>
+    bool ToggleMicMute() => false;
+
     /// <summary>Returns the friendly name and glyph for the default render audio endpoint.</summary>
     (string Name, string Glyph) GetActiveAudioDevice() => ("Hoparlör", "\uE7F5");
 

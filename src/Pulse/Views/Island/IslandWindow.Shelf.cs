@@ -401,6 +401,58 @@ public sealed partial class IslandWindow
         }
     }
 
+    private void OnShelfOpenQuickNoteClick(object sender, RoutedEventArgs e)
+    {
+        _collapseDelayTimer.Stop();
+        _viewModel.OpenQuickNote();
+        _ = DispatcherQueue.TryEnqueue(() =>
+        {
+            if (QuickNoteInputBox is not null)
+            {
+                QuickNoteInputBox.Focus(FocusState.Programmatic);
+            }
+        });
+    }
+
+    private void OnShelfQuickNoteCancelClick(object sender, RoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+        _viewModel.CloseQuickNote();
+    }
+
+    private async void OnShelfQuickNoteSaveClick(object sender, RoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+        await _viewModel.SubmitQuickNoteAsync();
+    }
+
+    private async void OnQuickNoteKeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key == global::Windows.System.VirtualKey.Enter)
+        {
+            e.Handled = true;
+            _isInteractingWithControl = false;
+            await _viewModel.SubmitQuickNoteAsync();
+        }
+        else if (e.Key == global::Windows.System.VirtualKey.Escape)
+        {
+            e.Handled = true;
+            _isInteractingWithControl = false;
+            _viewModel.CloseQuickNote();
+        }
+    }
+
+    private void OnQuickNoteGotFocus(object sender, RoutedEventArgs e)
+    {
+        _isInteractingWithControl = true;
+        _collapseDelayTimer.Stop();
+    }
+
+    private void OnQuickNoteLostFocus(object sender, RoutedEventArgs e)
+    {
+        _isInteractingWithControl = false;
+    }
+
     private async void OnShelfCardCopyClick(object sender, RoutedEventArgs e)
     {
         if (sender is FrameworkElement fe && fe.Tag is string path && !string.IsNullOrWhiteSpace(path))

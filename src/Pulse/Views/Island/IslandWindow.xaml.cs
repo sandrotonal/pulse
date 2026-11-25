@@ -1047,6 +1047,22 @@ public sealed partial class IslandWindow : Window
         {
             UpdateFocusProgressFill();
         }
+        else if (e.PropertyName == nameof(IslandViewModel.DoNotDisturb) && DoNotDisturbMenuItem is not null)
+        {
+            DoNotDisturbMenuItem.IsChecked = _viewModel.DoNotDisturb;
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.FocusDefaultMinutes) && StartFocusContextItem is not null)
+        {
+            StartFocusContextItem.Text = $"Başlat ({_viewModel.FocusDefaultMinutes} Dk)";
+        }
+        else if (e.PropertyName == nameof(IslandViewModel.IsMicMuted) && MicMuteContextItem is not null)
+        {
+            MicMuteContextItem.Text = _viewModel.IsMicMuted ? "Mikrofonu Aç" : "Mikrofonu Sessize Al";
+        }
+        else if (e.PropertyName == nameof(MediaViewModel.AutoCollapseDelayMs) && _collapseDelayTimer.IsRunning)
+        {
+            RestartCollapseDelayTimer();
+        }
     }
 
     private void ApplyCompactScale(double scale)
@@ -2834,6 +2850,11 @@ public sealed partial class IslandWindow : Window
         if (StartFocusContextItem is not null)
         {
             StartFocusContextItem.Text = $"Başlat ({_viewModel.FocusDefaultMinutes} Dk)";
+        }
+
+        if (MicMuteContextItem is not null)
+        {
+            MicMuteContextItem.Text = _viewModel.IsMicMuted ? "Mikrofonu Aç" : "Mikrofonu Sessize Al";
         }
 
         var showDeveloperMenus = (GetKeyState(VkShift) & 0x8000) != 0;
