@@ -33,7 +33,15 @@ public sealed class ShelfItemViewModel
     public string TooltipText => Model.TooltipText;
     public bool IsPinned => Model.IsPinned;
     public Visibility PinVisibility => Model.IsPinned ? Visibility.Visible : Visibility.Collapsed;
+    public double PinButtonOpacity => Model.IsPinned ? 1.0 : 0.0;
     public string PinMenuLabel => Model.IsPinned ? "Sabitlemeyi Kaldır" : "Rafa Sabitle";
+    public string PinToolTip => Model.IsPinned ? "Sabitlemeyi Kaldır" : "Rafa Sabitle";
+    public SolidColorBrush PinBadgeBackgroundBrush => Model.IsPinned
+        ? new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF))
+        : new SolidColorBrush(Color.FromArgb(0xE6, 0x1A, 0x1B, 0x20));
+    public SolidColorBrush PinBadgeForegroundBrush => Model.IsPinned
+        ? new SolidColorBrush(Color.FromArgb(0xFF, 0x11, 0x12, 0x15))
+        : new SolidColorBrush(Color.FromArgb(0xFF, 0xF3, 0xF4, 0xF6));
     public bool IsImage => Model.Kind == ShelfItemKind.Image;
     public Visibility ImageActionsVisibility => IsImage ? Visibility.Visible : Visibility.Collapsed;
     public string SubtitleLabel => Model.Kind == ShelfItemKind.Folder

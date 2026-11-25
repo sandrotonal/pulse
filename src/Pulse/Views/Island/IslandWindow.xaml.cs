@@ -188,6 +188,7 @@ public sealed partial class IslandWindow : Window
     private bool _lastFocusTimerActive;
     private bool _lastNotificationActive;
     private bool _lastFileOpActive;
+    private bool _isContextMenuOpen;
     private double _appliedCompactScale = double.NaN;
     private readonly char[] _classNameBuffer = new char[64];
     private readonly char[] _titleBuffer = new char[256];
@@ -2405,6 +2406,12 @@ public sealed partial class IslandWindow : Window
 
     private void RestartCollapseDelayTimer()
     {
+        if (_isContextMenuOpen)
+        {
+            _collapseDelayTimer.Stop();
+            return;
+        }
+
         _collapseDelayTimer.Interval = GetCollapseDelayInterval();
         _collapseDelayTimer.Stop();
         _collapseDelayTimer.Start();
@@ -2432,7 +2439,7 @@ public sealed partial class IslandWindow : Window
     private void OnCollapseDelayTimerTick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
-        if (_isDragHovering || _isDraggingOut)
+        if (_isDragHovering || _isDraggingOut || _isContextMenuOpen)
         {
             return;
         }
@@ -2807,6 +2814,9 @@ public sealed partial class IslandWindow : Window
 
     private void OnContextFlyoutOpening(object sender, object e)
     {
+        _isContextMenuOpen = true;
+        _collapseDelayTimer.Stop();
+
         if (DoNotDisturbMenuItem is not null)
         {
             DoNotDisturbMenuItem.IsChecked = _viewModel.DoNotDisturb;
@@ -2830,6 +2840,15 @@ public sealed partial class IslandWindow : Window
         if (NotificationSimulatorSubMenu is not null)
         {
             NotificationSimulatorSubMenu.Visibility = devVisibility;
+        }
+    }
+
+    private void OnContextFlyoutClosed(object sender, object e)
+    {
+        _isContextMenuOpen = false;
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
+        {
+            RestartCollapseDelayTimer();
         }
     }
 

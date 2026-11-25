@@ -185,7 +185,7 @@
               PointerWheelChanged="OnSurfacePointerWheelChanged">
 
             <Grid.ContextFlyout>
-                <MenuFlyout x:Name="IslandContextFlyout" Opening="OnContextFlyoutOpening">
+                <MenuFlyout x:Name="IslandContextFlyout" Opening="OnContextFlyoutOpening" Closed="OnContextFlyoutClosed">
                     <MenuFlyoutItem Text="Genişlet / Daralt" Click="OnToggleExpandedClick">
                         <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE740;" /></MenuFlyoutItem.Icon>
                     </MenuFlyoutItem>
@@ -1416,7 +1416,7 @@
                                                         AutomationProperties.Name="{Binding DisplayName}"
                                                         ToolTipService.ToolTip="{Binding TooltipText}">
                                                     <Border.ContextFlyout>
-                                                        <MenuFlyout>
+                                                        <MenuFlyout Opening="OnShelfCardMenuOpening" Closed="OnShelfCardMenuClosed">
                                                             <MenuFlyoutItem Text="Metni Kopyala (OCR)"
                                                                             Visibility="{Binding ImageActionsVisibility}"
                                                                             Tag="{Binding FilePath}"
@@ -1484,18 +1484,46 @@
                                                             </Grid>
                                                         </Border>
 
-                                                        <!-- Pinned indicator badge -->
-                                                        <Border Grid.Row="0"
-                                                                Visibility="{Binding PinVisibility}"
-                                                                Width="16" Height="16" CornerRadius="8"
+                                                        <!-- Pin / Unpin badge (always visible when pinned, hover-revealed otherwise) -->
+                                                        <Button x:Name="CardPinButton"
+                                                                Grid.Row="0"
+                                                                Style="{StaticResource IslandButtonStyle}"
+                                                                Width="18" Height="18" CornerRadius="9"
                                                                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                                 Margin="0,0,2,2"
+                                                                Opacity="{Binding PinButtonOpacity}"
+                                                                Background="{Binding PinBadgeBackgroundBrush}"
+                                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                                BorderThickness="1"
+                                                                Tag="{Binding Id}"
+                                                                PointerPressed="OnButtonPointerPressed"
+                                                                PointerReleased="OnButtonPointerReleased"
+                                                                Click="OnShelfCardPinClick"
+                                                                AutomationProperties.Name="{Binding PinMenuLabel}"
+                                                                ToolTipService.ToolTip="{Binding PinToolTip}">
+                                                            <FontIcon Glyph="&#xE718;" FontSize="7.5" Foreground="{Binding PinBadgeForegroundBrush}" />
+                                                        </Button>
+
+                                                        <!-- Hover-revealed 1-click OCR badge (images only) -->
+                                                        <Button x:Name="CardOcrButton"
+                                                                Grid.Row="0"
+                                                                Style="{StaticResource IslandButtonStyle}"
+                                                                Visibility="{Binding ImageActionsVisibility}"
+                                                                Width="18" Height="18" CornerRadius="9"
+                                                                HorizontalAlignment="Left" VerticalAlignment="Bottom"
+                                                                Margin="2,0,0,2"
+                                                                Opacity="0"
                                                                 Background="{ThemeResource ShelfActionBadgeBackground}"
                                                                 BorderBrush="{ThemeResource ShelfActionButtonBorder}"
                                                                 BorderThickness="1"
-                                                                IsHitTestVisible="False">
-                                                            <FontIcon Glyph="&#xE718;" FontSize="7.5" Foreground="{ThemeResource Accent}" />
-                                                        </Border>
+                                                                Tag="{Binding FilePath}"
+                                                                PointerPressed="OnButtonPointerPressed"
+                                                                PointerReleased="OnButtonPointerReleased"
+                                                                Click="OnShelfCardOcrClick"
+                                                                AutomationProperties.Name="Görseldeki metni kopyala"
+                                                                ToolTipService.ToolTip="Metni Kopyala (OCR)">
+                                                            <FontIcon Glyph="&#xE8C1;" FontSize="7.5" Foreground="{ThemeResource PrimaryText}" />
+                                                        </Button>
 
                                                         <!-- Hover-revealed quick remove badge -->
                                                         <Button x:Name="CardRemoveButton"

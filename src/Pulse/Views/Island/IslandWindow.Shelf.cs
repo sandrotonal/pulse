@@ -320,41 +320,11 @@ public sealed partial class IslandWindow
     {
         try
         {
-            var removeBtn = FindDescendantByName<Button>(card, "CardRemoveButton");
-            if (removeBtn is not null)
-            {
-                if (ReducedMotion)
-                {
-                    removeBtn.Opacity = hovered ? 1.0 : 0.0;
-                }
-                else
-                {
-                    var btnVisual = ElementCompositionPreview.GetElementVisual(removeBtn);
-                    var fade = btnVisual.Compositor.CreateScalarKeyFrameAnimation();
-                    fade.Duration = TimeSpan.FromMilliseconds(110);
-                    fade.InsertKeyFrame(1f, hovered ? 1f : 0f);
-                    btnVisual.StartAnimation("Opacity", fade);
-                    removeBtn.Opacity = hovered ? 1.0 : 0.0;
-                }
-            }
-
-            var copyBtn = FindDescendantByName<Button>(card, "CardCopyButton");
-            if (copyBtn is not null)
-            {
-                if (ReducedMotion)
-                {
-                    copyBtn.Opacity = hovered ? 1.0 : 0.0;
-                }
-                else
-                {
-                    var btnVisual = ElementCompositionPreview.GetElementVisual(copyBtn);
-                    var fade = btnVisual.Compositor.CreateScalarKeyFrameAnimation();
-                    fade.Duration = TimeSpan.FromMilliseconds(110);
-                    fade.InsertKeyFrame(1f, hovered ? 1f : 0f);
-                    btnVisual.StartAnimation("Opacity", fade);
-                    copyBtn.Opacity = hovered ? 1.0 : 0.0;
-                }
-            }
+            var isPinned = card.DataContext is ShelfItemViewModel vm && vm.IsPinned;
+            FadeShelfCardButton(card, "CardRemoveButton", hovered);
+            FadeShelfCardButton(card, "CardCopyButton", hovered);
+            FadeShelfCardButton(card, "CardOcrButton", hovered);
+            FadeShelfCardButton(card, "CardPinButton", hovered || isPinned);
 
             if (ReducedMotion)
             {
@@ -406,6 +376,44 @@ public sealed partial class IslandWindow
         if (sender is FrameworkElement fe && fe.Tag is string path && !string.IsNullOrWhiteSpace(path))
         {
             _viewModel.OpenShelfItemInExplorer(path);
+        }
+    }
+
+    private void FadeShelfCardButton(Border card, string buttonName, bool visible)
+    {
+        var btn = FindDescendantByName<Button>(card, buttonName);
+        if (btn is null)
+        {
+            return;
+        }
+
+        var target = visible ? 1.0 : 0.0;
+        if (ReducedMotion)
+        {
+            btn.Opacity = target;
+            return;
+        }
+
+        var btnVisual = ElementCompositionPreview.GetElementVisual(btn);
+        var fade = btnVisual.Compositor.CreateScalarKeyFrameAnimation();
+        fade.Duration = TimeSpan.FromMilliseconds(110);
+        fade.InsertKeyFrame(1f, (float)target);
+        btnVisual.StartAnimation("Opacity", fade);
+        btn.Opacity = target;
+    }
+
+    private void OnShelfCardMenuOpening(object sender, object e)
+    {
+        _isContextMenuOpen = true;
+        _collapseDelayTimer.Stop();
+    }
+
+    private void OnShelfCardMenuClosed(object sender, object e)
+    {
+        _isContextMenuOpen = false;
+        if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
+        {
+            RestartCollapseDelayTimer();
         }
     }
 

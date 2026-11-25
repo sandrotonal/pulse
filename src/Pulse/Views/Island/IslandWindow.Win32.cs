@@ -889,7 +889,7 @@ public sealed partial class IslandWindow
         if (uMsg == WM_KILLFOCUS || uMsg == WM_CAPTURECHANGED)
         {
             _isInteractingWithControl = false;
-            if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
+            if (!_isContextMenuOpen && !_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
             {
                 RestartCollapseDelayTimer();
             }
