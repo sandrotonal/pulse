@@ -220,7 +220,7 @@ public partial class App : Application
         _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
         _windowsToastService = new WindowsToastNotificationService(_systemEventService, _settingsService);
         _bluetoothWatcherService = new BluetoothWatcherService(_systemEventService, _settingsService);
-        _screenshotWatcherService = new ScreenshotWatcherService(_systemEventService);
+        _screenshotWatcherService = new ScreenshotWatcherService(_systemEventService, dropShelf: _dropShelfService, settings: _settingsService);
 
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
         _weatherService = new OpenMeteoWeatherService(_httpClient);

@@ -17,7 +17,8 @@ public sealed record ShelfItem(
     string IconGlyph,
     long FileSizeBytes,
     bool IsTemporaryStaging,
-    DateTimeOffset AddedAtUtc)
+    DateTimeOffset AddedAtUtc,
+    bool IsPinned = false)
 {
     public string SizeLabel => Kind == ShelfItemKind.Folder
         ? "Klasör"

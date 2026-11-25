@@ -31,6 +31,11 @@ public sealed class ShelfItemViewModel
     public string IconGlyph => Model.IconGlyph;
     public string SizeLabel => Model.SizeLabel;
     public string TooltipText => Model.TooltipText;
+    public bool IsPinned => Model.IsPinned;
+    public Visibility PinVisibility => Model.IsPinned ? Visibility.Visible : Visibility.Collapsed;
+    public string PinMenuLabel => Model.IsPinned ? "Sabitlemeyi Kaldır" : "Rafa Sabitle";
+    public bool IsImage => Model.Kind == ShelfItemKind.Image;
+    public Visibility ImageActionsVisibility => IsImage ? Visibility.Visible : Visibility.Collapsed;
     public string SubtitleLabel => Model.Kind == ShelfItemKind.Folder
         ? "Klasör"
         : string.IsNullOrWhiteSpace(Model.ExtensionBadge)

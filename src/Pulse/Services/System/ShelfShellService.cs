@@ -295,4 +295,64 @@ public static class ShelfShellService
 
         return ".png";
     }
+
+    public static async Task<string?> ExtractTextFromImageAsync(string filePath)
+    {
+        if (string.IsNullOrWhiteSpace(filePath) || !File.Exists(filePath))
+        {
+            return null;
+        }
+
+        try
+        {
+            var file = await StorageFile.GetFileFromPathAsync(filePath);
+            using var stream = await file.OpenAsync(FileAccessMode.Read);
+            var decoder = await global::Windows.Graphics.Imaging.BitmapDecoder.CreateAsync(stream);
+            using var softwareBitmap = await decoder.GetSoftwareBitmapAsync(
+                global::Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8,
+                global::Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied);
+
+            var engine = global::Windows.Media.Ocr.OcrEngine.TryCreateFromUserProfileLanguages()
+                ?? global::Windows.Media.Ocr.OcrEngine.TryCreateFromLanguage(new global::Windows.Globalization.Language("en-US"));
+
+            if (engine is null)
+            {
+                return null;
+            }
+
+            var result = await engine.RecognizeAsync(softwareBitmap);
+            var text = result?.Text?.Trim();
+            return string.IsNullOrWhiteSpace(text) ? null : text;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("ShelfShellService.ExtractTextFromImageAsync", ex, $"Path={filePath}");
+            return null;
+        }
+    }
+
+    public static bool CopyTextToClipboard(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return false;
+        }
+
+        try
+        {
+            var package = new DataPackage
+            {
+                RequestedOperation = DataPackageOperation.Copy
+            };
+            package.SetText(text);
+            Clipboard.SetContent(package);
+            Clipboard.Flush();
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("ShelfShellService.CopyTextToClipboard", ex);
+            return false;
+        }
+    }
 }

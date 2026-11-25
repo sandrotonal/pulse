@@ -409,6 +409,22 @@ public sealed partial class IslandWindow
         }
     }
 
+    private void OnShelfCardPinClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is string itemId && !string.IsNullOrWhiteSpace(itemId))
+        {
+            _viewModel.TogglePinShelfItem(itemId);
+        }
+    }
+
+    private async void OnShelfCardOcrClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is string path && !string.IsNullOrWhiteSpace(path))
+        {
+            await _viewModel.CopyOcrTextFromImageAsync(path);
+        }
+    }
+
     private async void OnShelfRemoveItemClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement fe || fe.Tag is not string itemId || string.IsNullOrWhiteSpace(itemId))

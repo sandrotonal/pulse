@@ -1417,10 +1417,21 @@
                                                         ToolTipService.ToolTip="{Binding TooltipText}">
                                                     <Border.ContextFlyout>
                                                         <MenuFlyout>
+                                                            <MenuFlyoutItem Text="Metni Kopyala (OCR)"
+                                                                            Visibility="{Binding ImageActionsVisibility}"
+                                                                            Tag="{Binding FilePath}"
+                                                                            Click="OnShelfCardOcrClick">
+                                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C1;" /></MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
                                                             <MenuFlyoutItem Text="Panoya Kopyala"
                                                                             Tag="{Binding FilePath}"
                                                                             Click="OnShelfCardCopyClick">
                                                                 <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE8C8;" /></MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
+                                                            <MenuFlyoutItem Text="{Binding PinMenuLabel}"
+                                                                            Tag="{Binding Id}"
+                                                                            Click="OnShelfCardPinClick">
+                                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE718;" /></MenuFlyoutItem.Icon>
                                                             </MenuFlyoutItem>
                                                             <MenuFlyoutItem Text="Klasörde Göster"
                                                                             Tag="{Binding FilePath}"
@@ -1471,6 +1482,19 @@
                                                                     </Border>
                                                                 </StackPanel>
                                                             </Grid>
+                                                        </Border>
+
+                                                        <!-- Pinned indicator badge -->
+                                                        <Border Grid.Row="0"
+                                                                Visibility="{Binding PinVisibility}"
+                                                                Width="16" Height="16" CornerRadius="8"
+                                                                HorizontalAlignment="Right" VerticalAlignment="Bottom"
+                                                                Margin="0,0,2,2"
+                                                                Background="{ThemeResource ShelfActionBadgeBackground}"
+                                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                                BorderThickness="1"
+                                                                IsHitTestVisible="False">
+                                                            <FontIcon Glyph="&#xE718;" FontSize="7.5" Foreground="{ThemeResource Accent}" />
                                                         </Border>
 
                                                         <!-- Hover-revealed quick remove badge -->

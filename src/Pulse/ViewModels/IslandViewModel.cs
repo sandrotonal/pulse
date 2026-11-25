@@ -305,6 +305,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             if (!_disposed && !string.IsNullOrEmpty(path))
             {
                 _systemEvents.ReportScreenshotSaved(path);
+                if (_dropShelf is not null && (_settingsService?.Current.AutoAddScreenshotsToShelf ?? true))
+                {
+                    _ = _dropShelf.AddPath(path);
+                }
             }
         });
 
@@ -514,6 +518,53 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         if (!_disposed && !string.IsNullOrWhiteSpace(itemId))
         {
             _dropShelf.Remove(itemId);
+        }
+    }
+
+    public void TogglePinShelfItem(string itemId)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(itemId))
+        {
+            return;
+        }
+
+        if (_dropShelf.TogglePin(itemId))
+        {
+            var pinned = _dropShelf.Items.FirstOrDefault(i => i.Id == itemId)?.IsPinned ?? false;
+            ShowShelfStatus(pinned ? "Rafa sabitlendi" : "Sabitleme kaldırıldı");
+        }
+    }
+
+    public async Task CopyOcrTextFromImageAsync(string filePath)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var extracted = await ShelfShellService.ExtractTextFromImageAsync(filePath);
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(extracted))
+            {
+                ShowShelfStatus("Okunabilir metin bulunamadı");
+                return;
+            }
+
+            if (ShelfShellService.CopyTextToClipboard(extracted))
+            {
+                ShowShelfStatus("Görseldeki metin kopyalandı");
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.CopyOcrTextFromImageAsync", ex);
+            ShowShelfStatus("Metin okunamadı");
         }
     }
 
