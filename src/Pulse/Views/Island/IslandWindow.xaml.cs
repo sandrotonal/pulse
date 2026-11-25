@@ -1,4 +1,4 @@
-﻿using System.ComponentModel;
+using System.ComponentModel;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Composition;
