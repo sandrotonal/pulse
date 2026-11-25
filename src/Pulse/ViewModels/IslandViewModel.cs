@@ -1445,7 +1445,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public void OnPointerEntered() => _media.OnPointerEntered();
     public void OnPointerExited() => _media.OnPointerExited();
     public void ToggleExpanded() => _media.ToggleExpanded();
-    public void Collapse() => _media.Collapse();
+    public void Collapse()
+    {
+        CloseQuickLook();
+        _media.Collapse();
+    }
     public void CompleteCollapse() => _media.CompleteCollapse();
     public void BeginScrub(double percent) => _media.BeginScrub(percent);
     public void UpdateScrub(double percent) => _media.UpdateScrub(percent);

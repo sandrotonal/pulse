@@ -2436,6 +2436,9 @@ public sealed partial class IslandWindow : Window
     }
 
     // Input handlers and 04 Auto-collapse sequence
+    private bool IsCursorCurrentlyInsideIsland()
+        => GetCursorPos(out var pt) && IsPointInsideVisibleIsland(pt.X, pt.Y);
+
     private void OnCollapseDelayTimerTick(DispatcherQueueTimer sender, object args)
     {
         sender.Stop();
@@ -2446,6 +2449,12 @@ public sealed partial class IslandWindow : Window
 
         if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.IsScrubbing && !_viewModel.PreserveFocusPanel)
         {
+            if (IsCursorCurrentlyInsideIsland())
+            {
+                _isPointerOverSurface = true;
+                return;
+            }
+
             _isInteractingWithControl = false;
             _viewModel.Collapse();
         }
@@ -2846,6 +2855,13 @@ public sealed partial class IslandWindow : Window
     private void OnContextFlyoutClosed(object sender, object e)
     {
         _isContextMenuOpen = false;
+        if (IsCursorCurrentlyInsideIsland())
+        {
+            _isPointerOverSurface = true;
+            _collapseDelayTimer.Stop();
+            return;
+        }
+
         if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
         {
             RestartCollapseDelayTimer();

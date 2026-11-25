@@ -359,6 +359,7 @@ public sealed partial class IslandWindow
         if (sender is FrameworkElement fe && fe.DataContext is ShelfItemViewModel item)
         {
             e.Handled = true;
+            _collapseDelayTimer.Stop();
             _viewModel.OpenQuickLook(item);
         }
     }
@@ -367,6 +368,7 @@ public sealed partial class IslandWindow
     {
         if (sender is FrameworkElement fe && fe.DataContext is ShelfItemViewModel item)
         {
+            _collapseDelayTimer.Stop();
             _viewModel.OpenQuickLook(item);
         }
     }
@@ -447,6 +449,13 @@ public sealed partial class IslandWindow
     private void OnShelfCardMenuClosed(object sender, object e)
     {
         _isContextMenuOpen = false;
+        if (IsCursorCurrentlyInsideIsland())
+        {
+            _isPointerOverSurface = true;
+            _collapseDelayTimer.Stop();
+            return;
+        }
+
         if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
         {
             RestartCollapseDelayTimer();
