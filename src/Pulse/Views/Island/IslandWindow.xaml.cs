@@ -4673,6 +4673,18 @@ public sealed partial class IslandWindow : Window
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "Accent", palette.AccentArgb);
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SeekAccent", palette.AccentArgb);
 
+        // Drop Shelf theme-aware surface tokens
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfSurfaceSubtle", palette.IsLightTheme ? 0x0A000000u : 0x0CFFFFFFu);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfCardBackground", palette.IsLightTheme ? 0x0D000000u : 0x14FFFFFFu);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfCardBorder", palette.IsLightTheme ? 0x1A000000u : 0x1EFFFFFFu);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfThumbnailBackground", palette.IsLightTheme ? 0xFFEBEFF5u : 0xFF0A0B0Eu);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfActionBadgeBackground", palette.IsLightTheme ? 0xE6FFFFFFu : 0xE61A1B20u);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfDockBackground", palette.IsLightTheme ? 0x0A000000u : 0x0EFFFFFFu);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfDropOverlayBackground", palette.IsLightTheme ? 0xEBEEF4FAu : 0xE6111215u);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfDropOverlayBorder", palette.IsLightTheme ? 0x66000000u : 0x90FFFFFFu);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfActionButtonBackground", palette.IsLightTheme ? 0x12000000u : 0x16FFFFFFu);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "ShelfActionButtonBorder", palette.IsLightTheme ? 0x1E000000u : 0x24FFFFFFu);
+
         if (WindowRoot.RequestedTheme != requestedTheme)
         {
             WindowRoot.RequestedTheme = requestedTheme;
@@ -4719,6 +4731,9 @@ public sealed partial class IslandWindow : Window
             ExpandedSeekBar.AccentBrush = DesktopFrostService.CreateBrush(palette.AccentArgb);
             ExpandedSeekBar.TrackBackgroundBrush = DesktopFrostService.CreateBrush(palette.IsLightTheme ? 0x29000000u : 0x2DFFFFFFu);
             ExpandedSeekBar.ThumbBrush = DesktopFrostService.CreateBrush(palette.IsLightTheme ? 0xFF141518u : 0xFFFFFFFFu);
+            ExpandedSeekBar.TooltipBackgroundBrush = DesktopFrostService.CreateBrush(palette.IsLightTheme ? 0xF2FFFFFFu : 0xE618181Au);
+            ExpandedSeekBar.TooltipBorderBrush = DesktopFrostService.CreateBrush(palette.IsLightTheme ? 0x24000000u : 0x33FFFFFFu);
+            ExpandedSeekBar.TooltipForegroundBrush = DesktopFrostService.CreateBrush(palette.IsLightTheme ? 0xFF141518u : 0xFFFFFFFFu);
         }
 
         if (_isDotAnimating)

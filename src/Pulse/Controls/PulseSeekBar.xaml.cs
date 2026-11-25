@@ -73,6 +73,45 @@ public sealed partial class PulseSeekBar : UserControl
                 }
             }));
 
+    public static readonly DependencyProperty TooltipBackgroundBrushProperty =
+        DependencyProperty.Register(
+            nameof(TooltipBackgroundBrush),
+            typeof(Brush),
+            typeof(PulseSeekBar),
+            new PropertyMetadata(new SolidColorBrush(Windows.UI.Color.FromArgb(230, 24, 24, 26)), (d, e) =>
+            {
+                if (d is PulseSeekBar sb && e.NewValue is Brush brush)
+                {
+                    sb.ScrubTooltip.Background = brush;
+                }
+            }));
+
+    public static readonly DependencyProperty TooltipBorderBrushProperty =
+        DependencyProperty.Register(
+            nameof(TooltipBorderBrush),
+            typeof(Brush),
+            typeof(PulseSeekBar),
+            new PropertyMetadata(new SolidColorBrush(Windows.UI.Color.FromArgb(51, 255, 255, 255)), (d, e) =>
+            {
+                if (d is PulseSeekBar sb && e.NewValue is Brush brush)
+                {
+                    sb.ScrubTooltip.BorderBrush = brush;
+                }
+            }));
+
+    public static readonly DependencyProperty TooltipForegroundBrushProperty =
+        DependencyProperty.Register(
+            nameof(TooltipForegroundBrush),
+            typeof(Brush),
+            typeof(PulseSeekBar),
+            new PropertyMetadata(new SolidColorBrush(Colors.White), (d, e) =>
+            {
+                if (d is PulseSeekBar sb && e.NewValue is Brush brush)
+                {
+                    sb.ScrubTooltipText.Foreground = brush;
+                }
+            }));
+
     private bool _isDragging;
     private bool _isHovered;
 
@@ -129,6 +168,24 @@ public sealed partial class PulseSeekBar : UserControl
     {
         get => (Brush)GetValue(ThumbBrushProperty);
         set => SetValue(ThumbBrushProperty, value);
+    }
+
+    public Brush TooltipBackgroundBrush
+    {
+        get => (Brush)GetValue(TooltipBackgroundBrushProperty);
+        set => SetValue(TooltipBackgroundBrushProperty, value);
+    }
+
+    public Brush TooltipBorderBrush
+    {
+        get => (Brush)GetValue(TooltipBorderBrushProperty);
+        set => SetValue(TooltipBorderBrushProperty, value);
+    }
+
+    public Brush TooltipForegroundBrush
+    {
+        get => (Brush)GetValue(TooltipForegroundBrushProperty);
+        set => SetValue(TooltipForegroundBrushProperty, value);
     }
 
     private void OnSizeChanged(object sender, SizeChangedEventArgs e)

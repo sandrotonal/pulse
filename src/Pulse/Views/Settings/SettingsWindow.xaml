@@ -511,8 +511,11 @@
                                         Margin="8,0,0,0" VerticalAlignment="Center" />
                             </Grid>
 
-                            <TextBlock Text="{Binding LocationStatusMessage}" FontSize="12"
-                                       Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="LocationStatusText"
+                                       Text="{Binding LocationStatusMessage}" FontSize="12"
+                                       Foreground="{ThemeResource SettingsSecondary}"
+                                       AutomationProperties.LiveSetting="Polite"
+                                       TextWrapping="Wrap" />
                             <TextBlock Text="Hava durumu Open-Meteo'dan alınır. Otomatik konum için IP adresiniz ipwho.is'e gönderilir."
                                        FontSize="11" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                         </StackPanel>
@@ -941,9 +944,11 @@
                     </StackPanel>
                 </Button>
 
-                <TextBlock Grid.Column="1"
+                <TextBlock x:Name="StatusMessageText"
+                           Grid.Column="1"
                            Text="{Binding StatusMessage}"
                            Foreground="{ThemeResource SettingsAccent}"
+                           AutomationProperties.LiveSetting="Polite"
                            FontSize="12"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Center"

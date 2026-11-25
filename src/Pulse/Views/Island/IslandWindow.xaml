@@ -30,6 +30,18 @@
             <SolidColorBrush x:Key="PlayButtonForeground" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="PillControlBackground" Color="#24FFFFFF" />
 
+            <!-- Drop Shelf theme-aware surface tokens -->
+            <SolidColorBrush x:Key="ShelfSurfaceSubtle" Color="#0CFFFFFF" />
+            <SolidColorBrush x:Key="ShelfCardBackground" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="ShelfCardBorder" Color="#1EFFFFFF" />
+            <SolidColorBrush x:Key="ShelfThumbnailBackground" Color="#0A0B0E" />
+            <SolidColorBrush x:Key="ShelfActionBadgeBackground" Color="#E61A1B20" />
+            <SolidColorBrush x:Key="ShelfDockBackground" Color="#0EFFFFFF" />
+            <SolidColorBrush x:Key="ShelfDropOverlayBackground" Color="#E6111215" />
+            <SolidColorBrush x:Key="ShelfDropOverlayBorder" Color="#90FFFFFF" />
+            <SolidColorBrush x:Key="ShelfActionButtonBackground" Color="#16FFFFFF" />
+            <SolidColorBrush x:Key="ShelfActionButtonBorder" Color="#24FFFFFF" />
+
             <!-- Monochrome slider palette (Apple Control Center style) -->
             <SolidColorBrush x:Key="SliderTrackValueFill" Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="#FFFFFFFF" />
@@ -486,6 +498,8 @@
                           ColumnDefinitions="Auto,*,Auto"
                           Background="Transparent"
                           PointerReleased="OnEventContentPointerReleased"
+                          AutomationProperties.Name="{Binding NotificationTitle}"
+                          ToolTipService.ToolTip="{Binding NotificationTitle}"
                           VerticalAlignment="Center">
                         <FontIcon x:Name="NotificationGlyphIcon"
                                   Grid.Column="0"
@@ -624,6 +638,7 @@
                                 Margin="0,0,8,0"
                                 Background="Transparent"
                                 PointerReleased="OnMediaSourcePointerReleased"
+                                AutomationProperties.Name="Medya uygulamasını aç"
                                 ToolTipService.ToolTip="Uygulamada aç">
                             <Grid x:Name="CompactArtInnerGrid">
                                 <Border x:Name="CompactArtFallback"
@@ -1090,6 +1105,7 @@
                                             Command="{Binding SetFocusTimer25Command}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
+                                            AutomationProperties.Name="25 Dakika Odaklanma"
                                             ToolTipService.ToolTip="25 Dakika Odaklanma" />
                                     <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Content="50 dk" FontSize="10.5"
@@ -1098,6 +1114,7 @@
                                             Command="{Binding SetFocusTimer50Command}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
+                                            AutomationProperties.Name="50 Dakika Derin Çalışma"
                                             ToolTipService.ToolTip="50 Dakika Derin Çalışma" />
                                     <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Content="5 dk" FontSize="10.5"
@@ -1106,6 +1123,7 @@
                                             Command="{Binding SetBreakTimer5Command}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
+                                            AutomationProperties.Name="5 Dakika Kısa Mola"
                                             ToolTipService.ToolTip="5 Dakika Kısa Mola" />
                                     <Button Style="{StaticResource TransportCapsuleButtonStyle}"
                                             Content="15 dk" FontSize="10.5"
@@ -1114,6 +1132,7 @@
                                             Command="{Binding SetBreakTimer15Command}"
                                             PointerPressed="OnButtonPointerPressed"
                                             PointerReleased="OnButtonPointerReleased"
+                                            AutomationProperties.Name="15 Dakika Uzun Mola"
                                             ToolTipService.ToolTip="15 Dakika Uzun Mola" />
                                 </StackPanel>
 
@@ -1301,25 +1320,25 @@
                                     Height="152"
                                     CornerRadius="20"
                                     BorderThickness="1"
-                                    BorderBrush="#25FFFFFF"
-                                    Background="#0CFFFFFF"
+                                    BorderBrush="{ThemeResource ShelfCardBorder}"
+                                    Background="{ThemeResource ShelfSurfaceSubtle}"
                                     VerticalAlignment="Center">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" Padding="14,0">
                                     <!-- Concentric Frosted Drop Target -->
                                     <Grid Width="46" Height="46" HorizontalAlignment="Center">
-                                        <Ellipse Width="46" Height="46" Fill="#14FFFFFF" Stroke="#28FFFFFF" StrokeThickness="1" />
+                                        <Ellipse Width="46" Height="46" Fill="{ThemeResource ShelfCardBackground}" Stroke="{ThemeResource ShelfCardBorder}" StrokeThickness="1" />
                                         <FontIcon Glyph="&#xE896;" FontSize="18"
-                                                  Foreground="#FFFFFFFF"
+                                                  Foreground="{ThemeResource PrimaryText}"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Grid>
                                     <TextBlock Text="Dosya, görsel veya metin bırak"
                                                FontSize="13" FontWeight="SemiBold"
-                                               Foreground="#FFFFFFFF"
+                                               Foreground="{ThemeResource PrimaryText}"
                                                HorizontalAlignment="Center"
                                                TextAlignment="Center" />
                                     <TextBlock Text="Pencereler arası anında transfer rafı"
                                                FontSize="11" FontWeight="Normal"
-                                               Foreground="#8E929E"
+                                               Foreground="{ThemeResource SecondaryText}"
                                                HorizontalAlignment="Center"
                                                TextAlignment="Center" />
                                     <!-- Action Capsules -->
@@ -1327,36 +1346,36 @@
                                         <Button Style="{StaticResource IslandButtonStyle}"
                                                 Height="28" CornerRadius="14"
                                                 MinWidth="0"
-                                                Background="#16FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1"
+                                                Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                 Command="{Binding PasteToShelfCommand}"
                                                 PointerPressed="OnButtonPointerPressed"
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Panodan rafa ekle"
                                                 ToolTipService.ToolTip="Panodaki dosya veya metni ekle (Ctrl+V)">
                                             <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xE77F;" FontSize="11" Foreground="#FFFFFFFF" />
-                                                <TextBlock Text="Panodan Ekle" FontSize="11" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                                                <FontIcon Glyph="&#xE77F;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Panodan Ekle" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
                                         <Button Style="{StaticResource IslandButtonStyle}"
                                                 Height="28" CornerRadius="14"
                                                 MinWidth="0"
-                                                Background="#16FFFFFF" BorderBrush="#26FFFFFF" BorderThickness="1"
+                                                Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                 Click="OnShelfBrowseFilesClick"
                                                 PointerPressed="OnButtonPointerPressed"
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Bilgisayardan dosya seç"
                                                 ToolTipService.ToolTip="Bilgisayardan dosya seçip rafa koy">
                                             <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xE8E5;" FontSize="11" Foreground="#FFFFFFFF" />
-                                                <TextBlock Text="Dosya Seç" FontSize="11" FontWeight="Medium" Foreground="#FFFFFFFF" />
+                                                <FontIcon Glyph="&#xE8E5;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Dosya Seç" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
                                     <TextBlock Text="{Binding ShelfStatusBanner}"
                                                Visibility="{Binding ShelfStatusBannerVisibility}"
                                                FontSize="10.5" FontWeight="SemiBold"
-                                               Foreground="#E5E7EB"
+                                               Foreground="{ThemeResource PrimaryText}"
                                                HorizontalAlignment="Center" Margin="0,2,0,0" />
                                 </StackPanel>
                             </Border>
@@ -1384,8 +1403,8 @@
                                             <DataTemplate>
                                                 <Border Width="94" Height="110"
                                                         CornerRadius="14"
-                                                        Background="#14FFFFFF"
-                                                        BorderBrush="#1EFFFFFF"
+                                                        Background="{ThemeResource ShelfCardBackground}"
+                                                        BorderBrush="{ThemeResource ShelfCardBorder}"
                                                         BorderThickness="1"
                                                         CanDrag="True"
                                                         Loaded="OnShelfCardLoaded"
@@ -1394,6 +1413,7 @@
                                                         DoubleTapped="OnShelfCardDoubleTapped"
                                                         DragStarting="OnShelfItemDragStarting"
                                                         DropCompleted="OnShelfItemDropCompleted"
+                                                        AutomationProperties.Name="{Binding DisplayName}"
                                                         ToolTipService.ToolTip="{Binding TooltipText}">
                                                     <Border.ContextFlyout>
                                                         <MenuFlyout>
@@ -1424,8 +1444,8 @@
                                                         <!-- Preview thumbnail or tinted file glyph -->
                                                         <Border Grid.Row="0"
                                                                 CornerRadius="10"
-                                                                Background="#0A0B0E"
-                                                                BorderBrush="#18FFFFFF"
+                                                                Background="{ThemeResource ShelfThumbnailBackground}"
+                                                                BorderBrush="{ThemeResource ShelfCardBorder}"
                                                                 BorderThickness="1"
                                                                 HorizontalAlignment="Stretch"
                                                                 VerticalAlignment="Stretch"
@@ -1442,11 +1462,11 @@
                                                                             Spacing="3">
                                                                     <FontIcon Glyph="{Binding IconGlyph}"
                                                                               FontSize="18"
-                                                                              Foreground="#E5E7EB" />
-                                                                    <Border Background="#1CFFFFFF" CornerRadius="4" Padding="5,1" HorizontalAlignment="Center">
+                                                                              Foreground="{ThemeResource PrimaryText}" />
+                                                                    <Border Background="{ThemeResource PillControlBackground}" CornerRadius="4" Padding="5,1" HorizontalAlignment="Center">
                                                                         <TextBlock Text="{Binding ExtensionBadge}"
                                                                                    FontSize="7.5" FontWeight="SemiBold"
-                                                                                   Foreground="#9CA3AF"
+                                                                                   Foreground="{ThemeResource SecondaryText}"
                                                                                    HorizontalAlignment="Center" />
                                                                     </Border>
                                                                 </StackPanel>
@@ -1461,8 +1481,8 @@
                                                                 HorizontalAlignment="Right" VerticalAlignment="Top"
                                                                 Margin="0,2,2,0"
                                                                 Opacity="0"
-                                                                Background="#E61A1B20"
-                                                                BorderBrush="#25FFFFFF"
+                                                                Background="{ThemeResource ShelfActionBadgeBackground}"
+                                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
                                                                 BorderThickness="1"
                                                                 Tag="{Binding Id}"
                                                                 PointerPressed="OnButtonPointerPressed"
@@ -1470,7 +1490,7 @@
                                                                 Click="OnShelfRemoveItemClick"
                                                                 AutomationProperties.Name="Raftan kaldır"
                                                                 ToolTipService.ToolTip="Kaldır">
-                                                            <FontIcon Glyph="&#xE711;" FontSize="7.5" Foreground="#F3F4F6" />
+                                                            <FontIcon Glyph="&#xE711;" FontSize="7.5" Foreground="{ThemeResource PrimaryText}" />
                                                         </Button>
 
                                                         <!-- Hover-revealed quick copy badge -->
@@ -1481,8 +1501,8 @@
                                                                 HorizontalAlignment="Left" VerticalAlignment="Top"
                                                                 Margin="2,2,0,0"
                                                                 Opacity="0"
-                                                                Background="#E61A1B20"
-                                                                BorderBrush="#25FFFFFF"
+                                                                Background="{ThemeResource ShelfActionBadgeBackground}"
+                                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
                                                                 BorderThickness="1"
                                                                 Tag="{Binding FilePath}"
                                                                 PointerPressed="OnButtonPointerPressed"
@@ -1490,19 +1510,19 @@
                                                                 Click="OnShelfCardCopyClick"
                                                                 AutomationProperties.Name="Kopyala"
                                                                 ToolTipService.ToolTip="Panoya Kopyala">
-                                                            <FontIcon Glyph="&#xE8C8;" FontSize="7.5" Foreground="#F3F4F6" />
+                                                            <FontIcon Glyph="&#xE8C8;" FontSize="7.5" Foreground="{ThemeResource PrimaryText}" />
                                                         </Button>
 
                                                         <!-- Filename + Subtitle (Type · Size) -->
                                                         <StackPanel Grid.Row="1" VerticalAlignment="Center" Spacing="2" Margin="3,3,3,0">
                                                             <TextBlock Text="{Binding DisplayName}"
                                                                        FontSize="10" FontWeight="SemiBold"
-                                                                       Foreground="#F3F4F6"
+                                                                       Foreground="{ThemeResource PrimaryText}"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        MaxLines="1" />
                                                             <TextBlock Text="{Binding SubtitleLabel}"
                                                                        FontSize="8.5"
-                                                                       Foreground="#8E929E"
+                                                                       Foreground="{ThemeResource SecondaryText}"
                                                                        TextTrimming="CharacterEllipsis"
                                                                        MaxLines="1" />
                                                         </StackPanel>
@@ -1516,8 +1536,8 @@
                                 <!-- Elevated Frosted Action Dock: Drag All, Status, Paste, Pick, ZIP, Copy, Clear -->
                                 <Border Grid.Row="1"
                                         Height="34" CornerRadius="17"
-                                        Background="#0EFFFFFF"
-                                        BorderBrush="#1AFFFFFF"
+                                        Background="{ThemeResource ShelfDockBackground}"
+                                        BorderBrush="{ThemeResource ShelfCardBorder}"
                                         BorderThickness="1"
                                         Padding="4,0"
                                         Margin="0,4,0,2"
@@ -1526,8 +1546,8 @@
                                         <!-- Drag All Handle -->
                                         <Border Grid.Column="0"
                                                 Height="26" CornerRadius="13"
-                                                Background="#18FFFFFF"
-                                                BorderBrush="#25FFFFFF"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
                                                 BorderThickness="1"
                                                 Padding="8,0"
                                                 CanDrag="True"
@@ -1536,10 +1556,10 @@
                                                 AutomationProperties.Name="Raftaki tüm öğeleri sürükle"
                                                 ToolTipService.ToolTip="{Binding ShelfTotalSummary}">
                                             <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xE7C2;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                                <FontIcon Glyph="&#xE7C2;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
                                                 <TextBlock Text="Hepsini Sürükle"
                                                            FontSize="10.5" FontWeight="SemiBold"
-                                                           Foreground="#FFFFFFFF" />
+                                                           Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Border>
 
@@ -1548,7 +1568,7 @@
                                                    Text="{Binding ShelfStatusBanner}"
                                                    Visibility="{Binding ShelfStatusBannerVisibility}"
                                                    FontSize="10" FontWeight="SemiBold"
-                                                   Foreground="#F3F4F6"
+                                                   Foreground="{ThemeResource PrimaryText}"
                                                    HorizontalAlignment="Center"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"
@@ -1559,58 +1579,58 @@
                                             <Button Style="{StaticResource IslandButtonStyle}"
                                                     Width="26" Height="26" CornerRadius="13"
                                                     MinWidth="0" Padding="0"
-                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                     Command="{Binding PasteToShelfCommand}"
                                                     PointerPressed="OnButtonPointerPressed"
                                                     PointerReleased="OnButtonPointerReleased"
                                                     AutomationProperties.Name="Panodan rafa ekle"
                                                     ToolTipService.ToolTip="Panodan Ekle (Ctrl+V içeriği)">
-                                                <FontIcon Glyph="&#xE77F;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                                <FontIcon Glyph="&#xE77F;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
                                             </Button>
 
                                             <Button Style="{StaticResource IslandButtonStyle}"
                                                     Width="26" Height="26" CornerRadius="13"
                                                     MinWidth="0" Padding="0"
-                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                     Click="OnShelfBrowseFilesClick"
                                                     PointerPressed="OnButtonPointerPressed"
                                                     PointerReleased="OnButtonPointerReleased"
                                                     AutomationProperties.Name="Dosya seç ve ekle"
                                                     ToolTipService.ToolTip="Dosya Seçip Ekle">
-                                                <FontIcon Glyph="&#xE8E5;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                                <FontIcon Glyph="&#xE8E5;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
                                             </Button>
 
                                             <Button Style="{StaticResource IslandButtonStyle}"
                                                     Height="26" CornerRadius="13"
                                                     MinWidth="0"
-                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                     Command="{Binding ZipShelfCommand}"
                                                     PointerPressed="OnButtonPointerPressed"
                                                     PointerReleased="OnButtonPointerReleased"
                                                     AutomationProperties.Name="Tümünü ZIP olarak paketle"
                                                     ToolTipService.ToolTip="ZIP yap &amp; panoya kopyala">
                                                 <StackPanel Orientation="Horizontal" Spacing="4" Margin="7,0" VerticalAlignment="Center">
-                                                    <FontIcon Glyph="&#xF012;" FontSize="10" Foreground="#FFFFFFFF" />
-                                                    <TextBlock Text="ZIP" FontSize="10" FontWeight="SemiBold" Foreground="#FFFFFFFF" />
+                                                    <FontIcon Glyph="&#xF012;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                                    <TextBlock Text="ZIP" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
                                                 </StackPanel>
                                             </Button>
 
                                             <Button Style="{StaticResource IslandButtonStyle}"
                                                     Width="26" Height="26" CornerRadius="13"
                                                     MinWidth="0" Padding="0"
-                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                     Command="{Binding CopyAllShelfCommand}"
                                                     PointerPressed="OnButtonPointerPressed"
                                                     PointerReleased="OnButtonPointerReleased"
                                                     AutomationProperties.Name="Tüm öğeleri panoya kopyala"
                                                     ToolTipService.ToolTip="Panoya Kopyala (Ctrl+V)">
-                                                <FontIcon Glyph="&#xE8C8;" FontSize="10.5" Foreground="#FFFFFFFF" />
+                                                <FontIcon Glyph="&#xE8C8;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
                                             </Button>
 
                                             <Button Style="{StaticResource IslandButtonStyle}"
                                                     Width="26" Height="26" CornerRadius="13"
                                                     MinWidth="0" Padding="0"
-                                                    Background="#16FFFFFF" BorderBrush="#20FFFFFF" BorderThickness="1"
+                                                    Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                     Command="{Binding ClearShelfCommand}"
                                                     PointerPressed="OnButtonPointerPressed"
                                                     PointerReleased="OnButtonPointerReleased"
@@ -1627,26 +1647,26 @@
                             <Border x:Name="ShelfActiveDropOverlay"
                                     Visibility="{Binding ShelfDragOverlayVisibility}"
                                     CornerRadius="20"
-                                    Background="#E6111215"
-                                    BorderBrush="#90FFFFFF"
+                                    Background="{ThemeResource ShelfDropOverlayBackground}"
+                                    BorderBrush="{ThemeResource ShelfDropOverlayBorder}"
                                     BorderThickness="1"
                                     IsHitTestVisible="False"
                                     VerticalAlignment="Stretch"
                                     HorizontalAlignment="Stretch">
                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8">
                                     <Grid x:Name="ShelfDropBobIcon" Width="48" Height="48" HorizontalAlignment="Center">
-                                        <Ellipse Width="48" Height="48" Fill="#1EFFFFFF" Stroke="#90FFFFFF" StrokeThickness="1" />
+                                        <Ellipse Width="48" Height="48" Fill="{ThemeResource ShelfCardBackground}" Stroke="{ThemeResource ShelfDropOverlayBorder}" StrokeThickness="1" />
                                         <FontIcon Glyph="&#xE896;" FontSize="20"
-                                                  Foreground="#FFFFFFFF"
+                                                  Foreground="{ThemeResource PrimaryText}"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Grid>
                                     <TextBlock Text="Şimdi Bırakın — Rafa Eklensin"
                                                FontSize="13" FontWeight="SemiBold"
-                                               Foreground="#FFFFFFFF"
+                                               Foreground="{ThemeResource PrimaryText}"
                                                HorizontalAlignment="Center" />
                                     <TextBlock Text="Birden fazla dosya veya görsel desteklenir"
                                                FontSize="10.5"
-                                               Foreground="#8E929E"
+                                               Foreground="{ThemeResource SecondaryText}"
                                                HorizontalAlignment="Center" />
                                 </StackPanel>
                             </Border>
@@ -1654,7 +1674,7 @@
                             <!-- Drop Absorption Luminous Rim Flash -->
                             <Border x:Name="ShelfDropFlashBorder"
                                     CornerRadius="18"
-                                    BorderBrush="#AAFFFFFF"
+                                    BorderBrush="{ThemeResource ShelfDropOverlayBorder}"
                                     BorderThickness="1"
                                     Background="Transparent"
                                     Opacity="0"

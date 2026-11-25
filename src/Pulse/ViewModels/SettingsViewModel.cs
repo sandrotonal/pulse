@@ -413,10 +413,42 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             }
         }
     }
-    public string LocationStatusMessage { get => _locationStatusMessage; private set => SetProperty(ref _locationStatusMessage, value); }
+    public string LocationStatusMessage
+    {
+        get => _locationStatusMessage;
+        private set
+        {
+            if (SetProperty(ref _locationStatusMessage, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLocationError)));
+            }
+        }
+    }
+
+    public bool IsLocationError =>
+        _locationStatusMessage.Contains("bulunamadı", StringComparison.OrdinalIgnoreCase) ||
+        _locationStatusMessage.Contains("alınamadı", StringComparison.OrdinalIgnoreCase) ||
+        _locationStatusMessage.Contains("kullanılamıyor", StringComparison.OrdinalIgnoreCase) ||
+        _locationStatusMessage.Contains("girin", StringComparison.OrdinalIgnoreCase);
+
     public ICommand ApplyLocationCommand { get; }
 
-    public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        private set
+        {
+            if (SetProperty(ref _statusMessage, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsStatusError)));
+            }
+        }
+    }
+
+    public bool IsStatusError =>
+        _statusMessage.Contains("hata", StringComparison.OrdinalIgnoreCase) ||
+        _statusMessage.Contains("değiştirilemedi", StringComparison.OrdinalIgnoreCase) ||
+        _statusMessage.Contains("güncellenemedi", StringComparison.OrdinalIgnoreCase);
 
     public async Task InitializeAsync()
     {

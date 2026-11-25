@@ -115,9 +115,40 @@ public sealed partial class SettingsWindow : Window
 
     private void OnSettingsPropertyChanged(object? sender, PropertyChangedEventArgs args)
     {
-        if (args.PropertyName == nameof(SettingsViewModel.ThemeIndex) && sender is SettingsViewModel viewModel)
+        if (sender is not SettingsViewModel viewModel)
+        {
+            return;
+        }
+
+        if (args.PropertyName == nameof(SettingsViewModel.ThemeIndex))
         {
             ApplyTheme(viewModel.ThemeIndex);
+        }
+        else if (args.PropertyName is nameof(SettingsViewModel.StatusMessage) or nameof(SettingsViewModel.IsStatusError)
+                 or nameof(SettingsViewModel.LocationStatusMessage) or nameof(SettingsViewModel.IsLocationError))
+        {
+            UpdateStatusTextBrushes(viewModel);
+        }
+    }
+
+    private void UpdateStatusTextBrushes(SettingsViewModel viewModel)
+    {
+        if (StatusMessageText is not null)
+        {
+            var key = viewModel.IsStatusError ? "SettingsWarning" : "SettingsAccent";
+            if (SettingsRoot.Resources.TryGetValue(key, out var obj) && obj is Microsoft.UI.Xaml.Media.Brush brush)
+            {
+                StatusMessageText.Foreground = brush;
+            }
+        }
+
+        if (LocationStatusText is not null)
+        {
+            var key = viewModel.IsLocationError ? "SettingsWarning" : "SettingsSecondary";
+            if (SettingsRoot.Resources.TryGetValue(key, out var obj) && obj is Microsoft.UI.Xaml.Media.Brush brush)
+            {
+                LocationStatusText.Foreground = brush;
+            }
         }
     }
 
