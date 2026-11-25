@@ -67,5 +67,6 @@ public sealed record AppSettings
     public bool EnableGlobalHotkeys { get; init; } = true;
     public bool ScreenshotNotifications { get; init; } = true;
     public bool AutoAddScreenshotsToShelf { get; init; } = true;
+    public bool FocusAutoDoNotDisturb { get; init; }
     public bool DoNotDisturb { get; init; }
 }

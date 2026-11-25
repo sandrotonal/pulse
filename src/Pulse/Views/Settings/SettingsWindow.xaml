@@ -754,6 +754,19 @@
                                           OnContent="" OffContent="" IsOn="{Binding FocusCompletionSound, Mode=TwoWay}"
                                           AutomationProperties.Name="Sayaç bitince ses çal" />
                         </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Focus Auto DND -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Odaklanırken Rahatsız Etmeyin'i aç" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Odak sayacı başladığında bildirimleri susturur, bitince eski durumuna döndürür." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding FocusAutoDoNotDisturb, Mode=TwoWay}"
+                                          AutomationProperties.Name="Odaklanırken Rahatsız Etmeyin'i aç" />
+                        </Grid>
                     </StackPanel>
                 </Border>
                 <!-- 6. GÖRÜNÜM VE ANİMASYON -->

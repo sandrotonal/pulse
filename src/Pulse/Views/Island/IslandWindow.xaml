@@ -1417,6 +1417,10 @@
                                                         ToolTipService.ToolTip="{Binding TooltipText}">
                                                     <Border.ContextFlyout>
                                                         <MenuFlyout Opening="OnShelfCardMenuOpening" Closed="OnShelfCardMenuClosed">
+                                                            <MenuFlyoutItem Text="Hızlı Önizle (Quick Look)"
+                                                                            Click="OnShelfCardQuickLookClick">
+                                                                <MenuFlyoutItem.Icon><FontIcon Glyph="&#xE890;" /></MenuFlyoutItem.Icon>
+                                                            </MenuFlyoutItem>
                                                             <MenuFlyoutItem Text="Metni Kopyala (OCR)"
                                                                             Visibility="{Binding ImageActionsVisibility}"
                                                                             Tag="{Binding FilePath}"
@@ -1484,24 +1488,31 @@
                                                             </Grid>
                                                         </Border>
 
-                                                        <!-- Pin / Unpin badge (always visible when pinned, hover-revealed otherwise) -->
+                                                        <!-- Pin / Unpin badge (vector anti-aliased Ellipse; always visible when pinned) -->
                                                         <Button x:Name="CardPinButton"
                                                                 Grid.Row="0"
                                                                 Style="{StaticResource IslandButtonStyle}"
-                                                                Width="18" Height="18" CornerRadius="9"
+                                                                Width="18" Height="18" Padding="0" MinWidth="0" MinHeight="0"
+                                                                Background="Transparent"
+                                                                BorderThickness="0"
                                                                 HorizontalAlignment="Right" VerticalAlignment="Bottom"
                                                                 Margin="0,0,2,2"
                                                                 Opacity="{Binding PinButtonOpacity}"
-                                                                Background="{Binding PinBadgeBackgroundBrush}"
-                                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
-                                                                BorderThickness="1"
                                                                 Tag="{Binding Id}"
                                                                 PointerPressed="OnButtonPointerPressed"
                                                                 PointerReleased="OnButtonPointerReleased"
                                                                 Click="OnShelfCardPinClick"
                                                                 AutomationProperties.Name="{Binding PinMenuLabel}"
                                                                 ToolTipService.ToolTip="{Binding PinToolTip}">
-                                                            <FontIcon Glyph="&#xE718;" FontSize="7.5" Foreground="{Binding PinBadgeForegroundBrush}" />
+                                                            <Grid Width="18" Height="18">
+                                                                <Ellipse Width="18" Height="18"
+                                                                         Fill="{Binding PinBadgeBackgroundBrush}"
+                                                                         Stroke="{Binding PinBadgeStrokeBrush}"
+                                                                         StrokeThickness="1" />
+                                                                <FontIcon Glyph="{Binding PinGlyph}" FontSize="8"
+                                                                          Foreground="{Binding PinBadgeForegroundBrush}"
+                                                                          HorizontalAlignment="Center" VerticalAlignment="Center" />
+                                                            </Grid>
                                                         </Button>
 
                                                         <!-- Hover-revealed 1-click OCR badge (images only) -->
@@ -1694,6 +1705,134 @@
                                     </Grid>
                                 </Border>
                             </Grid>
+
+                            <!-- In-Island Quick Look Overlay (Double-Click or Context Menu) -->
+                            <Border x:Name="ShelfQuickLookOverlay"
+                                    Visibility="{Binding QuickLookOverlayVisibility}"
+                                    CornerRadius="18"
+                                    Background="{ThemeResource ShelfDropOverlayBackground}"
+                                    BorderBrush="{ThemeResource ShelfCardBorder}"
+                                    BorderThickness="1"
+                                    Padding="10,8"
+                                    VerticalAlignment="Stretch"
+                                    HorizontalAlignment="Stretch">
+                                <Grid RowDefinitions="Auto,*,Auto">
+                                    <!-- Header: Back button, Title, Size -->
+                                    <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,6">
+                                        <Button Grid.Column="0"
+                                                Style="{StaticResource IslandButtonStyle}"
+                                                Height="24" CornerRadius="12" MinWidth="0" Padding="8,0"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                BorderThickness="1"
+                                                Click="OnShelfQuickLookCloseClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Rafa geri dön"
+                                                ToolTipService.ToolTip="Geri">
+                                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE72B;" FontSize="9.5" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Geri" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding QuickLookItem.DisplayName}"
+                                                   FontSize="11.5" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource PrimaryText}"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   VerticalAlignment="Center"
+                                                   Margin="8,0" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding QuickLookItem.SubtitleLabel}"
+                                                   FontSize="10"
+                                                   Foreground="{ThemeResource SecondaryText}"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+
+                                    <!-- Content Preview: Image, Text, or Generic File -->
+                                    <Border Grid.Row="1"
+                                            CornerRadius="12"
+                                            Background="{ThemeResource ShelfThumbnailBackground}"
+                                            BorderBrush="{ThemeResource ShelfCardBorder}"
+                                            BorderThickness="1"
+                                            Padding="6">
+                                        <Grid>
+                                            <Image Source="{Binding QuickLookItem.Thumbnail}"
+                                                   Visibility="{Binding QuickLookImageVisibility}"
+                                                   Stretch="Uniform"
+                                                   HorizontalAlignment="Center"
+                                                   VerticalAlignment="Center" />
+                                            <ScrollViewer Visibility="{Binding QuickLookTextVisibility}"
+                                                          VerticalScrollBarVisibility="Auto">
+                                                <TextBlock Text="{Binding QuickLookTextPreview}"
+                                                           FontFamily="Consolas"
+                                                           FontSize="10.5"
+                                                           Foreground="{ThemeResource PrimaryText}"
+                                                           TextWrapping="Wrap" />
+                                            </ScrollViewer>
+                                            <StackPanel Visibility="{Binding QuickLookGenericVisibility}"
+                                                        HorizontalAlignment="Center"
+                                                        VerticalAlignment="Center"
+                                                        Spacing="6">
+                                                <FontIcon Glyph="{Binding QuickLookItem.IconGlyph}"
+                                                          FontSize="28"
+                                                          Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="{Binding QuickLookItem.ExtensionBadge}"
+                                                           FontSize="10" FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource SecondaryText}"
+                                                           HorizontalAlignment="Center" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </Border>
+
+                                    <!-- Footer Quick Actions -->
+                                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Right" Margin="0,6,0,0">
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Visibility="{Binding QuickLookImageVisibility}"
+                                                Height="24" CornerRadius="12" MinWidth="0" Padding="9,0"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                BorderThickness="1"
+                                                Click="OnShelfQuickLookOcrClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Görseldeki metni kopyala">
+                                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE8C1;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="OCR Kopyala" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="24" CornerRadius="12" MinWidth="0" Padding="9,0"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                BorderThickness="1"
+                                                Click="OnShelfQuickLookCopyClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Panoya kopyala">
+                                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE8C8;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Kopyala" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="24" CornerRadius="12" MinWidth="0" Padding="9,0"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                BorderThickness="1"
+                                                Click="OnShelfQuickLookRevealClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Klasörde göster">
+                                            <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE8B7;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Klasörde Aç" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
 
                             <!-- Active Magnetic Drop Overlay (works whether shelf is empty OR already populated!) -->
                             <Border x:Name="ShelfActiveDropOverlay"

@@ -36,11 +36,15 @@ public sealed class ShelfItemViewModel
     public double PinButtonOpacity => Model.IsPinned ? 1.0 : 0.0;
     public string PinMenuLabel => Model.IsPinned ? "Sabitlemeyi Kaldır" : "Rafa Sabitle";
     public string PinToolTip => Model.IsPinned ? "Sabitlemeyi Kaldır" : "Rafa Sabitle";
+    public string PinGlyph => Model.IsPinned ? "\uE840" : "\uE718";
     public SolidColorBrush PinBadgeBackgroundBrush => Model.IsPinned
-        ? new SolidColorBrush(Color.FromArgb(0xF2, 0xFF, 0xFF, 0xFF))
+        ? new SolidColorBrush(Color.FromArgb(0xE6, 0x18, 0x19, 0x1E))
         : new SolidColorBrush(Color.FromArgb(0xE6, 0x1A, 0x1B, 0x20));
+    public SolidColorBrush PinBadgeStrokeBrush => Model.IsPinned
+        ? new SolidColorBrush(Color.FromArgb(0x66, 0xFF, 0xD6, 0x0A))
+        : new SolidColorBrush(Color.FromArgb(0x28, 0xFF, 0xFF, 0xFF));
     public SolidColorBrush PinBadgeForegroundBrush => Model.IsPinned
-        ? new SolidColorBrush(Color.FromArgb(0xFF, 0x11, 0x12, 0x15))
+        ? new SolidColorBrush(Color.FromArgb(0xFF, 0xFF, 0xD6, 0x0A))
         : new SolidColorBrush(Color.FromArgb(0xFF, 0xF3, 0xF4, 0xF6));
     public bool IsImage => Model.Kind == ShelfItemKind.Image;
     public Visibility ImageActionsVisibility => IsImage ? Visibility.Visible : Visibility.Collapsed;

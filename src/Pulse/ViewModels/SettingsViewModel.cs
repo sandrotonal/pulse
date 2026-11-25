@@ -26,6 +26,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private bool _bluetoothNotifications = true;
     private bool _screenshotNotifications = true;
     private bool _autoAddScreenshotsToShelf = true;
+    private bool _focusAutoDoNotDisturb;
     private bool _doNotDisturb;
     private bool _focusCompletionSound = true;
     private bool _enableHoverExpand = true;
@@ -135,6 +136,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     public bool BluetoothNotifications { get => _bluetoothNotifications; set { if (SetProperty(ref _bluetoothNotifications, value)) Save(); } }
     public bool ScreenshotNotifications { get => _screenshotNotifications; set { if (SetProperty(ref _screenshotNotifications, value)) Save(); } }
     public bool AutoAddScreenshotsToShelf { get => _autoAddScreenshotsToShelf; set { if (SetProperty(ref _autoAddScreenshotsToShelf, value)) Save(); } }
+    public bool FocusAutoDoNotDisturb { get => _focusAutoDoNotDisturb; set { if (SetProperty(ref _focusAutoDoNotDisturb, value)) Save(); } }
     public bool DoNotDisturb { get => _doNotDisturb; set { if (SetProperty(ref _doNotDisturb, value)) Save(); } }
     public bool FocusCompletionSound { get => _focusCompletionSound; set { if (SetProperty(ref _focusCompletionSound, value)) Save(); } }
     public bool EnableHoverExpand { get => _enableHoverExpand; set { if (SetProperty(ref _enableHoverExpand, value)) Save(); } }
@@ -535,6 +537,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         BluetoothNotifications = settings.BluetoothNotifications;
         ScreenshotNotifications = settings.ScreenshotNotifications;
         AutoAddScreenshotsToShelf = settings.AutoAddScreenshotsToShelf;
+        FocusAutoDoNotDisturb = settings.FocusAutoDoNotDisturb;
         DoNotDisturb = settings.DoNotDisturb;
         FocusCompletionSound = settings.FocusCompletionSound;
         EnableHoverExpand = settings.EnableHoverExpand;
@@ -920,6 +923,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             BluetoothNotifications = BluetoothNotifications,
             ScreenshotNotifications = ScreenshotNotifications,
             AutoAddScreenshotsToShelf = AutoAddScreenshotsToShelf,
+            FocusAutoDoNotDisturb = FocusAutoDoNotDisturb,
             DoNotDisturb = DoNotDisturb,
             FocusCompletionSound = FocusCompletionSound,
             EnableHoverExpand = EnableHoverExpand,

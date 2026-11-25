@@ -129,6 +129,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         StartFocusTimerCommand = new RelayCommand(() =>
         {
             _focusTimer.Start(DefaultFocusDuration, DefaultBreakDuration);
+            ApplyFocusAutoDnd(enteringFocus: true);
             NotifySplitStateChanged();
         });
         ToggleFocusTimerCommand = new RelayCommand(() =>
@@ -141,10 +142,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             {
                 // Completed sessions restart as a fresh work session instead of doing nothing.
                 _focusTimer.Restart();
+                ApplyFocusAutoDnd(enteringFocus: true);
             }
             else
             {
                 _focusTimer.Resume();
+                ApplyFocusAutoDnd(enteringFocus: !_focusTimer.IsBreak);
             }
             NotifyFocusTick();
             NotifySplitStateChanged();
@@ -152,12 +155,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         ResetFocusTimerCommand = new RelayCommand(() =>
         {
             _focusTimer.Reset();
+            ApplyFocusAutoDnd(enteringFocus: false);
             NotifyFocusTick();
             NotifySplitStateChanged();
         });
         SkipFocusSessionCommand = new RelayCommand(() =>
         {
             _focusTimer.SkipToNextSession();
+            ApplyFocusAutoDnd(enteringFocus: !_focusTimer.IsBreak && _focusTimer.IsRunning);
             NotifyFocusTick();
             NotifySplitStateChanged();
         });
@@ -511,6 +516,127 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         {
             ShowShelfStatus($"{added} öğe eklendi");
         }
+    }
+
+    private bool? _dndBeforeFocus;
+
+    private void ApplyFocusAutoDnd(bool enteringFocus)
+    {
+        if (_disposed || _settingsService is null)
+        {
+            return;
+        }
+
+        if (enteringFocus)
+        {
+            if (_settingsService.Current.FocusAutoDoNotDisturb && !_settingsService.Current.DoNotDisturb)
+            {
+                _dndBeforeFocus ??= false;
+                _ = SetDoNotDisturbAsync(true);
+            }
+        }
+        else if (_dndBeforeFocus is false)
+        {
+            _dndBeforeFocus = null;
+            _ = SetDoNotDisturbAsync(false);
+        }
+    }
+
+    private ShelfItemViewModel? _quickLookItem;
+    private string _quickLookTextPreview = string.Empty;
+
+    public ShelfItemViewModel? QuickLookItem
+    {
+        get => _quickLookItem;
+        private set
+        {
+            if (!ReferenceEquals(_quickLookItem, value))
+            {
+                _quickLookItem = value;
+                OnPropertyChanged(nameof(QuickLookItem));
+                OnPropertyChanged(nameof(IsQuickLookOpen));
+                OnPropertyChanged(nameof(QuickLookOverlayVisibility));
+                OnPropertyChanged(nameof(QuickLookImageVisibility));
+                OnPropertyChanged(nameof(QuickLookTextVisibility));
+                OnPropertyChanged(nameof(QuickLookGenericVisibility));
+            }
+        }
+    }
+
+    public bool IsQuickLookOpen => _quickLookItem is not null;
+    public Visibility QuickLookOverlayVisibility => IsQuickLookOpen ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility QuickLookImageVisibility => _quickLookItem?.IsImage == true ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility QuickLookTextVisibility => _quickLookItem is { IsImage: false } && !string.IsNullOrEmpty(_quickLookTextPreview)
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+    public Visibility QuickLookGenericVisibility => _quickLookItem is not null && QuickLookImageVisibility == Visibility.Collapsed && QuickLookTextVisibility == Visibility.Collapsed
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+    public string QuickLookTextPreview
+    {
+        get => _quickLookTextPreview;
+        private set
+        {
+            if (!string.Equals(_quickLookTextPreview, value, StringComparison.Ordinal))
+            {
+                _quickLookTextPreview = value;
+                OnPropertyChanged(nameof(QuickLookTextPreview));
+            }
+        }
+    }
+
+    public void OpenQuickLook(ShelfItemViewModel? item)
+    {
+        if (_disposed || item is null)
+        {
+            return;
+        }
+
+        var textPreview = string.Empty;
+        if (!item.IsImage && item.Model.Kind != ShelfItemKind.Folder && File.Exists(item.FilePath))
+        {
+            var ext = Path.GetExtension(item.FilePath);
+            if (ext.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".xml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".xaml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".log", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".csv", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".yml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var reader = new StreamReader(item.FilePath, detectEncodingFromByteOrderMarks: true);
+                    var buffer = new char[1200];
+                    var read = reader.ReadBlock(buffer, 0, buffer.Length);
+                    if (read > 0)
+                    {
+                        textPreview = new string(buffer, 0, read).TrimEnd();
+                        if (!reader.EndOfStream)
+                        {
+                            textPreview += "\n…";
+                        }
+                    }
+                }
+                catch
+                {
+                    textPreview = string.Empty;
+                }
+            }
+        }
+
+        QuickLookTextPreview = textPreview;
+        QuickLookItem = item;
+    }
+
+    public void CloseQuickLook()
+    {
+        QuickLookTextPreview = string.Empty;
+        QuickLookItem = null;
     }
 
     public void RemoveShelfItem(string itemId)
@@ -1425,6 +1551,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private void CompleteFocusSession()
     {
+        ApplyFocusAutoDnd(enteringFocus: false);
         NotifyFocusTick();
         NotifySplitStateChanged();
 

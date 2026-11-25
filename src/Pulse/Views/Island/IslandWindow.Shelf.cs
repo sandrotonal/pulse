@@ -359,6 +359,42 @@ public sealed partial class IslandWindow
         if (sender is FrameworkElement fe && fe.DataContext is ShelfItemViewModel item)
         {
             e.Handled = true;
+            _viewModel.OpenQuickLook(item);
+        }
+    }
+
+    private void OnShelfCardQuickLookClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.DataContext is ShelfItemViewModel item)
+        {
+            _viewModel.OpenQuickLook(item);
+        }
+    }
+
+    private void OnShelfQuickLookCloseClick(object sender, RoutedEventArgs e)
+        => _viewModel.CloseQuickLook();
+
+    private async void OnShelfQuickLookCopyClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.QuickLookItem is { } item)
+        {
+            await _viewModel.CopySingleShelfItemAsync(item.FilePath);
+        }
+    }
+
+    private async void OnShelfQuickLookOcrClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.QuickLookItem is { } item)
+        {
+            await _viewModel.CopyOcrTextFromImageAsync(item.FilePath);
+            _viewModel.CloseQuickLook();
+        }
+    }
+
+    private void OnShelfQuickLookRevealClick(object sender, RoutedEventArgs e)
+    {
+        if (_viewModel.QuickLookItem is { } item)
+        {
             _viewModel.OpenShelfItemInExplorer(item.FilePath);
         }
     }
