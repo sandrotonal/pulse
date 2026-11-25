@@ -184,6 +184,10 @@ public sealed class WindowsToastNotificationService : IDisposable
         {
             // Ignore transient file lock errors during poll check.
         }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("WindowsToastNotificationService.CheckForMetadataChange", ex);
+        }
     }
 
     /// <summary>

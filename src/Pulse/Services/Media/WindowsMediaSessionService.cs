@@ -363,8 +363,13 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
                 Artwork = artworkBytes
             });
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            if (!_disposed)
+            {
+                Pulse.Core.Services.CrashLogger.Write("WindowsMediaSessionService.RefreshCurrentTrackCoreAsync", ex);
+            }
+
             if (ReferenceEquals(session, _session))
             {
                 SetCurrentTrack(null);
@@ -374,6 +379,11 @@ public sealed class WindowsMediaSessionService : IMediaSessionService
 
     private void SetCurrentTrack(MediaTrack? track)
     {
+        if (_disposed && track is not null)
+        {
+            return;
+        }
+
         CurrentTrack = track;
         CurrentTrackChanged?.Invoke(this, track);
     }

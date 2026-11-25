@@ -245,31 +245,38 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         // Debounce on a worker so COM MTA notifications return immediately and burst events collapse into one
         _ = Task.Run(async () =>
         {
-            await Task.Delay(120).ConfigureAwait(false);
-            if (_disposed || gen != Volatile.Read(ref _deviceChangeGeneration))
+            try
             {
-                return;
-            }
+                await Task.Delay(120).ConfigureAwait(false);
+                if (_disposed || gen != Volatile.Read(ref _deviceChangeGeneration))
+                {
+                    return;
+                }
 
-            var endpoint = GetEndpointVolume();
-            if (endpoint is null)
+                var endpoint = GetEndpointVolume();
+                if (endpoint is null)
+                {
+                    return;
+                }
+
+                var volume = GetMasterVolume();
+                var muted = IsMuted();
+                var (deviceName, deviceGlyph) = GetActiveAudioDevice();
+                var (isHeadphones, headphoneName) = GetHeadphoneStatus();
+                AudioStateChanged?.Invoke(this, new AudioStateChangedEventArgs(
+                    volume,
+                    muted,
+                    IsSelfOriginated: false,
+                    IsDeviceSwitch: true,
+                    DeviceName: deviceName,
+                    DeviceGlyph: deviceGlyph,
+                    AreHeadphonesConnected: isHeadphones,
+                    HeadphoneDeviceName: headphoneName));
+            }
+            catch (Exception ex)
             {
-                return;
+                CrashLogger.Write("WindowsSystemControlService.OnDefaultRenderDeviceChanged", ex);
             }
-
-            var volume = GetMasterVolume();
-            var muted = IsMuted();
-            var (deviceName, deviceGlyph) = GetActiveAudioDevice();
-            var (isHeadphones, headphoneName) = GetHeadphoneStatus();
-            AudioStateChanged?.Invoke(this, new AudioStateChangedEventArgs(
-                volume,
-                muted,
-                IsSelfOriginated: false,
-                IsDeviceSwitch: true,
-                DeviceName: deviceName,
-                DeviceGlyph: deviceGlyph,
-                AreHeadphonesConnected: isHeadphones,
-                HeadphoneDeviceName: headphoneName));
         });
     }
 
@@ -534,11 +541,11 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         }
     }
 
-    public void OpenSoundSettings()
+    public async void OpenSoundSettings()
     {
         try
         {
-            _ = Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:sound"));
+            await global::Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:sound"));
         }
         catch (Exception ex)
         {
@@ -570,11 +577,11 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         if (_dispatcherQueue is { HasThreadAccess: false } dispatcher)
         {
             var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-            if (!dispatcher.TryEnqueue(() =>
+            if (!dispatcher.TryEnqueue(async () =>
                 {
                     try
                     {
-                        CopyPngBytesToClipboard(pngBytes);
+                        await CopyPngBytesToClipboardAsync(pngBytes);
                     }
                     finally
                     {
@@ -582,7 +589,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
                     }
                 }))
             {
-                CopyPngBytesToClipboard(pngBytes);
+                await CopyPngBytesToClipboardAsync(pngBytes).ConfigureAwait(false);
                 return path;
             }
 
@@ -590,7 +597,7 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         }
         else
         {
-            CopyPngBytesToClipboard(pngBytes);
+            await CopyPngBytesToClipboardAsync(pngBytes);
         }
 
         return path;
@@ -640,6 +647,27 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
         return width <= 0 || height <= 0 ? null : new Rectangle(x, y, width, height);
     }
 
+    private static async Task CopyPngBytesToClipboardAsync(byte[] bytes)
+    {
+        try
+        {
+            using var memoryStream = new global::Windows.Storage.Streams.InMemoryRandomAccessStream();
+            using (var writer = new global::Windows.Storage.Streams.DataWriter(memoryStream.GetOutputStreamAt(0)))
+            {
+                writer.WriteBytes(bytes);
+                await writer.StoreAsync();
+                await writer.FlushAsync();
+                writer.DetachStream();
+            }
+
+            SetClipboardBitmapFromStream(memoryStream);
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("WindowsSystemControlService.CopyToClipboard", ex);
+        }
+    }
+
     private static void CopyPngBytesToClipboard(byte[] bytes)
     {
         try
@@ -653,17 +681,22 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
                 writer.DetachStream();
             }
 
-            memoryStream.Seek(0);
-            var package = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
-            package.RequestedOperation = global::Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
-            package.SetBitmap(global::Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(memoryStream));
-            global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
-            global::Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
+            SetClipboardBitmapFromStream(memoryStream);
         }
         catch (Exception ex)
         {
             CrashLogger.Write("WindowsSystemControlService.CopyToClipboard", ex);
         }
+    }
+
+    private static void SetClipboardBitmapFromStream(global::Windows.Storage.Streams.InMemoryRandomAccessStream memoryStream)
+    {
+        memoryStream.Seek(0);
+        var package = new global::Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.RequestedOperation = global::Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy;
+        package.SetBitmap(global::Windows.Storage.Streams.RandomAccessStreamReference.CreateFromStream(memoryStream));
+        global::Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+        global::Windows.ApplicationModel.DataTransfer.Clipboard.Flush();
     }
 
     // ---- Battery ----

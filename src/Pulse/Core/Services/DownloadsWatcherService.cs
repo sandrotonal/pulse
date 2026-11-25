@@ -120,7 +120,6 @@ public sealed class DownloadsWatcherService : IDisposable
             if (_pending.TryGetValue(path, out var previous))
             {
                 try { previous.Cancel(); } catch { }
-                try { previous.Dispose(); } catch { }
             }
 
             _pending[path] = cts;
@@ -258,7 +257,6 @@ public sealed class DownloadsWatcherService : IDisposable
             foreach (var cts in _pending.Values)
             {
                 try { cts.Cancel(); } catch { }
-                try { cts.Dispose(); } catch { }
             }
 
             _pending.Clear();

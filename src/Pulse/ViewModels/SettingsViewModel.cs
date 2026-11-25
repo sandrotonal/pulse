@@ -430,7 +430,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             await _settingsService.LoadAsync();
+            if (_disposed)
+            {
+                return;
+            }
+
             var osStartupEnabled = await _startupService.IsEnabledAsync();
+            if (_disposed)
+            {
+                return;
+            }
+
             ApplySettings(_settingsService.Current with { StartWithWindows = osStartupEnabled });
         }
         catch (Exception ex)
@@ -793,38 +803,48 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             _saveDebounce = dispatcher.CreateTimer();
             _saveDebounce.IsRepeating = false;
             _saveDebounce.Interval = TimeSpan.FromMilliseconds(300);
-            _saveDebounce.Tick += (_, _) => _ = FlushPendingSaveAsync();
+            _saveDebounce.Tick += OnSaveDebounceTick;
         }
 
         _saveDebounce.Stop();
         _saveDebounce.Start();
     }
 
+    private void OnSaveDebounceTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+        => _ = FlushPendingSaveAsync();
+
     public void FlushPendingSave() => _ = FlushPendingSaveAsync();
 
     public async Task FlushPendingSaveAsync()
     {
-        _saveDebounce?.Stop();
-        AppSettings? pending;
-        lock (_saveLock)
+        try
         {
-            pending = _pendingSave;
-            _pendingSave = null;
-        }
-
-        if (pending is not null)
-        {
-            await SaveAsyncImmediate(pending);
-            if (!_disposed)
+            _saveDebounce?.Stop();
+            AppSettings? pending;
+            lock (_saveLock)
             {
-                StatusMessage = _settingsService.LastSaveError is null
-                    ? "Otomatik kaydedildi."
-                    : $"Kayıt hatası: {_settingsService.LastSaveError}";
+                pending = _pendingSave;
+                _pendingSave = null;
+            }
+
+            if (pending is not null)
+            {
+                await SaveAsyncImmediate(pending);
+                if (!_disposed)
+                {
+                    StatusMessage = _settingsService.LastSaveError is null
+                        ? "Otomatik kaydedildi."
+                        : $"Kayıt hatası: {_settingsService.LastSaveError}";
+                }
+            }
+            else
+            {
+                await _settingsService.FlushAsync();
             }
         }
-        else
+        catch (Exception ex)
         {
-            await _settingsService.FlushAsync();
+            CrashLogger.Write("SettingsViewModel.FlushPendingSaveAsync", ex);
         }
     }
 
@@ -921,7 +941,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _disposed = true;
-        _saveDebounce?.Stop();
+        if (_saveDebounce is not null)
+        {
+            _saveDebounce.Stop();
+            _saveDebounce.Tick -= OnSaveDebounceTick;
+        }
         _settingsService.SettingsChanged -= OnExternalSettingsChanged;
     }
 }

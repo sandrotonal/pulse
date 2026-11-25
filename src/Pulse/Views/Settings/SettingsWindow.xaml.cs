@@ -41,14 +41,10 @@ public sealed partial class SettingsWindow : Window
 
         viewModel.PropertyChanged += OnSettingsPropertyChanged;
         SettingsRoot.ActualThemeChanged += OnActualThemeChanged;
-        Closed += (_, _) =>
+
+        async void OnActivatedOnce(object sender, WindowActivatedEventArgs args)
         {
-            viewModel.PropertyChanged -= OnSettingsPropertyChanged;
-            SettingsRoot.ActualThemeChanged -= OnActualThemeChanged;
-            _ = FlushAndDisposeAsync(viewModel);
-        };
-        Activated += async (_, _) =>
-        {
+            Activated -= OnActivatedOnce;
             try
             {
                 await viewModel.InitializeAsync();
@@ -58,6 +54,15 @@ public sealed partial class SettingsWindow : Window
             {
                 CrashLogger.Write("SettingsWindow.Activated", ex);
             }
+        }
+
+        Activated += OnActivatedOnce;
+        Closed += (_, _) =>
+        {
+            Activated -= OnActivatedOnce;
+            viewModel.PropertyChanged -= OnSettingsPropertyChanged;
+            SettingsRoot.ActualThemeChanged -= OnActualThemeChanged;
+            _ = FlushAndDisposeAsync(viewModel);
         };
     }
 

@@ -1921,9 +1921,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         // PowerManager events + WASAPI callbacks deliver immediate updates; slow fallback poll catches silent endpoint drift.
         _systemPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
-        _systemPollTimer.Tick += (_, _) => PollSystemState();
+        _systemPollTimer.Tick += OnSystemPollTick;
         _systemPollTimer.Start();
     }
+
+    private void OnSystemPollTick(object? sender, object e) => PollSystemState();
 
     private void PollSystemState()
     {
@@ -1964,9 +1966,16 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        RefreshBattery(notify: false);
-        RefreshSystemAudio();
-        await _media.RefreshSessionAsync();
+        try
+        {
+            RefreshBattery(notify: false);
+            RefreshSystemAudio();
+            await _media.RefreshSessionAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.RefreshExternalStatesAsync", ex);
+        }
     }
 
     private void OnSystemAudioStateChanged(object? sender, AudioStateChangedEventArgs e)
@@ -2154,6 +2163,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _disposed = true;
         UnsubscribePowerEvents();
         _systemPollTimer?.Stop();
+        if (_systemPollTimer is not null)
+        {
+            _systemPollTimer.Tick -= OnSystemPollTick;
+        }
         _systemPollTimer = null;
 
         _idleClockTimer?.Stop();
@@ -2168,7 +2181,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _idleWeatherTimer.Tick -= OnIdleWeatherTick;
         }
 
-        _idleWeatherCts?.Cancel();
+        try { _idleWeatherCts?.Cancel(); } catch (ObjectDisposedException) { }
         _idleWeatherCts = null;
 
         if (_settingsService is not null)
