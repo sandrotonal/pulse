@@ -439,7 +439,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool HasShelfItems => ShelfItems.Count > 0;
     public string ShelfCountText => ShelfCount.ToString(CultureInfo.InvariantCulture);
     public Visibility ShelfEmptyVisibility => HasShelfItems ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility ShelfPopulatedVisibility => HasShelfItems ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ShelfPopulatedVisibility => HasShelfItems && !IsQuickLookOpen ? Visibility.Visible : Visibility.Collapsed;
     public Visibility CompactShelfBadgeVisibility => HasShelfItems && !IsExpanded ? Visibility.Visible : Visibility.Collapsed;
 
     public bool IsDragHovering
@@ -555,6 +555,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 _quickLookItem = value;
                 OnPropertyChanged(nameof(QuickLookItem));
                 OnPropertyChanged(nameof(IsQuickLookOpen));
+                OnPropertyChanged(nameof(ShelfPopulatedVisibility));
                 OnPropertyChanged(nameof(QuickLookOverlayVisibility));
                 OnPropertyChanged(nameof(QuickLookImageVisibility));
                 OnPropertyChanged(nameof(QuickLookTextVisibility));
