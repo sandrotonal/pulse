@@ -14,15 +14,23 @@ public sealed class ScreenshotWatcherService : IDisposable
     private const int MaxLockRetries = 12;
 
     private readonly ISystemEventService _systemEvents;
+    private readonly IDropShelfService? _dropShelf;
+    private readonly ISettingsService? _settings;
     private readonly ScreenshotFilePolicy _policy = new();
     private readonly FileSystemWatcher? _watcher;
     private readonly object _pendingSync = new();
     private readonly Dictionary<string, CancellationTokenSource> _pending = new(StringComparer.OrdinalIgnoreCase);
     private volatile bool _disposed;
 
-    public ScreenshotWatcherService(ISystemEventService systemEvents, string? screenshotsDirectory = null)
+    public ScreenshotWatcherService(
+        ISystemEventService systemEvents,
+        string? screenshotsDirectory = null,
+        IDropShelfService? dropShelf = null,
+        ISettingsService? settings = null)
     {
         _systemEvents = systemEvents ?? throw new ArgumentNullException(nameof(systemEvents));
+        _dropShelf = dropShelf;
+        _settings = settings;
 
         var dir = string.IsNullOrWhiteSpace(screenshotsDirectory)
             ? KnownFolderResolver.GetScreenshotsDirectory()
@@ -181,6 +189,10 @@ public sealed class ScreenshotWatcherService : IDisposable
             }
 
             _systemEvents.ReportScreenshotSaved(path);
+            if (_dropShelf is not null && (_settings?.Current.AutoAddScreenshotsToShelf ?? true))
+            {
+                _ = _dropShelf.AddPath(path);
+            }
         }
         catch (Exception ex) when (ex is OperationCanceledException or ObjectDisposedException)
         {

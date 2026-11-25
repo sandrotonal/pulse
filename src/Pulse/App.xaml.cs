@@ -66,6 +66,13 @@ public partial class App : Application
         => Environment.GetCommandLineArgs().Any(arg =>
             string.Equals(arg, argName, StringComparison.OrdinalIgnoreCase));
 
+    private static string? GetLaunchArgValue(string prefix)
+    {
+        var match = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
+            arg.StartsWith(prefix + "=", StringComparison.OrdinalIgnoreCase));
+        return match is null ? null : match[(prefix.Length + 1)..].Trim('"');
+    }
+
     private static bool HasSettingsLaunchArg() => HasLaunchArg("--settings");
 
     private static string? TryGetCurrentDesktopName()
@@ -220,7 +227,7 @@ public partial class App : Application
         _downloadsWatcherService = new DownloadsWatcherService(_eventRouter, _settingsService);
         _windowsToastService = new WindowsToastNotificationService(_systemEventService, _settingsService);
         _bluetoothWatcherService = new BluetoothWatcherService(_systemEventService, _settingsService);
-        _screenshotWatcherService = new ScreenshotWatcherService(_systemEventService);
+        _screenshotWatcherService = new ScreenshotWatcherService(_systemEventService, dropShelf: _dropShelfService, settings: _settingsService);
 
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
         _weatherService = new OpenMeteoWeatherService(_httpClient);
@@ -254,182 +261,132 @@ public partial class App : Application
     {
         try
         {
-            _showIslandSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowIslandEventName);
-            _showIslandRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _showIslandSignal,
-                (_, _) =>
+            RegisterSignal(out _showIslandSignal, out _showIslandRegistration, _instanceNames.ShowIslandEventName, (_, _) =>
+            {
+                if (_exiting) return;
+
+                if (_islandWindow is { } window)
                 {
-                    if (_exiting)
-                    {
-                        return;
-                    }
-
-                    if (_islandWindow is { } window)
-                    {
-                        window.DispatcherQueue.TryEnqueue(() =>
-                            SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
-                    }
-                    else
-                    {
-                        Interlocked.Exchange(ref _pendingShowIslandSignal, 1);
-                        dispatcherQueue.TryEnqueue(() =>
-                        {
-                            if (_islandWindow is not null &&
-                                Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
-                            {
-                                SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true);
-                            }
-                        });
-                    }
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
-
-            _showSettingsSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ShowSettingsEventName);
-            _showSettingsRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _showSettingsSignal,
-                (_, _) =>
-                {
-                    if (_exiting)
-                    {
-                        return;
-                    }
-
-                    if (_islandWindow is { } window)
-                    {
-                        window.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
-                    }
-                    else
-                    {
-                        Interlocked.Exchange(ref _pendingShowSettingsSignal, 1);
-                        dispatcherQueue.TryEnqueue(() =>
-                        {
-                            if (_islandWindow is not null &&
-                                Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
-                            {
-                                OnSettingsRequested(this, EventArgs.Empty);
-                            }
-                        });
-                    }
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
-
-            _expandMediaSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandMediaEventName);
-            _expandMediaRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandMediaSignal,
-                (_, _) =>
-                {
-                    if (_exiting || _islandWindow is not { } window) return;
                     window.DispatcherQueue.TryEnqueue(() =>
+                        SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true));
+                }
+                else
+                {
+                    Interlocked.Exchange(ref _pendingShowIslandSignal, 1);
+                    dispatcherQueue.TryEnqueue(() =>
                     {
-                        _islandViewModel.SelectedPageIndex = 0;
-                        if (!_islandViewModel.IsExpanded)
+                        if (_islandWindow is not null &&
+                            Interlocked.Exchange(ref _pendingShowIslandSignal, 0) == 1)
                         {
-                            _islandViewModel.ToggleExpanded();
+                            SurfaceIsland(toggleIfAlreadyVisible: false, activateWindow: true);
                         }
                     });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                }
+            });
 
-            _expandFocusSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandFocusEventName);
-            _expandFocusRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandFocusSignal,
-                (_, _) =>
+            RegisterSignal(out _showSettingsSignal, out _showSettingsRegistration, _instanceNames.ShowSettingsEventName, (_, _) =>
+            {
+                if (_exiting) return;
+
+                if (_islandWindow is { } window)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
+                    window.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
+                }
+                else
+                {
+                    Interlocked.Exchange(ref _pendingShowSettingsSignal, 1);
+                    dispatcherQueue.TryEnqueue(() =>
                     {
-                        _islandViewModel.SelectedPageIndex = 1;
-                        if (!_islandViewModel.IsExpanded)
+                        if (_islandWindow is not null &&
+                            Interlocked.Exchange(ref _pendingShowSettingsSignal, 0) == 1)
                         {
-                            _islandViewModel.ToggleExpanded();
+                            OnSettingsRequested(this, EventArgs.Empty);
                         }
                     });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                }
+            });
 
-            _expandSystemSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandSystemEventName);
-            _expandSystemRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandSystemSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandMediaSignal, out _expandMediaRegistration, _instanceNames.ExpandMediaEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 0;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        _islandViewModel.SelectedPageIndex = 2;
-                        if (!_islandViewModel.IsExpanded)
-                        {
-                            _islandViewModel.ToggleExpanded();
-                        }
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
 
-            _expandShelfSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ExpandShelfEventName);
-            _expandShelfRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _expandShelfSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandFocusSignal, out _expandFocusRegistration, _instanceNames.ExpandFocusEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 1;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        _islandViewModel.SelectedPageIndex = 3;
-                        if (!_islandViewModel.IsExpanded)
-                        {
-                            _islandViewModel.ToggleExpanded();
-                        }
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
 
-            _collapseSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.CollapseEventName);
-            _collapseRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _collapseSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandSystemSignal, out _expandSystemRegistration, _instanceNames.ExpandSystemEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 2;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        if (_islandViewModel.IsExpanded)
-                        {
-                            _islandViewModel.ToggleExpanded();
-                        }
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
 
-            _toggleSplitDemoSignal = new EventWaitHandle(false, EventResetMode.AutoReset, _instanceNames.ToggleSplitDemoEventName);
-            _toggleSplitDemoRegistration = ThreadPool.RegisterWaitForSingleObject(
-                _toggleSplitDemoSignal,
-                (_, _) =>
+            RegisterIslandWindowSignal(out _expandShelfSignal, out _expandShelfRegistration, _instanceNames.ExpandShelfEventName, () =>
+            {
+                _islandViewModel.SelectedPageIndex = 3;
+                if (!_islandViewModel.IsExpanded)
                 {
-                    if (_exiting || _islandWindow is not { } window) return;
-                    window.DispatcherQueue.TryEnqueue(() =>
-                    {
-                        _islandViewModel.IsSplitDemoForced = !_islandViewModel.IsSplitDemoForced;
-                    });
-                },
-                null,
-                Timeout.Infinite,
-                executeOnlyOnce: false);
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
+
+            RegisterIslandWindowSignal(out _collapseSignal, out _collapseRegistration, _instanceNames.CollapseEventName, () =>
+            {
+                if (_islandViewModel.IsExpanded)
+                {
+                    _islandViewModel.ToggleExpanded();
+                }
+            });
+
+            RegisterIslandWindowSignal(out _toggleSplitDemoSignal, out _toggleSplitDemoRegistration, _instanceNames.ToggleSplitDemoEventName, () =>
+            {
+                _islandViewModel.IsSplitDemoForced = !_islandViewModel.IsSplitDemoForced;
+            });
         }
         catch (Exception ex)
         {
             CrashLogger.Write("App.RegisterInstanceSignals", ex);
         }
+    }
+
+    private static void RegisterSignal(
+        out EventWaitHandle handle,
+        out RegisteredWaitHandle registration,
+        string signalName,
+        WaitOrTimerCallback callback)
+    {
+        handle = new EventWaitHandle(false, EventResetMode.AutoReset, signalName);
+        registration = ThreadPool.RegisterWaitForSingleObject(
+            handle,
+            callback,
+            null,
+            Timeout.Infinite,
+            executeOnlyOnce: false);
+    }
+
+    private void RegisterIslandWindowSignal(
+        out EventWaitHandle handle,
+        out RegisteredWaitHandle registration,
+        string signalName,
+        Action action)
+    {
+        RegisterSignal(out handle, out registration, signalName, (_, _) =>
+        {
+            if (_exiting || _islandWindow is not { } window) return;
+            window.DispatcherQueue.TryEnqueue(() => action());
+        });
     }
 
     protected override async void OnLaunched(LaunchActivatedEventArgs args)
@@ -507,7 +464,11 @@ public partial class App : Application
                 islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
             }
 
-            if (HasLaunchArg("--demo-shelf") || HasLaunchArg("--sample-shelf"))
+            if (GetLaunchArgValue("--export-shots") is { Length: > 0 } exportDir)
+            {
+                _ = ExportShowcaseShotsAsync(islandWindow, mediaInitTask, exportDir);
+            }
+            else if (HasLaunchArg("--demo-shelf") || HasLaunchArg("--sample-shelf"))
             {
                 islandWindow.DispatcherQueue.TryEnqueue(async () =>
                 {
@@ -568,6 +529,109 @@ public partial class App : Application
         catch (Exception ex)
         {
             CrashLogger.Write("App.OnLaunched", ex);
+        }
+    }
+
+    private async Task ExportShowcaseShotsAsync(IslandWindow islandWindow, Task mediaInitTask, string exportDir)
+    {
+        try
+        {
+            await mediaInitTask;
+            await Task.Delay(900);
+
+            var tcs = new TaskCompletionSource();
+            islandWindow.DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(exportDir);
+
+                    var addedDemoTrack = false;
+                    if (!_islandViewModel.HasTrack)
+                    {
+                        _islandViewModel.ToggleDemoTrackCommand.Execute(null);
+                        addedDemoTrack = true;
+                        await Task.Delay(450);
+                    }
+
+                    // Capture single compact pill after any startup toast settles and before populating shelf
+                    await Task.Delay(2400);
+                    if (_islandViewModel.IsExpanded)
+                    {
+                        _islandViewModel.ToggleExpanded();
+                        await Task.Delay(500);
+                    }
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-compact.png"));
+
+                    // Populate Drop Shelf with sample icon (pinned) + text note
+                    var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.png");
+                    if (File.Exists(iconPath))
+                    {
+                        var iconItem = _dropShelfService.AddPath(iconPath);
+                        if (iconItem is not null && !iconItem.IsPinned)
+                        {
+                            _dropShelfService.TogglePin(iconItem.Id);
+                        }
+                    }
+                    await _dropShelfService.StageTextAsync("Pulse Drop Shelf v2.2\nQuick Look · Pin · Offline OCR");
+                    await Task.Delay(550);
+
+                    // Capture split island (media + shelf badge)
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-split.png"));
+
+                    if (!_islandViewModel.IsExpanded)
+                    {
+                        _islandViewModel.ToggleExpanded();
+                        await Task.Delay(550);
+                    }
+
+                    _islandViewModel.SelectedPageIndex = 0;
+                    await Task.Delay(550);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-media.png"));
+
+                    _islandViewModel.SelectedPageIndex = 1;
+                    await Task.Delay(550);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-focus.png"));
+
+                    _islandViewModel.SelectedPageIndex = 2;
+                    await Task.Delay(550);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-system.png"));
+
+                    _islandViewModel.SelectedPageIndex = 3;
+                    await Task.Delay(600);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-shelf.png"));
+
+                    if (addedDemoTrack)
+                    {
+                        _islandViewModel.ToggleDemoTrackCommand.Execute(null);
+                    }
+
+                    OnSettingsRequested(this, EventArgs.Empty);
+                    await Task.Delay(900);
+                    if (_settingsWindow is { } settingsWin)
+                    {
+                        await settingsWin.ExportSnapshotAsync(Path.Combine(exportDir, "settings-dark.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Write("App.ExportShowcaseShotsAsync.UI", ex);
+                }
+                finally
+                {
+                    tcs.TrySetResult();
+                }
+            });
+
+            await tcs.Task;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.ExportShowcaseShotsAsync", ex);
+        }
+        finally
+        {
+            islandWindow.DispatcherQueue.TryEnqueue(() => OnExitRequested(this, EventArgs.Empty));
         }
     }
 
@@ -833,6 +897,8 @@ public partial class App : Application
             _expandFocusSignal?.Dispose();
             _expandSystemRegistration?.Unregister(null);
             _expandSystemSignal?.Dispose();
+            _expandShelfRegistration?.Unregister(null);
+            _expandShelfSignal?.Dispose();
             _collapseRegistration?.Unregister(null);
             _collapseSignal?.Dispose();
             _toggleSplitDemoRegistration?.Unregister(null);

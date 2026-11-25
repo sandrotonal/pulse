@@ -182,4 +182,40 @@ public sealed class DropShelfServiceTests : IDisposable
             isFileOperationActive: false,
             hasShelfItems: true));
     }
+
+    [Fact]
+    public async Task TogglePin_ProtectsPinnedItemFromClear_AndEviction()
+    {
+        var staging = Path.Combine(Path.GetTempPath(), "PulseShelfPinTests_" + Guid.NewGuid().ToString("N")[..8]);
+        try
+        {
+            using var shelf = new DropShelfService(staging, maxItems: 2);
+            var pinned = await shelf.StageTextAsync("pinned note");
+            var temp = await shelf.StageTextAsync("temporary note");
+            Assert.NotNull(pinned);
+            Assert.NotNull(temp);
+
+            Assert.True(shelf.TogglePin(pinned.Id));
+            Assert.True(shelf.Items.Single(i => i.Id == pinned.Id).IsPinned);
+
+            // Adding a 3rd item must evict the unpinned item ("temporary note"), preserving the pinned one.
+            var third = await shelf.StageTextAsync("newest note");
+            Assert.NotNull(third);
+            Assert.Equal(2, shelf.Items.Count);
+            Assert.Contains(shelf.Items, i => i.Id == pinned.Id);
+            Assert.DoesNotContain(shelf.Items, i => i.Id == temp.Id);
+
+            // Clear() must only remove unpinned items.
+            shelf.Clear();
+            Assert.Single(shelf.Items);
+            Assert.Equal(pinned.Id, shelf.Items[0].Id);
+        }
+        finally
+        {
+            if (Directory.Exists(staging))
+            {
+                try { Directory.Delete(staging, recursive: true); } catch { }
+            }
+        }
+    }
 }

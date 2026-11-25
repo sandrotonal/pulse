@@ -25,6 +25,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private bool _systemToastNotifications = true;
     private bool _bluetoothNotifications = true;
     private bool _screenshotNotifications = true;
+    private bool _autoAddScreenshotsToShelf = true;
+    private bool _focusAutoDoNotDisturb;
     private bool _doNotDisturb;
     private bool _focusCompletionSound = true;
     private bool _enableHoverExpand = true;
@@ -133,6 +135,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     public bool SystemToastNotifications { get => _systemToastNotifications; set { if (SetProperty(ref _systemToastNotifications, value)) Save(); } }
     public bool BluetoothNotifications { get => _bluetoothNotifications; set { if (SetProperty(ref _bluetoothNotifications, value)) Save(); } }
     public bool ScreenshotNotifications { get => _screenshotNotifications; set { if (SetProperty(ref _screenshotNotifications, value)) Save(); } }
+    public bool AutoAddScreenshotsToShelf { get => _autoAddScreenshotsToShelf; set { if (SetProperty(ref _autoAddScreenshotsToShelf, value)) Save(); } }
+    public bool FocusAutoDoNotDisturb { get => _focusAutoDoNotDisturb; set { if (SetProperty(ref _focusAutoDoNotDisturb, value)) Save(); } }
     public bool DoNotDisturb { get => _doNotDisturb; set { if (SetProperty(ref _doNotDisturb, value)) Save(); } }
     public bool FocusCompletionSound { get => _focusCompletionSound; set { if (SetProperty(ref _focusCompletionSound, value)) Save(); } }
     public bool EnableHoverExpand { get => _enableHoverExpand; set { if (SetProperty(ref _enableHoverExpand, value)) Save(); } }
@@ -413,10 +417,42 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             }
         }
     }
-    public string LocationStatusMessage { get => _locationStatusMessage; private set => SetProperty(ref _locationStatusMessage, value); }
+    public string LocationStatusMessage
+    {
+        get => _locationStatusMessage;
+        private set
+        {
+            if (SetProperty(ref _locationStatusMessage, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsLocationError)));
+            }
+        }
+    }
+
+    public bool IsLocationError =>
+        _locationStatusMessage.Contains("bulunamadı", StringComparison.OrdinalIgnoreCase) ||
+        _locationStatusMessage.Contains("alınamadı", StringComparison.OrdinalIgnoreCase) ||
+        _locationStatusMessage.Contains("kullanılamıyor", StringComparison.OrdinalIgnoreCase) ||
+        _locationStatusMessage.Contains("girin", StringComparison.OrdinalIgnoreCase);
+
     public ICommand ApplyLocationCommand { get; }
 
-    public string StatusMessage { get => _statusMessage; private set => SetProperty(ref _statusMessage, value); }
+    public string StatusMessage
+    {
+        get => _statusMessage;
+        private set
+        {
+            if (SetProperty(ref _statusMessage, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(IsStatusError)));
+            }
+        }
+    }
+
+    public bool IsStatusError =>
+        _statusMessage.Contains("hata", StringComparison.OrdinalIgnoreCase) ||
+        _statusMessage.Contains("değiştirilemedi", StringComparison.OrdinalIgnoreCase) ||
+        _statusMessage.Contains("güncellenemedi", StringComparison.OrdinalIgnoreCase);
 
     public async Task InitializeAsync()
     {
@@ -430,7 +466,17 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         try
         {
             await _settingsService.LoadAsync();
+            if (_disposed)
+            {
+                return;
+            }
+
             var osStartupEnabled = await _startupService.IsEnabledAsync();
+            if (_disposed)
+            {
+                return;
+            }
+
             ApplySettings(_settingsService.Current with { StartWithWindows = osStartupEnabled });
         }
         catch (Exception ex)
@@ -490,6 +536,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         SystemToastNotifications = settings.SystemToastNotifications;
         BluetoothNotifications = settings.BluetoothNotifications;
         ScreenshotNotifications = settings.ScreenshotNotifications;
+        AutoAddScreenshotsToShelf = settings.AutoAddScreenshotsToShelf;
+        FocusAutoDoNotDisturb = settings.FocusAutoDoNotDisturb;
         DoNotDisturb = settings.DoNotDisturb;
         FocusCompletionSound = settings.FocusCompletionSound;
         EnableHoverExpand = settings.EnableHoverExpand;
@@ -793,38 +841,48 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             _saveDebounce = dispatcher.CreateTimer();
             _saveDebounce.IsRepeating = false;
             _saveDebounce.Interval = TimeSpan.FromMilliseconds(300);
-            _saveDebounce.Tick += (_, _) => _ = FlushPendingSaveAsync();
+            _saveDebounce.Tick += OnSaveDebounceTick;
         }
 
         _saveDebounce.Stop();
         _saveDebounce.Start();
     }
 
+    private void OnSaveDebounceTick(Microsoft.UI.Dispatching.DispatcherQueueTimer sender, object args)
+        => _ = FlushPendingSaveAsync();
+
     public void FlushPendingSave() => _ = FlushPendingSaveAsync();
 
     public async Task FlushPendingSaveAsync()
     {
-        _saveDebounce?.Stop();
-        AppSettings? pending;
-        lock (_saveLock)
+        try
         {
-            pending = _pendingSave;
-            _pendingSave = null;
-        }
-
-        if (pending is not null)
-        {
-            await SaveAsyncImmediate(pending);
-            if (!_disposed)
+            _saveDebounce?.Stop();
+            AppSettings? pending;
+            lock (_saveLock)
             {
-                StatusMessage = _settingsService.LastSaveError is null
-                    ? "Otomatik kaydedildi."
-                    : $"Kayıt hatası: {_settingsService.LastSaveError}";
+                pending = _pendingSave;
+                _pendingSave = null;
+            }
+
+            if (pending is not null)
+            {
+                await SaveAsyncImmediate(pending);
+                if (!_disposed)
+                {
+                    StatusMessage = _settingsService.LastSaveError is null
+                        ? "Otomatik kaydedildi."
+                        : $"Kayıt hatası: {_settingsService.LastSaveError}";
+                }
+            }
+            else
+            {
+                await _settingsService.FlushAsync();
             }
         }
-        else
+        catch (Exception ex)
         {
-            await _settingsService.FlushAsync();
+            CrashLogger.Write("SettingsViewModel.FlushPendingSaveAsync", ex);
         }
     }
 
@@ -864,6 +922,8 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             SystemToastNotifications = SystemToastNotifications,
             BluetoothNotifications = BluetoothNotifications,
             ScreenshotNotifications = ScreenshotNotifications,
+            AutoAddScreenshotsToShelf = AutoAddScreenshotsToShelf,
+            FocusAutoDoNotDisturb = FocusAutoDoNotDisturb,
             DoNotDisturb = DoNotDisturb,
             FocusCompletionSound = FocusCompletionSound,
             EnableHoverExpand = EnableHoverExpand,
@@ -921,7 +981,11 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _disposed = true;
-        _saveDebounce?.Stop();
+        if (_saveDebounce is not null)
+        {
+            _saveDebounce.Stop();
+            _saveDebounce.Tick -= OnSaveDebounceTick;
+        }
         _settingsService.SettingsChanged -= OnExternalSettingsChanged;
     }
 }

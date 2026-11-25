@@ -166,8 +166,15 @@ public sealed class DropShelfService : IDropShelfService
                 _items.Insert(0, created);
                 if (_items.Count > _maxItems)
                 {
-                    evicted = _items[^1];
-                    _items.RemoveAt(_items.Count - 1);
+                    // Prefer evicting the oldest unpinned item so pinned items stay protected.
+                    var evictIdx = _items.FindLastIndex(i => !i.IsPinned);
+                    if (evictIdx < 0)
+                    {
+                        evictIdx = _items.Count - 1;
+                    }
+
+                    evicted = _items[evictIdx];
+                    _items.RemoveAt(evictIdx);
                 }
 
                 addedOrExisting = created;
@@ -294,9 +301,31 @@ public sealed class DropShelfService : IDropShelfService
         return true;
     }
 
+    public bool TogglePin(string itemId)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(itemId))
+        {
+            return false;
+        }
+
+        lock (_sync)
+        {
+            var idx = _items.FindIndex(i => string.Equals(i.Id, itemId, StringComparison.Ordinal));
+            if (idx < 0)
+            {
+                return false;
+            }
+
+            _items[idx] = _items[idx] with { IsPinned = !_items[idx].IsPinned };
+        }
+
+        ItemsChanged?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
     public void Clear()
     {
-        List<ShelfItem> snapshot;
+        List<ShelfItem> removedItems;
         lock (_sync)
         {
             if (_items.Count == 0)
@@ -304,11 +333,16 @@ public sealed class DropShelfService : IDropShelfService
                 return;
             }
 
-            snapshot = new List<ShelfItem>(_items);
-            _items.Clear();
+            removedItems = _items.Where(i => !i.IsPinned).ToList();
+            if (removedItems.Count == 0)
+            {
+                return;
+            }
+
+            _items.RemoveAll(i => !i.IsPinned);
         }
 
-        foreach (var item in snapshot)
+        foreach (var item in removedItems)
         {
             TryDeleteStagingFile(item);
         }

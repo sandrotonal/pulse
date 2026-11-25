@@ -5,18 +5,29 @@ using System.Text.Json.Serialization;
 
 namespace Pulse.Services.Lyrics;
 
-public sealed class LyricsService
+public sealed class LyricsService : IDisposable
 {
     private const int MaxCacheEntries = 100;
     private static readonly Uri BaseEndpoint = new("https://lrclib.net/");
 
     private readonly HttpClient _httpClient;
+    private readonly bool _ownsHttpClient;
+    private readonly object _cacheSync = new();
     private readonly Dictionary<string, LyricsResult?> _cache = new(StringComparer.OrdinalIgnoreCase);
     private readonly LinkedList<string> _cacheOrder = [];
 
     public LyricsService(HttpClient? httpClient = null)
     {
+        _ownsHttpClient = httpClient is null;
         _httpClient = httpClient ?? new HttpClient { Timeout = TimeSpan.FromSeconds(4) };
+    }
+
+    public void Dispose()
+    {
+        if (_ownsHttpClient)
+        {
+            _httpClient.Dispose();
+        }
     }
 
     public async Task<LyricsResult?> FindLyricsAsync(
@@ -35,9 +46,12 @@ public sealed class LyricsService
         }
 
         var cacheKey = string.Join("|", title, artist, album, duration?.TotalSeconds.ToString("0", CultureInfo.InvariantCulture));
-        if (_cache.TryGetValue(cacheKey, out var cached))
+        lock (_cacheSync)
         {
-            return cached;
+            if (_cache.TryGetValue(cacheKey, out var cached))
+            {
+                return cached;
+            }
         }
 
         var transientFailure = false;
@@ -130,18 +144,21 @@ public sealed class LyricsService
 
     private void StoreCacheEntry(string key, LyricsResult? value)
     {
-        if (_cache.ContainsKey(key))
+        lock (_cacheSync)
         {
-            _cacheOrder.Remove(key);
-        }
-        else if (_cache.Count >= MaxCacheEntries && _cacheOrder.Last is { } oldest)
-        {
-            _cacheOrder.RemoveLast();
-            _cache.Remove(oldest.Value);
-        }
+            if (_cache.ContainsKey(key))
+            {
+                _cacheOrder.Remove(key);
+            }
+            else if (_cache.Count >= MaxCacheEntries && _cacheOrder.Last is { } oldest)
+            {
+                _cacheOrder.RemoveLast();
+                _cache.Remove(oldest.Value);
+            }
 
-        _cache[key] = value;
-        _cacheOrder.AddFirst(key);
+            _cache[key] = value;
+            _cacheOrder.AddFirst(key);
+        }
     }
 
     private static IReadOnlyList<LyricsLine> ParseSyncedLyrics(string? syncedLyrics)

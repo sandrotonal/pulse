@@ -511,8 +511,11 @@
                                         Margin="8,0,0,0" VerticalAlignment="Center" />
                             </Grid>
 
-                            <TextBlock Text="{Binding LocationStatusMessage}" FontSize="12"
-                                       Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="LocationStatusText"
+                                       Text="{Binding LocationStatusMessage}" FontSize="12"
+                                       Foreground="{ThemeResource SettingsSecondary}"
+                                       AutomationProperties.LiveSetting="Polite"
+                                       TextWrapping="Wrap" />
                             <TextBlock Text="Hava durumu Open-Meteo'dan alınır. Otomatik konum için IP adresiniz ipwho.is'e gönderilir."
                                        FontSize="11" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
                         </StackPanel>
@@ -727,6 +730,19 @@
                         </Grid>
                         <Border Style="{StaticResource DividerStyle}" />
 
+                        <!-- Auto Add Screenshots to Drop Shelf -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Ekran görüntülerini otomatik rafa ekle" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Alınan ekran görüntülerini anında Dosya Rafı'na düşürerek tek tıkla sürükle-bırak sağlar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding AutoAddScreenshotsToShelf, Mode=TwoWay}"
+                                          AutomationProperties.Name="Ekran görüntülerini otomatik rafa ekle" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
                         <!-- Focus completion sound -->
                         <Grid MinHeight="54">
                             <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
@@ -737,6 +753,19 @@
                             <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
                                           OnContent="" OffContent="" IsOn="{Binding FocusCompletionSound, Mode=TwoWay}"
                                           AutomationProperties.Name="Sayaç bitince ses çal" />
+                        </Grid>
+                        <Border Style="{StaticResource DividerStyle}" />
+
+                        <!-- Focus Auto DND -->
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Odaklanırken Rahatsız Etmeyin'i aç" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Odak sayacı başladığında bildirimleri susturur, bitince eski durumuna döndürür." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding FocusAutoDoNotDisturb, Mode=TwoWay}"
+                                          AutomationProperties.Name="Odaklanırken Rahatsız Etmeyin'i aç" />
                         </Grid>
                     </StackPanel>
                 </Border>
@@ -941,9 +970,11 @@
                     </StackPanel>
                 </Button>
 
-                <TextBlock Grid.Column="1"
+                <TextBlock x:Name="StatusMessageText"
+                           Grid.Column="1"
                            Text="{Binding StatusMessage}"
                            Foreground="{ThemeResource SettingsAccent}"
+                           AutomationProperties.LiveSetting="Polite"
                            FontSize="12"
                            VerticalAlignment="Center"
                            HorizontalAlignment="Center"

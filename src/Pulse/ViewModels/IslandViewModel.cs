@@ -129,6 +129,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         StartFocusTimerCommand = new RelayCommand(() =>
         {
             _focusTimer.Start(DefaultFocusDuration, DefaultBreakDuration);
+            ApplyFocusAutoDnd(enteringFocus: true);
             NotifySplitStateChanged();
         });
         ToggleFocusTimerCommand = new RelayCommand(() =>
@@ -141,10 +142,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             {
                 // Completed sessions restart as a fresh work session instead of doing nothing.
                 _focusTimer.Restart();
+                ApplyFocusAutoDnd(enteringFocus: true);
             }
             else
             {
                 _focusTimer.Resume();
+                ApplyFocusAutoDnd(enteringFocus: !_focusTimer.IsBreak);
             }
             NotifyFocusTick();
             NotifySplitStateChanged();
@@ -152,12 +155,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         ResetFocusTimerCommand = new RelayCommand(() =>
         {
             _focusTimer.Reset();
+            ApplyFocusAutoDnd(enteringFocus: false);
             NotifyFocusTick();
             NotifySplitStateChanged();
         });
         SkipFocusSessionCommand = new RelayCommand(() =>
         {
             _focusTimer.SkipToNextSession();
+            ApplyFocusAutoDnd(enteringFocus: !_focusTimer.IsBreak && _focusTimer.IsRunning);
             NotifyFocusTick();
             NotifySplitStateChanged();
         });
@@ -200,6 +205,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _systemControl.AudioStateChanged += OnSystemAudioStateChanged;
         }
         SystemToggleMuteCommand = new RelayCommand(ToggleSystemMute);
+        ToggleMicMuteCommand = new RelayCommand(ToggleMicMute);
         OpenSoundSwitcherCommand = new RelayCommand(() => _systemControl?.OpenSoundFlyout());
         OpenSoundSettingsCommand = new RelayCommand(() => _systemControl?.OpenSoundSettings());
 
@@ -305,6 +311,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             if (!_disposed && !string.IsNullOrEmpty(path))
             {
                 _systemEvents.ReportScreenshotSaved(path);
+                if (_dropShelf is not null && (_settingsService?.Current.AutoAddScreenshotsToShelf ?? true))
+                {
+                    _ = _dropShelf.AddPath(path);
+                }
             }
         });
 
@@ -429,8 +439,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public int ShelfCount => ShelfItems.Count;
     public bool HasShelfItems => ShelfItems.Count > 0;
     public string ShelfCountText => ShelfCount.ToString(CultureInfo.InvariantCulture);
-    public Visibility ShelfEmptyVisibility => HasShelfItems ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility ShelfPopulatedVisibility => HasShelfItems ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ShelfEmptyVisibility => !HasShelfItems && !IsQuickLookOpen && !IsQuickNoteOpen ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility ShelfPopulatedVisibility => HasShelfItems && !IsQuickLookOpen && !IsQuickNoteOpen ? Visibility.Visible : Visibility.Collapsed;
     public Visibility CompactShelfBadgeVisibility => HasShelfItems && !IsExpanded ? Visibility.Visible : Visibility.Collapsed;
 
     public bool IsDragHovering
@@ -509,11 +519,253 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private bool? _dndBeforeFocus;
+
+    private void ApplyFocusAutoDnd(bool enteringFocus)
+    {
+        if (_disposed || _settingsService is null)
+        {
+            return;
+        }
+
+        if (enteringFocus)
+        {
+            if (_settingsService.Current.FocusAutoDoNotDisturb && !_settingsService.Current.DoNotDisturb)
+            {
+                _dndBeforeFocus ??= false;
+                _ = SetDoNotDisturbAsync(true);
+            }
+        }
+        else if (_dndBeforeFocus is false)
+        {
+            _dndBeforeFocus = null;
+            _ = SetDoNotDisturbAsync(false);
+        }
+    }
+
+    private ShelfItemViewModel? _quickLookItem;
+    private string _quickLookTextPreview = string.Empty;
+
+    public ShelfItemViewModel? QuickLookItem
+    {
+        get => _quickLookItem;
+        private set
+        {
+            if (!ReferenceEquals(_quickLookItem, value))
+            {
+                _quickLookItem = value;
+                OnPropertyChanged(nameof(QuickLookItem));
+                OnPropertyChanged(nameof(IsQuickLookOpen));
+                OnPropertyChanged(nameof(ShelfPopulatedVisibility));
+                OnPropertyChanged(nameof(QuickLookOverlayVisibility));
+                OnPropertyChanged(nameof(QuickLookImageVisibility));
+                OnPropertyChanged(nameof(QuickLookTextVisibility));
+                OnPropertyChanged(nameof(QuickLookGenericVisibility));
+            }
+        }
+    }
+
+    public bool IsQuickLookOpen => _quickLookItem is not null;
+    public Visibility QuickLookOverlayVisibility => IsQuickLookOpen ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility QuickLookImageVisibility => _quickLookItem?.IsImage == true ? Visibility.Visible : Visibility.Collapsed;
+    public Visibility QuickLookTextVisibility => _quickLookItem is { IsImage: false } && !string.IsNullOrEmpty(_quickLookTextPreview)
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+    public Visibility QuickLookGenericVisibility => _quickLookItem is not null && QuickLookImageVisibility == Visibility.Collapsed && QuickLookTextVisibility == Visibility.Collapsed
+        ? Visibility.Visible
+        : Visibility.Collapsed;
+    public string QuickLookTextPreview
+    {
+        get => _quickLookTextPreview;
+        private set
+        {
+            if (!string.Equals(_quickLookTextPreview, value, StringComparison.Ordinal))
+            {
+                _quickLookTextPreview = value;
+                OnPropertyChanged(nameof(QuickLookTextPreview));
+            }
+        }
+    }
+
+    private bool _isQuickNoteOpen;
+    private string _quickNoteText = string.Empty;
+
+    public bool IsQuickNoteOpen
+    {
+        get => _isQuickNoteOpen;
+        private set
+        {
+            if (_isQuickNoteOpen != value)
+            {
+                _isQuickNoteOpen = value;
+                OnPropertyChanged(nameof(IsQuickNoteOpen));
+                OnPropertyChanged(nameof(QuickNoteOverlayVisibility));
+                OnPropertyChanged(nameof(ShelfEmptyVisibility));
+                OnPropertyChanged(nameof(ShelfPopulatedVisibility));
+            }
+        }
+    }
+
+    public Visibility QuickNoteOverlayVisibility => _isQuickNoteOpen ? Visibility.Visible : Visibility.Collapsed;
+
+    public string QuickNoteText
+    {
+        get => _quickNoteText;
+        set
+        {
+            if (!string.Equals(_quickNoteText, value, StringComparison.Ordinal))
+            {
+                _quickNoteText = value;
+                OnPropertyChanged(nameof(QuickNoteText));
+            }
+        }
+    }
+
+    public void OpenQuickNote()
+    {
+        if (_disposed) return;
+        CloseQuickLook();
+        QuickNoteText = string.Empty;
+        IsQuickNoteOpen = true;
+    }
+
+    public void CloseQuickNote()
+    {
+        IsQuickNoteOpen = false;
+        QuickNoteText = string.Empty;
+    }
+
+    public async Task SubmitQuickNoteAsync()
+    {
+        if (_disposed) return;
+        var text = QuickNoteText.Trim();
+        CloseQuickNote();
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        try
+        {
+            var staged = await _dropShelf.StageTextAsync(text);
+            if (!_disposed && staged is not null)
+            {
+                ShowShelfStatus("Not rafa eklendi");
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.SubmitQuickNoteAsync", ex);
+            ShowShelfStatus("Not eklenemedi");
+        }
+    }
+
+    public void OpenQuickLook(ShelfItemViewModel? item)
+    {
+        if (_disposed || item is null)
+        {
+            return;
+        }
+
+        var textPreview = string.Empty;
+        if (!item.IsImage && item.Model.Kind != ShelfItemKind.Folder && File.Exists(item.FilePath))
+        {
+            var ext = Path.GetExtension(item.FilePath);
+            if (ext.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".xml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".xaml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".log", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".csv", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".yml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
+                ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    using var reader = new StreamReader(item.FilePath, detectEncodingFromByteOrderMarks: true);
+                    var buffer = new char[1200];
+                    var read = reader.ReadBlock(buffer, 0, buffer.Length);
+                    if (read > 0)
+                    {
+                        textPreview = new string(buffer, 0, read).TrimEnd();
+                        if (!reader.EndOfStream)
+                        {
+                            textPreview += "\n…";
+                        }
+                    }
+                }
+                catch
+                {
+                    textPreview = string.Empty;
+                }
+            }
+        }
+
+        QuickLookTextPreview = textPreview;
+        QuickLookItem = item;
+    }
+
+    public void CloseQuickLook()
+    {
+        QuickLookTextPreview = string.Empty;
+        QuickLookItem = null;
+    }
+
     public void RemoveShelfItem(string itemId)
     {
         if (!_disposed && !string.IsNullOrWhiteSpace(itemId))
         {
             _dropShelf.Remove(itemId);
+        }
+    }
+
+    public void TogglePinShelfItem(string itemId)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(itemId))
+        {
+            return;
+        }
+
+        if (_dropShelf.TogglePin(itemId))
+        {
+            var pinned = _dropShelf.Items.FirstOrDefault(i => i.Id == itemId)?.IsPinned ?? false;
+            ShowShelfStatus(pinned ? "Rafa sabitlendi" : "Sabitleme kaldırıldı");
+        }
+    }
+
+    public async Task CopyOcrTextFromImageAsync(string filePath)
+    {
+        if (_disposed || string.IsNullOrWhiteSpace(filePath))
+        {
+            return;
+        }
+
+        try
+        {
+            var extracted = await ShelfShellService.ExtractTextFromImageAsync(filePath);
+            if (_disposed)
+            {
+                return;
+            }
+
+            if (string.IsNullOrWhiteSpace(extracted))
+            {
+                ShowShelfStatus("Okunabilir metin bulunamadı");
+                return;
+            }
+
+            if (ShelfShellService.CopyTextToClipboard(extracted))
+            {
+                ShowShelfStatus("Görseldeki metin kopyalandı");
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.CopyOcrTextFromImageAsync", ex);
+            ShowShelfStatus("Metin okunamadı");
         }
     }
 
@@ -650,6 +902,34 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public string SystemMuteGlyph => _systemMuted ? "\uE74F" : "\uE995";
 
     public RelayCommand SystemToggleMuteCommand { get; }
+
+    private bool _micMuted;
+    public bool IsMicMuted => _micMuted;
+    public string MicMuteGlyph => _micMuted ? "\uF781" : "\uE720";
+    public string MicMuteToolTip => _micMuted ? "Mikrofon Kapalı (Aç)" : "Mikrofon Açık (Sessize Al)";
+    public Visibility MicMutedDotVisibility => _micMuted ? Visibility.Visible : Visibility.Collapsed;
+    public RelayCommand ToggleMicMuteCommand { get; }
+
+    private void ToggleMicMute()
+    {
+        if (_disposed || _systemControl is null)
+        {
+            return;
+        }
+
+        try
+        {
+            _micMuted = _systemControl.ToggleMicMute();
+            OnPropertyChanged(nameof(IsMicMuted));
+            OnPropertyChanged(nameof(MicMuteGlyph));
+            OnPropertyChanged(nameof(MicMuteToolTip));
+            OnPropertyChanged(nameof(MicMutedDotVisibility));
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.ToggleMicMute", ex);
+        }
+    }
 
     private void ToggleSystemMute()
     {
@@ -1267,7 +1547,12 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public void OnPointerEntered() => _media.OnPointerEntered();
     public void OnPointerExited() => _media.OnPointerExited();
     public void ToggleExpanded() => _media.ToggleExpanded();
-    public void Collapse() => _media.Collapse();
+    public void Collapse()
+    {
+        CloseQuickLook();
+        CloseQuickNote();
+        _media.Collapse();
+    }
     public void CompleteCollapse() => _media.CompleteCollapse();
     public void BeginScrub(double percent) => _media.BeginScrub(percent);
     public void UpdateScrub(double percent) => _media.UpdateScrub(percent);
@@ -1374,6 +1659,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private void CompleteFocusSession()
     {
+        ApplyFocusAutoDnd(enteringFocus: false);
         NotifyFocusTick();
         NotifySplitStateChanged();
 
@@ -1921,9 +2207,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
         // PowerManager events + WASAPI callbacks deliver immediate updates; slow fallback poll catches silent endpoint drift.
         _systemPollTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(15) };
-        _systemPollTimer.Tick += (_, _) => PollSystemState();
+        _systemPollTimer.Tick += OnSystemPollTick;
         _systemPollTimer.Start();
     }
+
+    private void OnSystemPollTick(object? sender, object e) => PollSystemState();
 
     private void PollSystemState()
     {
@@ -1947,6 +2235,16 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(SystemMuteGlyph));
                 _systemEvents.ReportAudioStatus(volume, muted);
             }
+
+            var micMuted = _systemControl.IsMicMuted();
+            if (micMuted != _micMuted)
+            {
+                _micMuted = micMuted;
+                OnPropertyChanged(nameof(IsMicMuted));
+                OnPropertyChanged(nameof(MicMuteGlyph));
+                OnPropertyChanged(nameof(MicMuteToolTip));
+                OnPropertyChanged(nameof(MicMutedDotVisibility));
+            }
         }
         catch
         {
@@ -1964,9 +2262,16 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        RefreshBattery(notify: false);
-        RefreshSystemAudio();
-        await _media.RefreshSessionAsync();
+        try
+        {
+            RefreshBattery(notify: false);
+            RefreshSystemAudio();
+            await _media.RefreshSessionAsync();
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandViewModel.RefreshExternalStatesAsync", ex);
+        }
     }
 
     private void OnSystemAudioStateChanged(object? sender, AudioStateChangedEventArgs e)
@@ -2040,6 +2345,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             {
                 var volume = control.GetMasterVolume();
                 var muted = control.IsMuted();
+                var micMuted = control.IsMicMuted();
                 var (devName, devGlyph) = control.GetActiveAudioDevice();
                 var (hpConn, hpName) = control.GetHeadphoneStatus();
 
@@ -2062,6 +2368,15 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                         _systemMuted = muted;
                         OnPropertyChanged(nameof(IsSystemMuted));
                         OnPropertyChanged(nameof(SystemMuteGlyph));
+                    }
+
+                    if (_micMuted != micMuted)
+                    {
+                        _micMuted = micMuted;
+                        OnPropertyChanged(nameof(IsMicMuted));
+                        OnPropertyChanged(nameof(MicMuteGlyph));
+                        OnPropertyChanged(nameof(MicMuteToolTip));
+                        OnPropertyChanged(nameof(MicMutedDotVisibility));
                     }
 
                     if (_activeAudioDeviceName != devName || _activeAudioDeviceGlyph != devGlyph)
@@ -2137,6 +2452,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(ArtworkFallbackVisibility));
             OnPropertyChanged(nameof(ArtworkAccentColor));
         }
+        else if (e.PropertyName == nameof(MediaViewModel.FocusCustomMinutes) && _settingsService is not null)
+        {
+            CustomFocusMinutes = _settingsService.Current.FocusCustomMinutes;
+        }
     }
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -2154,6 +2473,10 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _disposed = true;
         UnsubscribePowerEvents();
         _systemPollTimer?.Stop();
+        if (_systemPollTimer is not null)
+        {
+            _systemPollTimer.Tick -= OnSystemPollTick;
+        }
         _systemPollTimer = null;
 
         _idleClockTimer?.Stop();
@@ -2168,7 +2491,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _idleWeatherTimer.Tick -= OnIdleWeatherTick;
         }
 
-        _idleWeatherCts?.Cancel();
+        try { _idleWeatherCts?.Cancel(); } catch (ObjectDisposedException) { }
         _idleWeatherCts = null;
 
         if (_settingsService is not null)

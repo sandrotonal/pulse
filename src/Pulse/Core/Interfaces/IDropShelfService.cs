@@ -18,6 +18,7 @@ public interface IDropShelfService : IDisposable
         ShelfItemKind kind,
         CancellationToken cancellationToken = default);
     bool Remove(string itemId);
+    bool TogglePin(string itemId);
     void Clear();
     Task<ShelfItem?> CreateZipArchiveAsync(CancellationToken cancellationToken = default);
     IReadOnlyList<string> GetExistingPaths();

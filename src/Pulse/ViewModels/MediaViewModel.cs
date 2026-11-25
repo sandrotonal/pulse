@@ -473,9 +473,13 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         _settingsService.SettingsChanged -= OnSettingsChanged;
         _stateMachine.StateChanged -= OnIslandStateChanged;
         _stateTimer.Stop();
+        _stateTimer.Tick -= OnStateTimerTick;
         _playbackTicker.Stop();
+        _playbackTicker.Tick -= OnPlaybackTickerTick;
         try { _lyricsCts?.Cancel(); } catch (ObjectDisposedException) { }
+        try { _lyricsCts?.Dispose(); } catch (ObjectDisposedException) { }
         _lyricsCts = null;
+        _lyricsService.Dispose();
         return ValueTask.CompletedTask;
     }
 
