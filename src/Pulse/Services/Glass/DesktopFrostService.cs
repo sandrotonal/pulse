@@ -232,4 +232,93 @@ internal static class DesktopFrostService
             bitmap.UnlockBits(locked);
         }
     }
+
+    public static async Task<bool> RenderElementToPngAsync(
+        FrameworkElement element,
+        string outputPath,
+        (double X, double Y, double Width, double Height)? cropDipRect = null,
+        uint? compositeBackdropArgb = null)
+    {
+        if (element is null || string.IsNullOrWhiteSpace(outputPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var rtb = new RenderTargetBitmap();
+            await rtb.RenderAsync(element);
+            var pw = rtb.PixelWidth;
+            var ph = rtb.PixelHeight;
+            if (pw <= 0 || ph <= 0)
+            {
+                return false;
+            }
+
+            var buffer = await rtb.GetPixelsAsync();
+            var bytes = global::System.Runtime.InteropServices.WindowsRuntime.WindowsRuntimeBufferExtensions.ToArray(buffer);
+
+            using var full = new Bitmap(pw, ph, PixelFormat.Format32bppArgb);
+            var locked = full.LockBits(new Rectangle(0, 0, pw, ph), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
+            try
+            {
+                var rowBytes = pw * 4;
+                for (var y = 0; y < ph; y++)
+                {
+                    Marshal.Copy(bytes, y * rowBytes, IntPtr.Add(locked.Scan0, y * locked.Stride), rowBytes);
+                }
+            }
+            finally
+            {
+                full.UnlockBits(locked);
+            }
+
+            var outDir = Path.GetDirectoryName(outputPath);
+            if (!string.IsNullOrWhiteSpace(outDir))
+            {
+                Directory.CreateDirectory(outDir);
+            }
+
+            if (cropDipRect is { Width: > 1, Height: > 1 } crop && element.ActualWidth > 1 && element.ActualHeight > 1)
+            {
+                var sx = pw / element.ActualWidth;
+                var sy = ph / element.ActualHeight;
+                var rx = Math.Clamp((int)Math.Floor(crop.X * sx), 0, pw - 1);
+                var ry = Math.Clamp((int)Math.Floor(crop.Y * sy), 0, ph - 1);
+                var rw = Math.Clamp((int)Math.Ceiling(crop.Width * sx), 1, pw - rx);
+                var rh = Math.Clamp((int)Math.Ceiling(crop.Height * sy), 1, ph - ry);
+
+                using var cropped = full.Clone(new Rectangle(rx, ry, rw, rh), PixelFormat.Format32bppArgb);
+                if (compositeBackdropArgb is uint bgArgb)
+                {
+                    using var composited = new Bitmap(rw, rh, PixelFormat.Format32bppArgb);
+                    using (var g = Graphics.FromImage(composited))
+                    {
+                        g.Clear(Color.FromArgb(
+                            (int)((bgArgb >> 24) & 0xFF),
+                            (int)((bgArgb >> 16) & 0xFF),
+                            (int)((bgArgb >> 8) & 0xFF),
+                            (int)(bgArgb & 0xFF)));
+                        g.DrawImageUnscaled(cropped, 0, 0);
+                    }
+                    composited.Save(outputPath, ImageFormat.Png);
+                }
+                else
+                {
+                    cropped.Save(outputPath, ImageFormat.Png);
+                }
+            }
+            else
+            {
+                full.Save(outputPath, ImageFormat.Png);
+            }
+
+            return true;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("DesktopFrostService.RenderElementToPngAsync", ex, $"Path={outputPath}");
+            return false;
+        }
+    }
 }

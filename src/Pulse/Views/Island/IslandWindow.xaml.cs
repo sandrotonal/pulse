@@ -846,6 +846,35 @@ public sealed partial class IslandWindow : Window
         }
     }
 
+    public Task<bool> ExportSurfaceSnapshotAsync(string outputPath)
+    {
+        var pad = 28.0;
+        var hostW = IslandSurfaceLayout.DefaultHostWidthDip;
+        var pillW = Math.Max(120.0, _currentPillWidth);
+        var pillH = Math.Max(36.0, _currentPillHeight);
+
+        double left = (hostW - pillW) / 2.0 + _currentLeadingX;
+        double right = left + pillW;
+
+        if (_viewModel.IsSplitModeActive && !_viewModel.IsExpanded && !_viewModel.IsCollapsing && DetachedPill is not null)
+        {
+            var detW = DetachedPill.Width > 0 ? DetachedPill.Width : IslandSurfaceLayout.DetachedPillWidthDip;
+            var detH = DetachedPill.Height > 0 ? DetachedPill.Height : IslandSurfaceLayout.DetachedPillHeightDip;
+            var detLeft = (hostW - detW) / 2.0 + _currentTrailingX;
+            left = Math.Min(left, detLeft);
+            right = Math.Max(right, detLeft + detW);
+            pillH = Math.Max(pillH, detH);
+        }
+
+        var crop = (
+            X: Math.Max(0, left - pad),
+            Y: 0.0,
+            Width: Math.Min(hostW - Math.Max(0, left - pad), (right - left) + pad * 2.0),
+            Height: Math.Min(WindowRoot.ActualHeight > 0 ? WindowRoot.ActualHeight : 306.0, IslandSurfaceLayout.SurfaceTopInsetDip + pillH + pad));
+
+        return DesktopFrostService.RenderElementToPngAsync(WindowRoot, outputPath, crop, compositeBackdropArgb: 0xFF12141Au);
+    }
+
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
         if (e.PropertyName == nameof(IslandViewModel.BatteryIsCharging))

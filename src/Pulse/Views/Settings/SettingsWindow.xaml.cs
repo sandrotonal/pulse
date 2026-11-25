@@ -293,6 +293,9 @@ public sealed partial class SettingsWindow : Window
         }
     }
 
+    public Task<bool> ExportSnapshotAsync(string outputPath)
+        => DesktopFrostService.RenderElementToPngAsync(SettingsRoot, outputPath);
+
     [DllImport("user32.dll")]
     private static extern uint GetDpiForWindow(IntPtr hwnd);
 

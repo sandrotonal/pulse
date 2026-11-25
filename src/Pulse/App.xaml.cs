@@ -66,6 +66,13 @@ public partial class App : Application
         => Environment.GetCommandLineArgs().Any(arg =>
             string.Equals(arg, argName, StringComparison.OrdinalIgnoreCase));
 
+    private static string? GetLaunchArgValue(string prefix)
+    {
+        var match = Environment.GetCommandLineArgs().FirstOrDefault(arg =>
+            arg.StartsWith(prefix + "=", StringComparison.OrdinalIgnoreCase));
+        return match is null ? null : match[(prefix.Length + 1)..].Trim('"');
+    }
+
     private static bool HasSettingsLaunchArg() => HasLaunchArg("--settings");
 
     private static string? TryGetCurrentDesktopName()
@@ -457,7 +464,11 @@ public partial class App : Application
                 islandWindow.DispatcherQueue.TryEnqueue(() => OnSettingsRequested(this, EventArgs.Empty));
             }
 
-            if (HasLaunchArg("--demo-shelf") || HasLaunchArg("--sample-shelf"))
+            if (GetLaunchArgValue("--export-shots") is { Length: > 0 } exportDir)
+            {
+                _ = ExportShowcaseShotsAsync(islandWindow, mediaInitTask, exportDir);
+            }
+            else if (HasLaunchArg("--demo-shelf") || HasLaunchArg("--sample-shelf"))
             {
                 islandWindow.DispatcherQueue.TryEnqueue(async () =>
                 {
@@ -518,6 +529,109 @@ public partial class App : Application
         catch (Exception ex)
         {
             CrashLogger.Write("App.OnLaunched", ex);
+        }
+    }
+
+    private async Task ExportShowcaseShotsAsync(IslandWindow islandWindow, Task mediaInitTask, string exportDir)
+    {
+        try
+        {
+            await mediaInitTask;
+            await Task.Delay(900);
+
+            var tcs = new TaskCompletionSource();
+            islandWindow.DispatcherQueue.TryEnqueue(async () =>
+            {
+                try
+                {
+                    Directory.CreateDirectory(exportDir);
+
+                    var addedDemoTrack = false;
+                    if (!_islandViewModel.HasTrack)
+                    {
+                        _islandViewModel.ToggleDemoTrackCommand.Execute(null);
+                        addedDemoTrack = true;
+                        await Task.Delay(450);
+                    }
+
+                    // Capture single compact pill after any startup toast settles and before populating shelf
+                    await Task.Delay(2400);
+                    if (_islandViewModel.IsExpanded)
+                    {
+                        _islandViewModel.ToggleExpanded();
+                        await Task.Delay(500);
+                    }
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-compact.png"));
+
+                    // Populate Drop Shelf with sample icon (pinned) + text note
+                    var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "AppIcon.png");
+                    if (File.Exists(iconPath))
+                    {
+                        var iconItem = _dropShelfService.AddPath(iconPath);
+                        if (iconItem is not null && !iconItem.IsPinned)
+                        {
+                            _dropShelfService.TogglePin(iconItem.Id);
+                        }
+                    }
+                    await _dropShelfService.StageTextAsync("Pulse Drop Shelf v2.2\nQuick Look · Pin · Offline OCR");
+                    await Task.Delay(550);
+
+                    // Capture split island (media + shelf badge)
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-split.png"));
+
+                    if (!_islandViewModel.IsExpanded)
+                    {
+                        _islandViewModel.ToggleExpanded();
+                        await Task.Delay(550);
+                    }
+
+                    _islandViewModel.SelectedPageIndex = 0;
+                    await Task.Delay(550);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-media.png"));
+
+                    _islandViewModel.SelectedPageIndex = 1;
+                    await Task.Delay(550);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-focus.png"));
+
+                    _islandViewModel.SelectedPageIndex = 2;
+                    await Task.Delay(550);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-system.png"));
+
+                    _islandViewModel.SelectedPageIndex = 3;
+                    await Task.Delay(600);
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-shelf.png"));
+
+                    if (addedDemoTrack)
+                    {
+                        _islandViewModel.ToggleDemoTrackCommand.Execute(null);
+                    }
+
+                    OnSettingsRequested(this, EventArgs.Empty);
+                    await Task.Delay(900);
+                    if (_settingsWindow is { } settingsWin)
+                    {
+                        await settingsWin.ExportSnapshotAsync(Path.Combine(exportDir, "settings-dark.png"));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Write("App.ExportShowcaseShotsAsync.UI", ex);
+                }
+                finally
+                {
+                    tcs.TrySetResult();
+                }
+            });
+
+            await tcs.Task;
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("App.ExportShowcaseShotsAsync", ex);
+        }
+        finally
+        {
+            islandWindow.DispatcherQueue.TryEnqueue(() => OnExitRequested(this, EventArgs.Empty));
         }
     }
 
