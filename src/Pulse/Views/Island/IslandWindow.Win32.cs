@@ -88,9 +88,48 @@ public sealed partial class IslandWindow
             return companion;
         }
 
+        // Clear stale handle if the companion window closed or minimized.
+        if (companion != IntPtr.Zero && (!IsWindow(companion) || !IsWindowVisible(companion)))
+        {
+            _companionAboveHwnd = IntPtr.Zero;
+        }
+
         skipZOrderChange = false;
         return HwndTopmost;
     }
+
+    private string? TryGetProcessNameFast(uint pid)
+    {
+        if (pid == 0)
+        {
+            return null;
+        }
+
+        var handle = OpenProcess(ProcessQueryLimitedInformation, false, pid);
+        if (handle == IntPtr.Zero)
+        {
+            return null;
+        }
+
+        try
+        {
+            var size = _processPathBuffer.Length;
+            if (QueryFullProcessImageName(handle, 0, _processPathBuffer, ref size) && size > 0)
+            {
+                var fullPath = new string(_processPathBuffer, 0, size);
+                return Path.GetFileNameWithoutExtension(fullPath);
+            }
+        }
+        finally
+        {
+            _ = CloseHandle(handle);
+        }
+
+        return null;
+    }
+
+    private const uint ProcessQueryLimitedInformation = 0x1000;
+    private readonly char[] _processPathBuffer = new char[512];
 
     /// <summary>Keeps the island above desktop apps without overtaking an open Settings window.</summary>
     public void ReassertTopmost()
@@ -161,11 +200,7 @@ public sealed partial class IslandWindow
         try
         {
             _ = GetWindowThreadProcessId(foreground, out var pid);
-            if (pid != 0)
-            {
-                using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-                processName = proc.ProcessName;
-            }
+            processName = TryGetProcessNameFast(pid);
         }
         catch { }
 
@@ -231,11 +266,7 @@ public sealed partial class IslandWindow
         try
         {
             _ = GetWindowThreadProcessId(foreground, out var pid);
-            if (pid != 0)
-            {
-                using var proc = System.Diagnostics.Process.GetProcessById((int)pid);
-                processName = proc.ProcessName;
-            }
+            processName = TryGetProcessNameFast(pid);
         }
         catch { }
 
@@ -929,18 +960,19 @@ public sealed partial class IslandWindow
 
         if (uMsg == WM_WINDOWPOSCHANGING)
         {
-            // Keep topmost above general apps while yielding cleanly to an open companion Settings window.
+            // Keep topmost above general apps, and never interfere with WinUI's internal Z-order chain
+            // while a companion Settings window (or its modal dialog) is active.
             var wp = Marshal.PtrToStructure<WINDOWPOS>(lParam);
             if ((wp.flags & SwpNoZOrder) == 0)
             {
                 var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
-                if (skipZOrder)
+                if (skipZOrder || insertAfter != HwndTopmost)
                 {
                     wp.flags |= SwpNoZOrder;
                 }
                 else
                 {
-                    wp.hwndInsertAfter = insertAfter;
+                    wp.hwndInsertAfter = HwndTopmost;
                 }
                 Marshal.StructureToPtr(wp, lParam, false);
             }
@@ -1142,6 +1174,15 @@ public sealed partial class IslandWindow
 
     [DllImport("user32.dll")]
     private static extern short GetKeyState(int nVirtKey);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint dwDesiredAccess, bool bInheritHandle, uint dwProcessId);
+
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern bool QueryFullProcessImageName(IntPtr hProcess, int dwFlags, [Out] char[] lpExeName, ref int lpdwSize);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool CloseHandle(IntPtr hObject);
 
     [DllImport("gdi32.dll")]
     private static extern IntPtr CreateRoundRectRgn(int left, int top, int right, int bottom, int widthEllipse, int heightEllipse);

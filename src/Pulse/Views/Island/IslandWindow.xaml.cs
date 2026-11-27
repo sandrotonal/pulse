@@ -363,10 +363,14 @@ public sealed partial class IslandWindow : Window
         // Apply initial layout without animation
         UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
 
-        // Guard against other apps/Win32 calls demoting the island out of the topmost band.
+        // Guard against Z-order demotion and self-heal any stuck WinUI/pointer/hit-test state.
         _topmostGuardTimer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         _topmostGuardTimer.Interval = TimeSpan.FromMilliseconds(3000);
-        _topmostGuardTimer.Tick += (_, _) => ReassertTopmost();
+        _topmostGuardTimer.Tick += (_, _) =>
+        {
+            ReassertTopmost();
+            RecoverStuckInteractionStateIfNeeded();
+        };
         _topmostGuardTimer.Start();
 
         if (_viewModel.IsPlaying && _viewModel.ShowEqualizer)
@@ -453,7 +457,11 @@ public sealed partial class IslandWindow : Window
         _collapseDelayTimer.Stop();
         _isPointerOverSurface = false;
         _isInteractingWithControl = false;
+        _isContextMenuOpen = false;
+        _isDragHovering = false;
+        _isDraggingOut = false;
         _longPressTriggered = false;
+        _viewModel.IsDragHovering = false;
         _viewModel.EventRouter.SetPresentationPaused(true);
 
         if (!showAnchor)
@@ -609,6 +617,13 @@ public sealed partial class IslandWindow : Window
         // Clear any leftover Composition hide opacity override before recalculating layout and resuming alerts.
         ResetDetachedVisualOpacity(1f);
         _viewModel.EventRouter.SetPresentationPaused(_sessionLocked);
+
+        // Self-heal hit-test / pointer locks whenever showing/unhiding.
+        _isInteractingWithControl = false;
+        _isContextMenuOpen = false;
+        _isDragHovering = false;
+        _isDraggingOut = false;
+        _viewModel.IsDragHovering = false;
 
         // Re-sync layout bounds & visibility cleanly before reveal so returning from fullscreen never shows stale widths.
         UpdateStateLayout(_viewModel.CurrentIslandState, animated: false);
@@ -796,6 +811,68 @@ public sealed partial class IslandWindow : Window
             }
             SetTextInputActivationEnabled(false);
             HideIslandAnimated();
+        }
+    }
+
+    private void RecoverStuckInteractionStateIfNeeded()
+    {
+        if (_windowClosed || _isIslandHidden)
+        {
+            return;
+        }
+
+        // 1. Recover orphaned WS_EX_NOACTIVATE strip when QuickNote is closed.
+        if (_isTextInputActivationEnabled && !_viewModel.IsQuickNoteOpen)
+        {
+            SetTextInputActivationEnabled(false);
+        }
+
+        // 2. Recover stuck mouse-press / button interaction if no mouse button is currently down.
+        const int vkLButton = 0x01;
+        const int vkRButton = 0x02;
+        bool anyMouseButtonDown = (GetKeyState(vkLButton) & 0x8000) != 0 || (GetKeyState(vkRButton) & 0x8000) != 0;
+        if (!anyMouseButtonDown && _isInteractingWithControl && !_viewModel.IsQuickNoteOpen && !_isPickingShelfFile)
+        {
+            _isInteractingWithControl = false;
+        }
+
+        // 3. Reconcile WinUI hit-test & surface visibility if any transition callback was dropped.
+        if (Surface.Visibility != Visibility.Visible)
+        {
+            Surface.Visibility = Visibility.Visible;
+        }
+
+        if (!_isDimensionAnimating)
+        {
+            bool shouldBeExpanded = _viewModel.IsExpanded;
+            bool isCollapsing = _viewModel.CurrentIslandState == IslandState.Collapsing;
+
+            if (shouldBeExpanded)
+            {
+                if (ExpandedView.Visibility != Visibility.Visible)
+                {
+                    ExpandedView.Visibility = Visibility.Visible;
+                }
+                ExpandedView.IsHitTestVisible = true;
+                CompactView.IsHitTestVisible = false;
+                if (_expandedVisual is not null && _expandedVisual.Opacity < 0.99f)
+                {
+                    _expandedVisual.Opacity = 1f;
+                }
+            }
+            else if (!isCollapsing)
+            {
+                if (ExpandedView.Visibility == Visibility.Visible)
+                {
+                    ExpandedView.Visibility = Visibility.Collapsed;
+                }
+                ExpandedView.IsHitTestVisible = false;
+                CompactView.IsHitTestVisible = true;
+                if (_compactVisual is not null && _compactVisual.Opacity < 0.99f)
+                {
+                    _compactVisual.Opacity = 1f;
+                }
+            }
         }
     }
 

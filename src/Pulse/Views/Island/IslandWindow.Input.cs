@@ -603,11 +603,13 @@ public sealed partial class IslandWindow
             el.PointerCaptureLost += OnButtonPointerCaptureLost;
             el.PointerCanceled -= OnButtonPointerCanceled;
             el.PointerCanceled += OnButtonPointerCanceled;
+            el.Unloaded -= OnButtonUnloaded;
+            el.Unloaded += OnButtonUnloaded;
         }
         // Do not set e.Handled = true: allow ButtonBase to process Click & Command naturally.
     }
 
-    private void OnButtonPointerReleased(object sender, PointerRoutedEventArgs e)
+    private void ReleaseButtonInteraction(object sender)
     {
         _isInteractingWithControl = false;
         if (sender is FrameworkElement el)
@@ -615,7 +617,13 @@ public sealed partial class IslandWindow
             AnimateButtonScale(el, 1.0f);
             el.PointerCaptureLost -= OnButtonPointerCaptureLost;
             el.PointerCanceled -= OnButtonPointerCanceled;
+            el.Unloaded -= OnButtonUnloaded;
         }
+    }
+
+    private void OnButtonPointerReleased(object sender, PointerRoutedEventArgs e)
+    {
+        ReleaseButtonInteraction(sender);
 
         if (IsNonPrimaryRelease(e))
         {
@@ -630,26 +638,13 @@ public sealed partial class IslandWindow
     }
 
     private void OnButtonPointerCaptureLost(object sender, PointerRoutedEventArgs e)
-    {
-        _isInteractingWithControl = false;
-        if (sender is FrameworkElement el)
-        {
-            AnimateButtonScale(el, 1.0f);
-            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
-            el.PointerCanceled -= OnButtonPointerCanceled;
-        }
-    }
+        => ReleaseButtonInteraction(sender);
 
     private void OnButtonPointerCanceled(object sender, PointerRoutedEventArgs e)
-    {
-        _isInteractingWithControl = false;
-        if (sender is FrameworkElement el)
-        {
-            AnimateButtonScale(el, 1.0f);
-            el.PointerCaptureLost -= OnButtonPointerCaptureLost;
-            el.PointerCanceled -= OnButtonPointerCanceled;
-        }
-    }
+        => ReleaseButtonInteraction(sender);
+
+    private void OnButtonUnloaded(object sender, RoutedEventArgs e)
+        => ReleaseButtonInteraction(sender);
 
     private void AnimateButtonScale(FrameworkElement element, float targetScale)
     {

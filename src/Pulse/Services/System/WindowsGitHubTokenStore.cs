@@ -12,26 +12,43 @@ public sealed class WindowsGitHubTokenStore : IGitHubTokenStore
 {
     private const string ResourceName = "PulseGitHubWorkspaceToken";
     private const string DefaultUserName = "github-pat";
+    private readonly object _cacheSync = new();
+    private bool _tokenCacheLoaded;
+    private string? _cachedToken;
 
     public string? GetToken()
     {
+        lock (_cacheSync)
+        {
+            if (_tokenCacheLoaded)
+            {
+                return _cachedToken;
+            }
+        }
+
+        string? loaded = null;
         try
         {
             var vault = new PasswordVault();
             var credentials = vault.FindAllByResource(ResourceName);
             var entry = credentials.FirstOrDefault();
-            if (entry is null)
+            if (entry is not null)
             {
-                return null;
+                entry.RetrievePassword();
+                loaded = string.IsNullOrWhiteSpace(entry.Password) ? null : entry.Password;
             }
-
-            entry.RetrievePassword();
-            return string.IsNullOrWhiteSpace(entry.Password) ? null : entry.Password;
         }
         catch
         {
             // Element not found (COMException 0x80070490) or Credential Manager unavailable.
-            return null;
+            loaded = null;
+        }
+
+        lock (_cacheSync)
+        {
+            _cachedToken = loaded;
+            _tokenCacheLoaded = true;
+            return _cachedToken;
         }
     }
 
@@ -49,6 +66,11 @@ public sealed class WindowsGitHubTokenStore : IGitHubTokenStore
             ClearToken();
             var vault = new PasswordVault();
             vault.Add(new PasswordCredential(ResourceName, DefaultUserName, trimmed));
+            lock (_cacheSync)
+            {
+                _cachedToken = trimmed;
+                _tokenCacheLoaded = true;
+            }
             return true;
         }
         catch (Exception ex)
@@ -70,6 +92,14 @@ public sealed class WindowsGitHubTokenStore : IGitHubTokenStore
         }
         catch
         {
+        }
+        finally
+        {
+            lock (_cacheSync)
+            {
+                _cachedToken = null;
+                _tokenCacheLoaded = true;
+            }
         }
     }
 
