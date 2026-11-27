@@ -1196,28 +1196,141 @@ public sealed class WindowsSystemControlService : ISystemControlService, IDispos
             return false;
         }
 
+        var trimmed = path.Trim();
+        if (TryOpenUri(trimmed))
+        {
+            return true;
+        }
+
         try
         {
-            if (File.Exists(path))
+            if (File.Exists(trimmed))
             {
-                using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
-                    "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+                var startInfo = new global::System.Diagnostics.ProcessStartInfo("explorer.exe")
+                {
+                    UseShellExecute = true
+                };
+                startInfo.ArgumentList.Add($"/select,\"{trimmed}\"");
+                using var process = global::System.Diagnostics.Process.Start(startInfo);
                 return true;
             }
 
-            if (Directory.Exists(path))
+            if (Directory.Exists(trimmed))
             {
-                using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(path) { UseShellExecute = true });
+                using var process = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(trimmed) { UseShellExecute = true });
                 return true;
             }
 
-            using var fallback = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo(
-                "explorer.exe", $"/select,\"{path}\"") { UseShellExecute = true });
+            var fallbackInfo = new global::System.Diagnostics.ProcessStartInfo("explorer.exe")
+            {
+                UseShellExecute = true
+            };
+            fallbackInfo.ArgumentList.Add($"/select,\"{trimmed}\"");
+            using var fallback = global::System.Diagnostics.Process.Start(fallbackInfo);
             return true;
         }
         catch
         {
             return false;
+        }
+    }
+
+    public bool TryOpenUri(string uri)
+    {
+        if (string.IsNullOrWhiteSpace(uri))
+        {
+            return false;
+        }
+
+        if (!Uri.TryCreate(uri.Trim(), UriKind.Absolute, out var parsed) ||
+            !(string.Equals(parsed.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(parsed.Scheme, Uri.UriSchemeHttp, StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(parsed.Scheme, "vscode", StringComparison.OrdinalIgnoreCase) ||
+              string.Equals(parsed.Scheme, "x-github-client", StringComparison.OrdinalIgnoreCase)))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var process = global::System.Diagnostics.Process.Start(
+                new global::System.Diagnostics.ProcessStartInfo(parsed.AbsoluteUri) { UseShellExecute = true });
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public bool TryOpenRepositoryInTerminal(string repoPath)
+    {
+        if (string.IsNullOrWhiteSpace(repoPath) || !Directory.Exists(repoPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            var wtInfo = new global::System.Diagnostics.ProcessStartInfo("wt.exe")
+            {
+                UseShellExecute = true
+            };
+            wtInfo.ArgumentList.Add("-d");
+            wtInfo.ArgumentList.Add(repoPath);
+            using var wt = global::System.Diagnostics.Process.Start(wtInfo);
+            return true;
+        }
+        catch
+        {
+            try
+            {
+                using var pwsh = global::System.Diagnostics.Process.Start(new global::System.Diagnostics.ProcessStartInfo("powershell.exe")
+                {
+                    WorkingDirectory = repoPath,
+                    UseShellExecute = true
+                });
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+    }
+
+    public bool TryOpenRepositoryInEditor(string repoPath)
+    {
+        if (string.IsNullOrWhiteSpace(repoPath) || !Directory.Exists(repoPath))
+        {
+            return false;
+        }
+
+        var normalized = repoPath.Replace('\\', '/');
+        if (!normalized.StartsWith('/'))
+        {
+            normalized = "/" + normalized;
+        }
+
+        if (TryOpenUri($"vscode://file{normalized}"))
+        {
+            return true;
+        }
+
+        try
+        {
+            var codeInfo = new global::System.Diagnostics.ProcessStartInfo("code")
+            {
+                UseShellExecute = true,
+                CreateNoWindow = true
+            };
+            codeInfo.ArgumentList.Add(repoPath);
+            using var code = global::System.Diagnostics.Process.Start(codeInfo);
+            return true;
+        }
+        catch
+        {
+            return TryOpenPath(repoPath);
         }
     }
 

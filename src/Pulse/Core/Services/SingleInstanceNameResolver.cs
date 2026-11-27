@@ -11,7 +11,8 @@ public sealed record SingleInstanceNames(
     string ExpandSystemEventName = SingleInstanceNameResolver.DefaultExpandSystemEventName,
     string ExpandShelfEventName = SingleInstanceNameResolver.DefaultExpandShelfEventName,
     string CollapseEventName = SingleInstanceNameResolver.DefaultCollapseEventName,
-    string ToggleSplitDemoEventName = SingleInstanceNameResolver.DefaultToggleSplitDemoEventName);
+    string ToggleSplitDemoEventName = SingleInstanceNameResolver.DefaultToggleSplitDemoEventName,
+    string ExpandDevEventName = SingleInstanceNameResolver.DefaultExpandDevEventName);
 
 /// <summary>
 /// Resolves kernel object names for Pulse's single-instance guard.
@@ -30,6 +31,7 @@ public static class SingleInstanceNameResolver
     public const string DefaultExpandShelfEventName = "Local\\PulseExpandShelfSignal";
     public const string DefaultCollapseEventName = "Local\\PulseCollapseSignal";
     public const string DefaultToggleSplitDemoEventName = "Local\\PulseToggleSplitDemoSignal";
+    public const string DefaultExpandDevEventName = "Local\\PulseExpandDevSignal";
 
     public static SingleInstanceNames Resolve(string? desktopName)
     {
@@ -44,7 +46,8 @@ public static class SingleInstanceNameResolver
                 DefaultExpandSystemEventName,
                 DefaultExpandShelfEventName,
                 DefaultCollapseEventName,
-                DefaultToggleSplitDemoEventName);
+                DefaultToggleSplitDemoEventName,
+                DefaultExpandDevEventName);
         }
 
         var trimmed = desktopName.Trim();
@@ -59,7 +62,8 @@ public static class SingleInstanceNameResolver
                 DefaultExpandSystemEventName,
                 DefaultExpandShelfEventName,
                 DefaultCollapseEventName,
-                DefaultToggleSplitDemoEventName);
+                DefaultToggleSplitDemoEventName,
+                DefaultExpandDevEventName);
         }
 
         var suffix = SanitizeDesktopSuffix(trimmed);
@@ -72,7 +76,8 @@ public static class SingleInstanceNameResolver
             $"{DefaultExpandSystemEventName}_{suffix}",
             $"{DefaultExpandShelfEventName}_{suffix}",
             $"{DefaultCollapseEventName}_{suffix}",
-            $"{DefaultToggleSplitDemoEventName}_{suffix}");
+            $"{DefaultToggleSplitDemoEventName}_{suffix}",
+            $"{DefaultExpandDevEventName}_{suffix}");
     }
 
     internal static string SanitizeDesktopSuffix(string rawDesktopName)

@@ -177,6 +177,10 @@ public sealed partial class IslandWindow
             {
                 ArtworkAmbientLayer.Fill = _ambientBrush;
             }
+            if (DetachedArtworkAmbientLayer is not null && DetachedArtworkAmbientLayer.Fill != _ambientBrush)
+            {
+                DetachedArtworkAmbientLayer.Fill = _ambientBrush;
+            }
             return;
         }
 
@@ -199,6 +203,10 @@ public sealed partial class IslandWindow
         _ambientBrush.GradientStops.Add(_ambientEndStop);
 
         ArtworkAmbientLayer.Fill = _ambientBrush;
+        if (DetachedArtworkAmbientLayer is not null)
+        {
+            DetachedArtworkAmbientLayer.Fill = _ambientBrush;
+        }
     }
 
     private void UpdateArtworkAmbientGlow(GlassSurfacePalette palette)
@@ -264,7 +272,7 @@ public sealed partial class IslandWindow
             ArtworkAmbientLayer.Visibility = Visibility.Visible;
             if (DetachedArtworkAmbientLayer is not null)
             {
-                DetachedArtworkAmbientLayer.Visibility = Visibility.Collapsed;
+                DetachedArtworkAmbientLayer.Visibility = Visibility.Visible;
             }
 
             var accentColor = DesktopFrostService.ToColor(palette.AccentArgb);
@@ -469,26 +477,37 @@ public sealed partial class IslandWindow
             windowWasTemporarilyHidden = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpHideWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
             await Task.Delay(45);
 
-            byte[]? pngBytes = null;
+            // Capture raw desktop pixels off-UI thread, then restore the island HWND immediately
+            // BEFORE Gaussian blur + PNG encoding so the window is only hidden for ~45ms.
+            global::System.Drawing.Bitmap? capturedBmp = null;
             if (!_windowClosed && !_isIslandHidden)
             {
-                pngBytes = await Task.Run(() =>
-                {
-                    using var bmp = DesktopFrostService.CaptureScreenRegion(screenX, screenY, clientW, clientH);
-                    if (bmp is null)
-                    {
-                        return null;
-                    }
-
-                    return DesktopFrostService.ProcessCapturedFrostToPng(bmp, dpiScale, blurRadius: 11, vibrancyBoost: 1.24);
-                });
+                capturedBmp = await Task.Run(() => DesktopFrostService.CaptureScreenRegion(screenX, screenY, clientW, clientH));
             }
 
             if (windowWasTemporarilyHidden && !_windowClosed && !_isIslandHidden)
             {
                 _frostRestoreGuardTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
+                var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
+                _ = SetWindowPos(_hwnd, insertAfter, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize | (skipZOrder ? SwpNoZOrder : 0));
                 windowWasTemporarilyHidden = false;
+            }
+
+            byte[]? pngBytes = null;
+            if (capturedBmp is not null)
+            {
+                try
+                {
+                    if (!_windowClosed && !_isIslandHidden && generation == _frostGeneration)
+                    {
+                        pngBytes = await Task.Run(() =>
+                            DesktopFrostService.ProcessCapturedFrostToPng(capturedBmp, dpiScale, blurRadius: 11, vibrancyBoost: 1.24));
+                    }
+                }
+                finally
+                {
+                    capturedBmp.Dispose();
+                }
             }
 
             if (_windowClosed || pngBytes is null || generation != _frostGeneration || _isIslandHidden || !_glassEnabled || FrostLayer is null)
@@ -537,7 +556,8 @@ public sealed partial class IslandWindow
                 try
                 {
                     _frostRestoreGuardTicks = System.Diagnostics.Stopwatch.GetTimestamp();
-                    _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize);
+                    var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
+                    _ = SetWindowPos(_hwnd, insertAfter, 0, 0, 0, 0, SwpShowWindow | SwpNoActivate | SwpNoMove | SwpNoSize | (skipZOrder ? SwpNoZOrder : 0));
                 }
                 catch
                 {
@@ -562,6 +582,7 @@ public sealed partial class IslandWindow
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "IslandBorder", palette.BorderRimTopArgb);
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PrimaryText", palette.PrimaryTextArgb);
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "SecondaryText", palette.SecondaryTextArgb);
+        DesktopFrostService.UpdateBrush(WindowRoot.Resources, "DangerText", palette.IsLightTheme ? 0xFFD70015u : 0xFFFF453Au);
         DesktopFrostService.UpdateBrush(WindowRoot.Resources, "PillControlBackground", palette.PillControlBackgroundArgb);
 
         var sliderFill = palette.IsLightTheme ? 0xFF141518u : 0xFFFFFFFFu;

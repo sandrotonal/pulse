@@ -14,27 +14,56 @@ public static class KnownFolderResolver
     public static string GetDownloadsDirectory()
     {
         var resolved = TryGetKnownFolder(FolderIdDownloads);
-        if (!string.IsNullOrWhiteSpace(resolved))
+        if (!string.IsNullOrWhiteSpace(resolved) && Directory.Exists(resolved))
         {
             return resolved;
         }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
-            "Downloads");
+        var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+        if (!string.IsNullOrWhiteSpace(userProfile))
+        {
+            var fallback = Path.Combine(userProfile, "Downloads");
+            if (Directory.Exists(fallback) || string.IsNullOrWhiteSpace(resolved))
+            {
+                return fallback;
+            }
+        }
+
+        return !string.IsNullOrWhiteSpace(resolved)
+            ? resolved
+            : Path.Combine(Path.GetTempPath(), "PulseDownloads");
     }
 
     public static string GetScreenshotsDirectory()
     {
         var resolved = TryGetKnownFolder(FolderIdScreenshots);
-        if (!string.IsNullOrWhiteSpace(resolved))
+        if (!string.IsNullOrWhiteSpace(resolved) && Directory.Exists(resolved))
         {
             return resolved;
         }
 
-        return Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.MyPictures),
-            "Screenshots");
+        var pictures = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+        if (string.IsNullOrWhiteSpace(pictures))
+        {
+            var userProfile = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+            if (!string.IsNullOrWhiteSpace(userProfile))
+            {
+                pictures = Path.Combine(userProfile, "Pictures");
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(pictures))
+        {
+            var fallback = Path.Combine(pictures, "Screenshots");
+            if (Directory.Exists(fallback) || string.IsNullOrWhiteSpace(resolved))
+            {
+                return fallback;
+            }
+        }
+
+        return !string.IsNullOrWhiteSpace(resolved)
+            ? resolved
+            : Path.Combine(Path.GetTempPath(), "PulseScreenshots");
     }
 
     private static string? TryGetKnownFolder(Guid folderId)

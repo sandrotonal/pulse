@@ -30,6 +30,7 @@ public sealed class SettingsService : ISettingsService, IDisposable
             return;
         }
 
+        var previous = Current;
         var acquired = false;
         try
         {
@@ -56,7 +57,10 @@ public sealed class SettingsService : ISettingsService, IDisposable
             }
         }
 
-        SettingsChanged?.Invoke(this, Current);
+        if (!Equals(previous, Current))
+        {
+            SettingsChanged?.Invoke(this, Current);
+        }
     }
 
     /// <summary>
@@ -128,13 +132,30 @@ public sealed class SettingsService : ISettingsService, IDisposable
             return Task.CompletedTask;
         }
 
-        Current = Normalize(settings);
+        var previous = Current;
+        var normalized = Normalize(settings);
+        Current = normalized;
 
-        // Notify in-memory listeners immediately for instantaneous real-time UI response
-        SettingsChanged?.Invoke(this, Current);
-
+        // Queue disk persistence first so an exception in a UI SettingsChanged subscriber
+        // can never prevent settings.json from being written.
         var saveTask = PersistLatestAsync();
         _activeSaveTask = saveTask;
+
+        if (!Equals(previous, normalized) && SettingsChanged is { } handlers)
+        {
+            foreach (EventHandler<AppSettings> handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    handler(this, Current);
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Write("SettingsService.SettingsChanged", ex);
+                }
+            }
+        }
+
         return saveTask;
     }
 
@@ -254,8 +275,66 @@ public sealed class SettingsService : ISettingsService, IDisposable
             TemperatureUnit = string.Equals(settings.TemperatureUnit?.Trim(), "F", StringComparison.OrdinalIgnoreCase) ? "F" : "C",
             FocusDefaultMinutes = Math.Clamp(settings.FocusDefaultMinutes, 1, 180),
             FocusBreakMinutes = Math.Clamp(settings.FocusBreakMinutes, 1, 60),
-            FocusCustomMinutes = Math.Clamp(settings.FocusCustomMinutes, 1, 180)
+            FocusCustomMinutes = Math.Clamp(settings.FocusCustomMinutes, 1, 180),
+            DeveloperLocalRepositories = NormalizeStringList(settings.DeveloperLocalRepositories, 12, 260),
+            DeveloperGitHubRepositories = NormalizeGitHubRepoList(settings.DeveloperGitHubRepositories, 12),
+            DeveloperSelectedRepoIndex = Math.Max(0, settings.DeveloperSelectedRepoIndex),
+            DeveloperPollIntervalSeconds = Math.Clamp(settings.DeveloperPollIntervalSeconds, 30, 600)
         };
+    }
+
+    private static List<string> NormalizeStringList(IReadOnlyList<string>? values, int maxCount, int maxLength)
+    {
+        if (values is null || values.Count == 0)
+        {
+            return [];
+        }
+
+        var result = new List<string>(Math.Min(values.Count, maxCount));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in values)
+        {
+            var trimmed = (raw ?? string.Empty).Trim().Trim('"');
+            if (trimmed.Length == 0 || trimmed.Length > maxLength || !seen.Add(trimmed))
+            {
+                continue;
+            }
+
+            result.Add(trimmed);
+            if (result.Count >= maxCount)
+            {
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    private static List<string> NormalizeGitHubRepoList(IReadOnlyList<string>? values, int maxCount)
+    {
+        if (values is null || values.Count == 0)
+        {
+            return [];
+        }
+
+        var result = new List<string>(Math.Min(values.Count, maxCount));
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var raw in values)
+        {
+            var normalized = Pulse.Core.Services.Developer.GitStatusParser.NormalizeGitHubSlug(raw);
+            if (string.IsNullOrEmpty(normalized) || !seen.Add(normalized))
+            {
+                continue;
+            }
+
+            result.Add(normalized);
+            if (result.Count >= maxCount)
+            {
+                break;
+            }
+        }
+
+        return result;
     }
 
     private static string NormalizeTheme(string? theme)

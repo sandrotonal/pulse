@@ -69,4 +69,93 @@ public sealed record AppSettings
     public bool AutoAddScreenshotsToShelf { get; init; } = true;
     public bool FocusAutoDoNotDisturb { get; init; }
     public bool DoNotDisturb { get; init; }
+
+    // Opt-in Developer Workspace (Git & GitHub Live Activity + 5th Panel)
+    public bool EnableDeveloperWorkspace { get; init; }
+    public List<string> DeveloperLocalRepositories { get; init; } = [];
+    public List<string> DeveloperGitHubRepositories { get; init; } = [];
+    public int DeveloperSelectedRepoIndex { get; init; }
+    /// <summary>GitHub Actions/PR polling interval in seconds (30-600).</summary>
+    public int DeveloperPollIntervalSeconds { get; init; } = 60;
+    public bool NotifyOnGitCommits { get; init; } = true;
+    public bool NotifyOnGitHubActions { get; init; } = true;
+    public bool NotifyOnPullRequests { get; init; } = true;
+    public bool ShowDeveloperLiveActivity { get; init; } = true;
+
+    public bool Equals(AppSettings? other)
+    {
+        if (ReferenceEquals(this, other)) return true;
+        if (other is null) return false;
+
+        return EqualityComparer<Type>.Default.Equals(EqualityContract, other.EqualityContract)
+            && StartWithWindows == other.StartWithWindows
+            && AutoCollapse == other.AutoCollapse
+            && ShowSeekControls == other.ShowSeekControls
+            && NotificationsPaused == other.NotificationsPaused
+            && AudioNotifications == other.AudioNotifications
+            && PowerNotifications == other.PowerNotifications
+            && DownloadNotifications == other.DownloadNotifications
+            && SystemToastNotifications == other.SystemToastNotifications
+            && BluetoothNotifications == other.BluetoothNotifications
+            && FocusCompletionSound == other.FocusCompletionSound
+            && EnableHoverExpand == other.EnableHoverExpand
+            && HoverExpandDelayMs == other.HoverExpandDelayMs
+            && AutoHideOnFullscreen == other.AutoHideOnFullscreen
+            && DynamicColorTint == other.DynamicColorTint
+            && ShowEqualizer == other.ShowEqualizer
+            && UseTransparency == other.UseTransparency
+            && TransparencyLevel == other.TransparencyLevel
+            && ArtworkTintStrength == other.ArtworkTintStrength
+            && MotionSpeed == other.MotionSpeed
+            && string.Equals(Theme, other.Theme, StringComparison.Ordinal)
+            && string.Equals(AnimationIntensity, other.AnimationIntensity, StringComparison.Ordinal)
+            && TopOffset == other.TopOffset
+            && IslandScale == other.IslandScale
+            && ShowIdleClock == other.ShowIdleClock
+            && ShowIdleDate == other.ShowIdleDate
+            && ShowIdleWeather == other.ShowIdleWeather
+            && string.Equals(IdleLocationSource, other.IdleLocationSource, StringComparison.Ordinal)
+            && string.Equals(IdleLocationCity, other.IdleLocationCity, StringComparison.Ordinal)
+            && Nullable.Equals(IdleLocationLatitude, other.IdleLocationLatitude)
+            && Nullable.Equals(IdleLocationLongitude, other.IdleLocationLongitude)
+            && string.Equals(PreferredMonitorDeviceName, other.PreferredMonitorDeviceName, StringComparison.Ordinal)
+            && HorizontalOffset == other.HorizontalOffset
+            && AutoCollapseDelayMs == other.AutoCollapseDelayMs
+            && string.Equals(CompactClickAction, other.CompactClickAction, StringComparison.Ordinal)
+            && string.Equals(HoverAction, other.HoverAction, StringComparison.Ordinal)
+            && Use24HourClock == other.Use24HourClock
+            && string.Equals(TemperatureUnit, other.TemperatureUnit, StringComparison.Ordinal)
+            && ShowLyrics == other.ShowLyrics
+            && FocusDefaultMinutes == other.FocusDefaultMinutes
+            && FocusBreakMinutes == other.FocusBreakMinutes
+            && FocusCustomMinutes == other.FocusCustomMinutes
+            && EnableGlobalHotkeys == other.EnableGlobalHotkeys
+            && ScreenshotNotifications == other.ScreenshotNotifications
+            && AutoAddScreenshotsToShelf == other.AutoAddScreenshotsToShelf
+            && FocusAutoDoNotDisturb == other.FocusAutoDoNotDisturb
+            && DoNotDisturb == other.DoNotDisturb
+            && EnableDeveloperWorkspace == other.EnableDeveloperWorkspace
+            && DeveloperLocalRepositories.SequenceEqual(other.DeveloperLocalRepositories, StringComparer.OrdinalIgnoreCase)
+            && DeveloperGitHubRepositories.SequenceEqual(other.DeveloperGitHubRepositories, StringComparer.OrdinalIgnoreCase)
+            && DeveloperSelectedRepoIndex == other.DeveloperSelectedRepoIndex
+            && DeveloperPollIntervalSeconds == other.DeveloperPollIntervalSeconds
+            && NotifyOnGitCommits == other.NotifyOnGitCommits
+            && NotifyOnGitHubActions == other.NotifyOnGitHubActions
+            && NotifyOnPullRequests == other.NotifyOnPullRequests
+            && ShowDeveloperLiveActivity == other.ShowDeveloperLiveActivity;
+    }
+
+    public override int GetHashCode()
+    {
+        var hash = new HashCode();
+        hash.Add(StartWithWindows);
+        hash.Add(Theme, StringComparer.Ordinal);
+        hash.Add(TopOffset);
+        hash.Add(IslandScale);
+        hash.Add(EnableDeveloperWorkspace);
+        hash.Add(DeveloperLocalRepositories.Count);
+        hash.Add(DeveloperGitHubRepositories.Count);
+        hash.Add(DeveloperPollIntervalSeconds);
+        return hash.ToHashCode();
+    }
 }

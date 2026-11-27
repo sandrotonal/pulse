@@ -24,6 +24,7 @@
             <SolidColorBrush x:Key="IslandBorder"     Color="#33FFFFFF" />
             <SolidColorBrush x:Key="PrimaryText"      Color="#FFFFFFFF" />
             <SolidColorBrush x:Key="SecondaryText"    Color="#FFA4ABB6" />
+            <SolidColorBrush x:Key="DangerText"       Color="#FFFF453A" />
             <SolidColorBrush x:Key="Accent"           Color="#FF007AFF" />
             <SolidColorBrush x:Key="SeekAccent"       Color="#FF007AFF" />
             <SolidColorBrush x:Key="PlayButtonBackground" Color="#FF007AFF" />
@@ -763,6 +764,16 @@
                                     <Ellipse Width="22" Height="22" Fill="{ThemeResource PillControlBackground}" />
                                     <FontIcon Glyph="&#xE896;" FontSize="11" Foreground="{ThemeResource PrimaryText}" HorizontalAlignment="Center" VerticalAlignment="Center" />
                                 </Grid>
+                                <!-- Developer (Git & GitHub) Badge -->
+                                <Grid x:Name="DevHeaderBadge" Visibility="{Binding DevPageVisibility}">
+                                    <Ellipse Width="22" Height="22" Fill="{ThemeResource PillControlBackground}" />
+                                    <Viewbox Width="12.5" Height="12.5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <Canvas Width="16" Height="16">
+                                            <Path Data="M 8,0 C 3.58,0 0,3.58 0,8 C 0,11.54 2.29,14.53 5.47,15.59 C 5.87,15.66 6.02,15.42 6.02,15.21 C 6.02,15.02 6.01,14.39 6.01,13.72 C 4.0,14.09 3.48,13.23 3.32,12.78 C 3.23,12.55 2.84,11.84 2.5,11.65 C 2.22,11.5 1.82,11.13 2.49,11.12 C 3.12,11.11 3.57,11.7 3.72,11.94 C 4.44,13.15 5.59,12.81 6.05,12.6 C 6.12,12.08 6.33,11.73 6.56,11.53 C 4.78,11.33 2.92,10.64 2.92,7.58 C 2.92,6.71 3.23,5.99 3.74,5.43 C 3.66,5.23 3.38,4.41 3.82,3.31 C 3.82,3.31 4.49,3.1 6.02,4.13 C 6.66,3.95 7.34,3.86 8.02,3.86 C 8.7,3.86 9.38,3.95 10.02,4.13 C 11.55,3.09 12.22,3.31 12.22,3.31 C 12.66,4.41 12.38,5.23 12.3,5.43 C 12.81,5.99 13.12,6.7 13.12,7.58 C 13.12,10.65 11.25,11.33 9.47,11.53 C 9.76,11.78 10.01,12.26 10.01,13.01 C 10.01,14.08 10.0,14.94 10.0,15.21 C 10.0,15.42 10.15,15.67 10.55,15.59 C 13.71,14.53 16,11.53 16,8 C 16,3.58 12.42,0 8,0 Z"
+                                                  Fill="{ThemeResource PrimaryText}" />
+                                        </Canvas>
+                                    </Viewbox>
+                                </Grid>
                             </Grid>
 
                             <TextBlock Text="{Binding ExpandedHeaderTitle, TargetNullValue='Pulse'}"
@@ -776,8 +787,9 @@
                                        Margin="8,0,0,0" />
                         </StackPanel>
 
-                        <!-- Center: True-Centered iOS-style Interactive Carousel Page Indicators (4 pages) -->
-                        <Grid Grid.Column="0" Grid.ColumnSpan="3"
+                        <!-- Center: True-Centered iOS-style Interactive Carousel Page Indicators (4 or 5 pages) -->
+                        <Grid x:Name="PageDotsGrid"
+                              Grid.Column="0" Grid.ColumnSpan="3"
                               Width="64" Height="24"
                               HorizontalAlignment="Center"
                               VerticalAlignment="Center">
@@ -812,11 +824,20 @@
                                     Background="{ThemeResource PrimaryText}"
                                     Opacity="0.35"
                                     IsHitTestVisible="False" />
+                            <Border x:Name="PageDotVisual4"
+                                    Width="24" Height="5"
+                                    CornerRadius="2.5"
+                                    HorizontalAlignment="Left"
+                                    VerticalAlignment="Center"
+                                    Background="{ThemeResource PrimaryText}"
+                                    Opacity="0.35"
+                                    Visibility="{Binding DeveloperWorkspaceEnabledVisibility}"
+                                    IsHitTestVisible="False" />
 
                             <StackPanel Orientation="Horizontal" Spacing="0" HorizontalAlignment="Center" VerticalAlignment="Center">
                                 <Button x:Name="PageDot0"
                                         Style="{StaticResource IslandButtonStyle}"
-                                        Width="16" Height="24"
+                                        Width="15" Height="24"
                                         Background="Transparent"
                                         Padding="0"
                                         PointerPressed="OnButtonPointerPressed"
@@ -826,7 +847,7 @@
                                         ToolTipService.ToolTip="Medya Çalar" />
                                 <Button x:Name="PageDot1"
                                         Style="{StaticResource IslandButtonStyle}"
-                                        Width="16" Height="24"
+                                        Width="15" Height="24"
                                         Background="Transparent"
                                         Padding="0"
                                         PointerPressed="OnButtonPointerPressed"
@@ -836,7 +857,7 @@
                                         ToolTipService.ToolTip="Odak Sayacı" />
                                 <Button x:Name="PageDot2"
                                         Style="{StaticResource IslandButtonStyle}"
-                                        Width="16" Height="24"
+                                        Width="15" Height="24"
                                         Background="Transparent"
                                         Padding="0"
                                         PointerPressed="OnButtonPointerPressed"
@@ -846,7 +867,7 @@
                                         ToolTipService.ToolTip="Sistem &amp; Denetim" />
                                 <Button x:Name="PageDot3"
                                         Style="{StaticResource IslandButtonStyle}"
-                                        Width="16" Height="24"
+                                        Width="15" Height="24"
                                         Background="Transparent"
                                         Padding="0"
                                         PointerPressed="OnButtonPointerPressed"
@@ -854,6 +875,17 @@
                                         Click="OnPageDot3Click"
                                         AutomationProperties.Name="Dosya Rafı sayfası"
                                         ToolTipService.ToolTip="Raf (Dosya Bırakma Alanı)" />
+                                <Button x:Name="PageDot4"
+                                        Style="{StaticResource IslandButtonStyle}"
+                                        Width="15" Height="24"
+                                        Background="Transparent"
+                                        Padding="0"
+                                        Visibility="{Binding DeveloperWorkspaceEnabledVisibility}"
+                                        PointerPressed="OnButtonPointerPressed"
+                                        PointerReleased="OnButtonPointerReleased"
+                                        Click="OnPageDot4Click"
+                                        AutomationProperties.Name="Git ve GitHub sayfası"
+                                        ToolTipService.ToolTip="Git &amp; GitHub Çalışma Alanı" />
                             </StackPanel>
                         </Grid>
 
@@ -1283,7 +1315,7 @@
                                                           Foreground="{ThemeResource PrimaryText}"
                                                           HorizontalAlignment="Center" VerticalAlignment="Center" />
                                                 <Ellipse Width="5" Height="5"
-                                                         Fill="#FF453A"
+                                                         Fill="{ThemeResource DangerText}"
                                                          Visibility="{Binding MicMutedDotVisibility}"
                                                          HorizontalAlignment="Right" VerticalAlignment="Top"
                                                          Margin="0,3,3,0" />
@@ -1344,22 +1376,22 @@
                             <!-- Empty Drop Zone: Apple Obsidian Glass Aperture -->
                             <Border x:Name="ShelfDropZoneBorder"
                                     Visibility="{Binding ShelfEmptyVisibility}"
-                                    Height="152"
+                                    MinHeight="152"
                                     CornerRadius="20"
                                     BorderThickness="1"
                                     BorderBrush="{ThemeResource ShelfCardBorder}"
                                     Background="{ThemeResource ShelfSurfaceSubtle}"
                                     VerticalAlignment="Center">
-                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="6" Padding="14,0">
+                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="5" Padding="10,8">
                                     <!-- Concentric Frosted Drop Target -->
-                                    <Grid Width="46" Height="46" HorizontalAlignment="Center">
-                                        <Ellipse Width="46" Height="46" Fill="{ThemeResource ShelfCardBackground}" Stroke="{ThemeResource ShelfCardBorder}" StrokeThickness="1" />
-                                        <FontIcon Glyph="&#xE896;" FontSize="18"
+                                    <Grid Width="42" Height="42" HorizontalAlignment="Center">
+                                        <Ellipse Width="42" Height="42" Fill="{ThemeResource ShelfCardBackground}" Stroke="{ThemeResource ShelfCardBorder}" StrokeThickness="1" />
+                                        <FontIcon Glyph="&#xE896;" FontSize="17"
                                                   Foreground="{ThemeResource PrimaryText}"
                                                   HorizontalAlignment="Center" VerticalAlignment="Center" />
                                     </Grid>
                                     <TextBlock Text="Dosya, görsel veya metin bırak"
-                                               FontSize="13" FontWeight="SemiBold"
+                                               FontSize="12.5" FontWeight="SemiBold"
                                                Foreground="{ThemeResource PrimaryText}"
                                                HorizontalAlignment="Center"
                                                TextAlignment="Center" />
@@ -1368,10 +1400,10 @@
                                                Foreground="{ThemeResource SecondaryText}"
                                                HorizontalAlignment="Center"
                                                TextAlignment="Center" />
-                                    <!-- Action Capsules -->
-                                    <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center" Margin="0,5,0,0">
+                                    <!-- Action Capsules (tuned to fit inside 320 DIP comfortably at higher text scale) -->
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Margin="0,4,0,0">
                                         <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="28" CornerRadius="14"
+                                                Height="26" CornerRadius="13"
                                                 MinWidth="0"
                                                 Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                 Command="{Binding PasteToShelfCommand}"
@@ -1379,13 +1411,13 @@
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Panodan rafa ekle"
                                                 ToolTipService.ToolTip="Panodaki dosya veya metni ekle (Ctrl+V)">
-                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xE77F;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
-                                                <TextBlock Text="Panodan Ekle" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
+                                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE77F;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Panodan Ekle" FontSize="10.5" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
                                         <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="28" CornerRadius="14"
+                                                Height="26" CornerRadius="13"
                                                 MinWidth="0"
                                                 Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                 Click="OnShelfBrowseFilesClick"
@@ -1393,13 +1425,13 @@
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Bilgisayardan dosya seç"
                                                 ToolTipService.ToolTip="Bilgisayardan dosya seçip rafa koy">
-                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xE8E5;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
-                                                <TextBlock Text="Dosya Seç" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
+                                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE8E5;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Dosya Seç" FontSize="10.5" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
                                         <Button Style="{StaticResource IslandButtonStyle}"
-                                                Height="28" CornerRadius="14"
+                                                Height="26" CornerRadius="13"
                                                 MinWidth="0"
                                                 Background="{ThemeResource ShelfActionButtonBackground}" BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
                                                 Click="OnShelfOpenQuickNoteClick"
@@ -1407,9 +1439,9 @@
                                                 PointerReleased="OnButtonPointerReleased"
                                                 AutomationProperties.Name="Hızlı not ekle"
                                                 ToolTipService.ToolTip="Rafa hızlı metin notu yaz">
-                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
-                                                <FontIcon Glyph="&#xE70B;" FontSize="11" Foreground="{ThemeResource PrimaryText}" />
-                                                <TextBlock Text="Hızlı Not" FontSize="11" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
+                                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="8,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE70B;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Hızlı Not" FontSize="10.5" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
                                             </StackPanel>
                                         </Button>
                                     </StackPanel>
@@ -1752,7 +1784,7 @@
                                                     PointerReleased="OnButtonPointerReleased"
                                                     AutomationProperties.Name="Rafı temizle"
                                                     ToolTipService.ToolTip="Rafı Temizle">
-                                                <FontIcon Glyph="&#xE74D;" FontSize="10.5" Foreground="#FF453A" />
+                                                <FontIcon Glyph="&#xE74D;" FontSize="10.5" Foreground="{ThemeResource DangerText}" />
                                             </Button>
                                         </StackPanel>
                                     </Grid>
@@ -1800,6 +1832,7 @@
                                              Background="{ThemeResource ShelfThumbnailBackground}"
                                              BorderBrush="{ThemeResource ShelfCardBorder}"
                                              Foreground="{ThemeResource PrimaryText}"
+                                             PointerPressed="OnQuickNotePointerPressed"
                                              KeyDown="OnQuickNoteKeyDown"
                                              GotFocus="OnQuickNoteGotFocus"
                                              LostFocus="OnQuickNoteLostFocus"
@@ -1983,6 +2016,520 @@
                                     Background="Transparent"
                                     Opacity="0"
                                     IsHitTestVisible="False" />
+                        </Grid>
+
+                        <!-- Panel 4: Opt-In Developer Workspace (Git & GitHub Live Control Deck) -->
+                        <Grid x:Name="DevExpandedPanel" Visibility="Collapsed" Margin="4,0">
+                            <!-- Empty State when no local or GitHub repo is configured yet -->
+                            <Border Visibility="{Binding DevRepoEmptyVisibility}"
+                                    MinHeight="154"
+                                    CornerRadius="18"
+                                    BorderThickness="1"
+                                    BorderBrush="{ThemeResource ShelfCardBorder}"
+                                    Background="{ThemeResource ShelfSurfaceSubtle}"
+                                    VerticalAlignment="Center">
+                                <StackPanel HorizontalAlignment="Stretch" VerticalAlignment="Center" Spacing="6" Padding="14,10">
+                                    <Grid Width="42" Height="42" HorizontalAlignment="Center">
+                                        <Ellipse Width="40" Height="40" Fill="{ThemeResource ShelfCardBackground}" Stroke="{ThemeResource ShelfCardBorder}" StrokeThickness="1" />
+                                        <Viewbox Width="17" Height="17" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                            <Canvas Width="16" Height="16">
+                                                <Path Data="M 8,0 C 3.58,0 0,3.58 0,8 C 0,11.54 2.29,14.53 5.47,15.59 C 5.87,15.66 6.02,15.42 6.02,15.21 C 6.02,15.02 6.01,14.39 6.01,13.72 C 4.0,14.09 3.48,13.23 3.32,12.78 C 3.23,12.55 2.84,11.84 2.5,11.65 C 2.22,11.5 1.82,11.13 2.49,11.12 C 3.12,11.11 3.57,11.7 3.72,11.94 C 4.44,13.15 5.59,12.81 6.05,12.6 C 6.12,12.08 6.33,11.73 6.56,11.53 C 4.78,11.33 2.92,10.64 2.92,7.58 C 2.92,6.71 3.23,5.99 3.74,5.43 C 3.66,5.23 3.38,4.41 3.82,3.31 C 3.82,3.31 4.49,3.1 6.02,4.13 C 6.66,3.95 7.34,3.86 8.02,3.86 C 8.7,3.86 9.38,3.95 10.02,4.13 C 11.55,3.09 12.22,3.31 12.22,3.31 C 12.66,4.41 12.38,5.23 12.3,5.43 C 12.81,5.99 13.12,6.7 13.12,7.58 C 13.12,10.65 11.25,11.33 9.47,11.53 C 9.76,11.78 10.01,12.26 10.01,13.01 C 10.01,14.08 10.0,14.94 10.0,15.21 C 10.0,15.42 10.15,15.67 10.55,15.59 C 13.71,14.53 16,11.53 16,8 C 16,3.58 12.42,0 8,0 Z"
+                                                      Fill="{ThemeResource PrimaryText}" />
+                                            </Canvas>
+                                        </Viewbox>
+                                        <Border Width="16" Height="16" CornerRadius="8" Background="#FF2DA44E"
+                                                BorderBrush="{ThemeResource IslandSolidSurface}" BorderThickness="1.5"
+                                                HorizontalAlignment="Right" VerticalAlignment="Bottom">
+                                            <Viewbox Width="9" Height="9" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <Ellipse Canvas.Left="3" Canvas.Top="3" Width="6" Height="6" Stroke="#FFFFFFFF" StrokeThickness="2.4" />
+                                                    <Line X1="6" Y1="9" X2="6" Y2="21" Stroke="#FFFFFFFF" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    <Ellipse Canvas.Left="15" Canvas.Top="15" Width="6" Height="6" Stroke="#FFFFFFFF" StrokeThickness="2.4" />
+                                                    <Path Data="M 18,15 C 18,10.5 14.5,6 9,6" Stroke="#FFFFFFFF" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Border>
+                                    </Grid>
+                                    <TextBlock Text="Git &amp; GitHub Çalışma Alanı"
+                                               FontSize="12.5" FontWeight="SemiBold"
+                                               Foreground="{ThemeResource PrimaryText}"
+                                               HorizontalAlignment="Center" TextAlignment="Center" />
+                                    <TextBlock Text="1) Repo/klasör ekle  ·  2) Branch, Commit &amp; CI izle  ·  3) Fetch, PR Aç &amp; Merge"
+                                               FontSize="10" Foreground="{ThemeResource SecondaryText}"
+                                               TextWrapping="Wrap" TextAlignment="Center" HorizontalAlignment="Center" MaxWidth="296" />
+                                    <StackPanel Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" Margin="0,3,0,0">
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="26" CornerRadius="13" MinWidth="0"
+                                                HorizontalAlignment="Center"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}"
+                                                BorderThickness="1"
+                                                Click="OnSettingsClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                AutomationProperties.Name="Geliştirici ayarlarını aç">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" Margin="10,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE713;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Repo Ekle / Ayarlar" FontSize="10.5" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="26" CornerRadius="13" MinWidth="0"
+                                                HorizontalAlignment="Center"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}"
+                                                BorderThickness="1"
+                                                Command="{Binding ToggleDevGuideCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="Adada Git ve GitHub nasıl kullanılır?"
+                                                AutomationProperties.Name="Kullanım rehberi">
+                                            <StackPanel Orientation="Horizontal" Spacing="4" Margin="9,0" VerticalAlignment="Center">
+                                                <FontIcon Glyph="&#xE897;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                                <TextBlock Text="Nasıl Kullanılır?" FontSize="10" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" />
+                                            </StackPanel>
+                                        </Button>
+                                    </StackPanel>
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Quick Interactive Usage Guide Card (clean 2x2 scannable tiles, zero clipping) -->
+                            <Border Visibility="{Binding DevGuideOverlayVisibility}"
+                                    Height="168"
+                                    CornerRadius="16"
+                                    BorderThickness="1"
+                                    BorderBrush="{ThemeResource ShelfCardBorder}"
+                                    Background="{ThemeResource ShelfSurfaceSubtle}"
+                                    Padding="10,8"
+                                    VerticalAlignment="Center">
+                                <Grid RowDefinitions="Auto,*,Auto" RowSpacing="6">
+                                    <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center">
+                                        <FontIcon Glyph="&#xE897;" FontSize="10.5" Foreground="{ThemeResource PrimaryText}" VerticalAlignment="Center" />
+                                        <TextBlock Text="Git &amp; GitHub Nasıl Çalışır?" FontSize="11.5" FontWeight="SemiBold"
+                                                   Foreground="{ThemeResource PrimaryText}" VerticalAlignment="Center" />
+                                    </StackPanel>
+
+                                    <Grid Grid.Row="1" ColumnDefinitions="*,*" RowDefinitions="*,*" ColumnSpacing="6" RowSpacing="6">
+                                        <!-- Tile 1: Connect -->
+                                        <Border Grid.Row="0" Grid.Column="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                CornerRadius="9" Padding="8,5">
+                                            <StackPanel Spacing="1.5" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <Viewbox Width="9.5" Height="9.5" VerticalAlignment="Center">
+                                                        <Canvas Width="24" Height="24">
+                                                            <Line X1="6" Y1="3" X2="6" Y2="15" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                            <Ellipse Canvas.Left="15" Canvas.Top="3" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" />
+                                                            <Ellipse Canvas.Left="3" Canvas.Top="15" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" />
+                                                            <Path Data="M 18,9 A 9,9 0 0 1 9,18" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                        </Canvas>
+                                                    </Viewbox>
+                                                    <TextBlock Text="1. Repo Bağla" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                                </StackPanel>
+                                                <TextBlock Text=".git klasörü veya sahibi/repo ekle" FontSize="9" Foreground="{ThemeResource SecondaryText}"
+                                                           TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Tile 2: Monitor -->
+                                        <Border Grid.Row="0" Grid.Column="1"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                CornerRadius="9" Padding="8,5">
+                                            <StackPanel Spacing="1.5" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <Viewbox Width="10.5" Height="10.5" VerticalAlignment="Center">
+                                                        <Canvas Width="24" Height="24">
+                                                            <Ellipse Canvas.Left="9" Canvas.Top="9" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" />
+                                                            <Line X1="2" Y1="12" X2="9" Y2="12" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                            <Line X1="15" Y1="12" X2="22" Y2="12" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                        </Canvas>
+                                                    </Viewbox>
+                                                    <TextBlock Text="2. Canlı İzle" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                                </StackPanel>
+                                                <TextBlock Text="Branch, CI ve tıkla SHA kopyala" FontSize="9" Foreground="{ThemeResource SecondaryText}"
+                                                           TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Tile 3: Sync & PR -->
+                                        <Border Grid.Row="1" Grid.Column="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                CornerRadius="9" Padding="8,5">
+                                            <StackPanel Spacing="1.5" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <Viewbox Width="9.5" Height="9.5" VerticalAlignment="Center">
+                                                        <Canvas Width="24" Height="24">
+                                                            <Ellipse Canvas.Left="3" Canvas.Top="3" Width="6" Height="6" Stroke="#FF2DA44E" StrokeThickness="2.5" />
+                                                            <Line X1="6" Y1="9" X2="6" Y2="21" Stroke="#FF2DA44E" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                            <Ellipse Canvas.Left="15" Canvas.Top="15" Width="6" Height="6" Stroke="#FF2DA44E" StrokeThickness="2.5" />
+                                                            <Path Data="M 13,6 L 16,6 A 2,2 0 0 1 18,8 L 18,15" Stroke="#FF2DA44E" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                        </Canvas>
+                                                    </Viewbox>
+                                                    <TextBlock Text="3. Sync &amp; PR Aç" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                                </StackPanel>
+                                                <TextBlock Text="Fetch/Pull yap · tek tık + PR Aç" FontSize="9" Foreground="{ThemeResource SecondaryText}"
+                                                           TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- Tile 4: Merge -->
+                                        <Border Grid.Row="1" Grid.Column="1"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                CornerRadius="9" Padding="8,5">
+                                            <StackPanel Spacing="1.5" VerticalAlignment="Center">
+                                                <StackPanel Orientation="Horizontal" Spacing="4">
+                                                    <Viewbox Width="9.5" Height="9.5" VerticalAlignment="Center">
+                                                        <Canvas Width="24" Height="24">
+                                                            <Ellipse Canvas.Left="3" Canvas.Top="3" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" />
+                                                            <Line X1="6" Y1="9" X2="6" Y2="21" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                            <Ellipse Canvas.Left="15" Canvas.Top="15" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" />
+                                                            <Path Data="M 18,15 C 18,10.5 14.5,6 9,6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.5" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                        </Canvas>
+                                                    </Viewbox>
+                                                    <TextBlock Text="4. Güvenli Merge" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                                </StackPanel>
+                                                <TextBlock Text="2 tık Merge → Onayla?" FontSize="9" Foreground="{ThemeResource SecondaryText}"
+                                                           TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+
+                                    <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center">
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="24" CornerRadius="12" MinWidth="0"
+                                                Background="{ThemeResource ShelfActionButtonBackground}"
+                                                BorderBrush="{ThemeResource ShelfActionButtonBorder}" BorderThickness="1"
+                                                Command="{Binding ToggleDevGuideCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased">
+                                            <TextBlock Text="Anladım" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" Margin="10,0" />
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Height="24" CornerRadius="12" MinWidth="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                Click="OnSettingsClick"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased">
+                                            <TextBlock Text="Ayarlar / Detay" FontSize="10" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}" Margin="10,0" />
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+                            </Border>
+
+                            <!-- Active Developer Repo Deck -->
+                            <Grid Visibility="{Binding DevRepoPopulatedVisibility}"
+                                  RowDefinitions="Auto,Auto,*"
+                                  RowSpacing="5">
+                                <!-- Row 0: Repo Switcher + Git Branch Pill + Dirty Summary + Action Strip -->
+                                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                    <Grid Grid.Column="0" ColumnDefinitions="Auto,Auto,Auto,*" ColumnSpacing="4" VerticalAlignment="Center">
+                                        <Button Grid.Column="0"
+                                                Style="{StaticResource IslandButtonStyle}"
+                                                Visibility="{Binding DevRepoSwitcherVisibility}"
+                                                Width="22" Height="22" CornerRadius="11" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding PreviousDevRepoCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="Önceki repo">
+                                            <FontIcon Glyph="&#xE76B;" FontSize="9" Foreground="{ThemeResource PrimaryText}" />
+                                        </Button>
+                                        <Border Grid.Column="1" Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                CornerRadius="11" Padding="8,3" MaxWidth="138">
+                                            <StackPanel Orientation="Horizontal" Spacing="5" VerticalAlignment="Center">
+                                                <!-- Git Branch Vector -->
+                                                <Viewbox Width="10.5" Height="10.5" VerticalAlignment="Center">
+                                                    <Canvas Width="24" Height="24">
+                                                        <Line X1="6" Y1="3" X2="6" Y2="15" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                        <Ellipse Canvas.Left="15" Canvas.Top="3" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" />
+                                                        <Ellipse Canvas.Left="3" Canvas.Top="15" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" />
+                                                        <Path Data="M 18,9 A 9,9 0 0 1 9,18" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    </Canvas>
+                                                </Viewbox>
+                                                <TextBlock Text="{Binding DevBranchLabel}" FontSize="10.5" FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource PrimaryText}" TextTrimming="CharacterEllipsis" MaxLines="1" />
+                                            </StackPanel>
+                                        </Border>
+                                        <Button Grid.Column="2"
+                                                Style="{StaticResource IslandButtonStyle}"
+                                                Visibility="{Binding DevRepoSwitcherVisibility}"
+                                                Width="22" Height="22" CornerRadius="11" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding NextDevRepoCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="Sonraki repo">
+                                            <FontIcon Glyph="&#xE76C;" FontSize="9" Foreground="{ThemeResource PrimaryText}" />
+                                        </Button>
+                                        <TextBlock Grid.Column="3" Text="{Binding DevDirtySummary}" FontSize="10" FontWeight="Medium"
+                                                   Foreground="{ThemeResource SecondaryText}" VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis" MaxLines="1" Margin="2,0,0,0" />
+                                    </Grid>
+
+                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Width="24" Height="24" CornerRadius="12" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding ToggleDevGuideCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="Kullanım rehberi (?)">
+                                            <FontIcon Glyph="&#xE897;" FontSize="9.5" Foreground="{ThemeResource SecondaryText}" />
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Width="24" Height="24" CornerRadius="12" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding RefreshDeveloperCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="Git &amp; GitHub verisini yenile">
+                                            <FontIcon Glyph="&#xE72C;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Visibility="{Binding DevLocalActionsVisibility}"
+                                                Width="24" Height="24" CornerRadius="12" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding OpenDevRepoTerminalCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="Terminalde Aç">
+                                            <FontIcon Glyph="&#xE756;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Visibility="{Binding DevLocalActionsVisibility}"
+                                                Width="24" Height="24" CornerRadius="12" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding OpenDevRepoVsCodeCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="VS Code ile Aç">
+                                            <FontIcon Glyph="&#xE943;" FontSize="10" Foreground="{ThemeResource PrimaryText}" />
+                                        </Button>
+                                        <Button Style="{StaticResource IslandButtonStyle}"
+                                                Visibility="{Binding DevGitHubActionsVisibility}"
+                                                Width="24" Height="24" CornerRadius="12" MinWidth="0" Padding="0"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                Command="{Binding OpenDevGitHubCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="GitHub'da Aç">
+                                            <!-- Authentic GitHub Octocat Mark -->
+                                            <Viewbox Width="11.5" Height="11.5" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                <Canvas Width="16" Height="16">
+                                                    <Path Data="M 8,0 C 3.58,0 0,3.58 0,8 C 0,11.54 2.29,14.53 5.47,15.59 C 5.87,15.66 6.02,15.42 6.02,15.21 C 6.02,15.02 6.01,14.39 6.01,13.72 C 4.0,14.09 3.48,13.23 3.32,12.78 C 3.23,12.55 2.84,11.84 2.5,11.65 C 2.22,11.5 1.82,11.13 2.49,11.12 C 3.12,11.11 3.57,11.7 3.72,11.94 C 4.44,13.15 5.59,12.81 6.05,12.6 C 6.12,12.08 6.33,11.73 6.56,11.53 C 4.78,11.33 2.92,10.64 2.92,7.58 C 2.92,6.71 3.23,5.99 3.74,5.43 C 3.66,5.23 3.38,4.41 3.82,3.31 C 3.82,3.31 4.49,3.1 6.02,4.13 C 6.66,3.95 7.34,3.86 8.02,3.86 C 8.7,3.86 9.38,3.95 10.02,4.13 C 11.55,3.09 12.22,3.31 12.22,3.31 C 12.66,4.41 12.38,5.23 12.3,5.43 C 12.81,5.99 13.12,6.7 13.12,7.58 C 13.12,10.65 11.25,11.33 9.47,11.53 C 9.76,11.78 10.01,12.26 10.01,13.01 C 10.01,14.08 10.0,14.94 10.0,15.21 C 10.0,15.42 10.15,15.67 10.55,15.59 C 13.71,14.53 16,11.53 16,8 C 16,3.58 12.42,0 8,0 Z"
+                                                          Fill="{ThemeResource PrimaryText}" />
+                                                </Canvas>
+                                            </Viewbox>
+                                        </Button>
+                                    </StackPanel>
+                                </Grid>
+
+                                <!-- Row 1: Git Commit Node + SHA Chip + CI Workflow Card -->
+                                <Border Grid.Row="1"
+                                        Background="{ThemeResource ShelfSurfaceSubtle}"
+                                        BorderBrush="{ThemeResource ShelfCardBorder}"
+                                        BorderThickness="1"
+                                        CornerRadius="12"
+                                        Padding="9,6">
+                                    <StackPanel Spacing="4">
+                                        <!-- Commit Row -->
+                                        <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6">
+                                            <!-- Git Commit Vector -->
+                                            <Viewbox Grid.Column="0" Width="12" Height="12" VerticalAlignment="Center">
+                                                <Canvas Width="24" Height="24">
+                                                    <Ellipse Canvas.Left="9" Canvas.Top="9" Width="6" Height="6" Stroke="{ThemeResource SecondaryText}" StrokeThickness="2.2" />
+                                                    <Line X1="2" Y1="12" X2="9" Y2="12" Stroke="{ThemeResource SecondaryText}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                    <Line X1="15" Y1="12" X2="22" Y2="12" Stroke="{ThemeResource SecondaryText}" StrokeThickness="2.2" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                </Canvas>
+                                            </Viewbox>
+                                            <Button Grid.Column="1"
+                                                    Visibility="{Binding DevCommitShaVisibility}"
+                                                    Style="{StaticResource IslandButtonStyle}"
+                                                    Background="{ThemeResource PillControlBackground}"
+                                                    BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                    CornerRadius="6" Padding="5,1" MinWidth="0" MinHeight="0"
+                                                    Command="{Binding CopyDevCommitShaCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    ToolTipService.ToolTip="Commit SHA kopyala">
+                                                <TextBlock Text="{Binding DevCommitSha}" FontSize="9.5" FontFamily="Consolas"
+                                                           FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                            </Button>
+                                            <TextBlock Grid.Column="2" Text="{Binding DevCommitSubject}"
+                                                       FontSize="10.5" FontWeight="Medium" Foreground="{ThemeResource PrimaryText}"
+                                                       TextTrimming="CharacterEllipsis" MaxLines="1" VerticalAlignment="Center" />
+                                            <Button Grid.Column="3"
+                                                    Visibility="{Binding DevLocalActionsVisibility}"
+                                                    Style="{StaticResource IslandButtonStyle}"
+                                                    Width="20" Height="20" CornerRadius="10" MinWidth="0" Padding="0"
+                                                    Command="{Binding OpenDevRepoFolderCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    ToolTipService.ToolTip="Klasörde Göster">
+                                                <FontIcon Glyph="&#xE8B7;" FontSize="9.5" Foreground="{ThemeResource SecondaryText}" />
+                                            </Button>
+                                        </Grid>
+
+                                        <!-- CI + Git Sync Row -->
+                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6">
+                                            <Button Grid.Column="0"
+                                                    Style="{StaticResource IslandButtonStyle}"
+                                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                                                    Padding="0" MinHeight="0"
+                                                    Command="{Binding OpenDevActionsCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    ToolTipService.ToolTip="GitHub Actions çalıştırmasını aç">
+                                                <Grid ColumnDefinitions="Auto,*">
+                                                    <FontIcon Grid.Column="0" Glyph="{Binding DevCiStatusGlyph}" FontSize="10.5"
+                                                              Foreground="{Binding DevCiStatusBrush}" Margin="0,0,6,0" VerticalAlignment="Center" />
+                                                    <TextBlock Grid.Column="1" Text="{Binding DevCiStatusSummary}"
+                                                               FontSize="10.5" FontWeight="SemiBold"
+                                                               Foreground="{ThemeResource PrimaryText}"
+                                                               TextTrimming="CharacterEllipsis" MaxLines="1" VerticalAlignment="Center" />
+                                                </Grid>
+                                            </Button>
+                                            <Button Grid.Column="1"
+                                                    Visibility="{Binding DevLocalActionsVisibility}"
+                                                    Style="{StaticResource IslandButtonStyle}"
+                                                    Background="{ThemeResource PillControlBackground}"
+                                                    BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                    CornerRadius="8" Padding="9,2" MinWidth="0" MinHeight="0" Margin="0,0,2,0"
+                                                    Command="{Binding GitSyncCommand}"
+                                                    PointerPressed="OnButtonPointerPressed"
+                                                    PointerReleased="OnButtonPointerReleased"
+                                                    ToolTipService.ToolTip="{Binding DevSyncToolTip}">
+                                                <StackPanel Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+                                                    <FontIcon Glyph="&#xE896;" FontSize="9" Foreground="{ThemeResource PrimaryText}" />
+                                                    <TextBlock Text="{Binding DevSyncButtonLabel}" FontSize="9.5" FontWeight="SemiBold"
+                                                               Foreground="{ThemeResource PrimaryText}" />
+                                                </StackPanel>
+                                            </Button>
+                                        </Grid>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Row 2: Pull Requests & Merge Section -->
+                                <Grid Grid.Row="2" RowDefinitions="Auto,*">
+                                    <Grid Grid.Row="0" ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="6" Margin="2,0,2,3">
+                                        <Viewbox Grid.Column="0" Width="10" Height="10" VerticalAlignment="Center">
+                                            <Canvas Width="24" Height="24">
+                                                <Ellipse Canvas.Left="3" Canvas.Top="3" Width="6" Height="6" Stroke="{ThemeResource SecondaryText}" StrokeThickness="2.4" />
+                                                <Line X1="6" Y1="9" X2="6" Y2="21" Stroke="{ThemeResource SecondaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                <Ellipse Canvas.Left="15" Canvas.Top="15" Width="6" Height="6" Stroke="{ThemeResource SecondaryText}" StrokeThickness="2.4" />
+                                                <Path Data="M 13,6 L 16,6 A 2,2 0 0 1 18,8 L 18,15" Stroke="{ThemeResource SecondaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                            </Canvas>
+                                        </Viewbox>
+                                        <TextBlock Grid.Column="1" Text="{Binding DevPullRequestHeaderLabel}"
+                                                   FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource SecondaryText}"
+                                                   VerticalAlignment="Center" />
+                                        <TextBlock Grid.Column="2" Text="{Binding DevStatusNote}"
+                                                   FontSize="9.5" Foreground="{ThemeResource SecondaryText}"
+                                                   TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                        <Button Grid.Column="3"
+                                                Visibility="{Binding DevCanCreatePrVisibility}"
+                                                Style="{StaticResource IslandButtonStyle}"
+                                                Background="{ThemeResource PillControlBackground}"
+                                                BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                CornerRadius="8" Padding="8,2" MinWidth="0" MinHeight="0" Margin="0,0,4,0"
+                                                Command="{Binding CreatePullRequestCommand}"
+                                                PointerPressed="OnButtonPointerPressed"
+                                                PointerReleased="OnButtonPointerReleased"
+                                                ToolTipService.ToolTip="{Binding DevCreatePrToolTip}">
+                                            <TextBlock Text="+ PR Aç" FontSize="9" FontWeight="SemiBold" Foreground="{ThemeResource PrimaryText}" />
+                                        </Button>
+                                    </Grid>
+
+                                    <TextBlock Grid.Row="1"
+                                               Visibility="{Binding DevNoPullRequestsVisibility}"
+                                               Text="Açık pull request bulunmuyor"
+                                               FontSize="10.5" Foreground="{ThemeResource SecondaryText}"
+                                               VerticalAlignment="Center" HorizontalAlignment="Center" />
+
+                                    <ScrollViewer Grid.Row="1"
+                                                  Visibility="{Binding DevPullRequestsVisibility}"
+                                                  MaxHeight="66"
+                                                  VerticalScrollBarVisibility="Auto"
+                                                  HorizontalScrollBarVisibility="Disabled">
+                                        <ItemsControl ItemsSource="{Binding DevPullRequests}">
+                                            <ItemsControl.ItemsPanel>
+                                                <ItemsPanelTemplate>
+                                                    <StackPanel Spacing="3" />
+                                                </ItemsPanelTemplate>
+                                            </ItemsControl.ItemsPanel>
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate>
+                                                    <Border Background="{ThemeResource ShelfSurfaceSubtle}"
+                                                            BorderBrush="{ThemeResource ShelfCardBorder}" BorderThickness="1"
+                                                            CornerRadius="8" Padding="4,2">
+                                                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                                                            <Button Grid.Column="0"
+                                                                    Style="{StaticResource IslandButtonStyle}"
+                                                                    HorizontalAlignment="Stretch" HorizontalContentAlignment="Stretch"
+                                                                    Padding="4,2" MinHeight="22" MinWidth="0"
+                                                                    Tag="{Binding HtmlUrl}"
+                                                                    Click="OnDevPullRequestClick"
+                                                                    PointerPressed="OnButtonPointerPressed"
+                                                                    PointerReleased="OnButtonPointerReleased"
+                                                                    ToolTipService.ToolTip="{Binding MetaLabel}">
+                                                                <Grid ColumnDefinitions="Auto,Auto,*,Auto" ColumnSpacing="5">
+                                                                    <!-- PR Vector Icon -->
+                                                                    <Viewbox Grid.Column="0" Width="10" Height="10" VerticalAlignment="Center">
+                                                                        <Canvas Width="24" Height="24">
+                                                                            <Ellipse Canvas.Left="3" Canvas.Top="3" Width="6" Height="6" Stroke="#FF2DA44E" StrokeThickness="2.4" />
+                                                                            <Line X1="6" Y1="9" X2="6" Y2="21" Stroke="#FF2DA44E" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                                            <Ellipse Canvas.Left="15" Canvas.Top="15" Width="6" Height="6" Stroke="#FF2DA44E" StrokeThickness="2.4" />
+                                                                            <Path Data="M 13,6 L 16,6 A 2,2 0 0 1 18,8 L 18,15" Stroke="#FF2DA44E" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                                        </Canvas>
+                                                                    </Viewbox>
+                                                                    <TextBlock Grid.Column="1" Text="{Binding NumberLabel}" FontSize="10" FontWeight="Bold"
+                                                                               Foreground="{ThemeResource PrimaryText}" VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="2" Text="{Binding Title}" FontSize="10" FontWeight="Medium"
+                                                                               Foreground="{ThemeResource PrimaryText}" TextTrimming="CharacterEllipsis" MaxLines="1" VerticalAlignment="Center" />
+                                                                    <TextBlock Grid.Column="3" Text="{Binding RouteLabel}" FontSize="8.5"
+                                                                               Foreground="{ThemeResource SecondaryText}" TextTrimming="CharacterEllipsis" MaxWidth="76" VerticalAlignment="Center" />
+                                                                </Grid>
+                                                            </Button>
+                                                            <!-- Git Merge Inline Pill Button (2-step arm & confirm when token is stored) -->
+                                                            <Button Grid.Column="1"
+                                                                    Visibility="{Binding MergeButtonVisibility}"
+                                                                    Style="{StaticResource IslandButtonStyle}"
+                                                                    Background="{Binding MergeButtonBackground}"
+                                                                    BorderBrush="{Binding MergeButtonBorderBrush}"
+                                                                    BorderThickness="1"
+                                                                    CornerRadius="7" Padding="6,2" MinHeight="20" MinWidth="0"
+                                                                    Tag="{Binding Number}"
+                                                                    Click="OnDevPullRequestMergeClick"
+                                                                    PointerPressed="OnButtonPointerPressed"
+                                                                    PointerReleased="OnButtonPointerReleased"
+                                                                    ToolTipService.ToolTip="{Binding MergeToolTip}">
+                                                                <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                                                    <Viewbox Width="9.5" Height="9.5" VerticalAlignment="Center">
+                                                                        <Canvas Width="24" Height="24">
+                                                                            <Ellipse Canvas.Left="3" Canvas.Top="3" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" />
+                                                                            <Line X1="6" Y1="9" X2="6" Y2="21" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                                            <Ellipse Canvas.Left="15" Canvas.Top="15" Width="6" Height="6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" />
+                                                                            <Path Data="M 18,15 C 18,10.5 14.5,6 9,6" Stroke="{ThemeResource PrimaryText}" StrokeThickness="2.4" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                                                                        </Canvas>
+                                                                    </Viewbox>
+                                                                    <TextBlock Text="{Binding MergeActionLabel}" FontSize="9" FontWeight="SemiBold"
+                                                                               Foreground="{ThemeResource PrimaryText}" VerticalAlignment="Center" />
+                                                                </StackPanel>
+                                                            </Button>
+                                                        </Grid>
+                                                    </Border>
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
+                                    </ScrollViewer>
+                                </Grid>
+                            </Grid>
                         </Grid>
                     </Grid>
                 </Grid>

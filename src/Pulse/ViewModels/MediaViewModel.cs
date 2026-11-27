@@ -42,6 +42,7 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
     private string? _seekStatus;
     private bool _isInitialized;
     private bool _lastShowLyrics;
+    private AppSettings _lastAppliedSettings;
     private volatile bool _disposed;
 
     public MediaViewModel(
@@ -55,7 +56,8 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         _mediaSessionService = mediaSessionService;
         _playbackController = playbackController;
         _settingsService = settingsService;
-        _lastShowLyrics = _settingsService.Current.ShowLyrics;
+        _lastAppliedSettings = _settingsService.Current;
+        _lastShowLyrics = _lastAppliedSettings.ShowLyrics;
         _dispatcherQueue = dispatcherQueue;
         _eventRouter = eventRouter;
         _lyricsService = new LyricsService(httpClient);
@@ -313,15 +315,16 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
             return;
         }
 
-        _isInitialized = true;
         try
         {
             await _mediaSessionService.InitializeAsync();
+            _isInitialized = true;
             CurrentTrack = _mediaSessionService.CurrentTrack;
             _stateMachine.SetHasMedia(CurrentTrack is not null);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            CrashLogger.Write("MediaViewModel.InitializeAsync", ex);
             CurrentTrack = null;
         }
     }
@@ -671,37 +674,43 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
 
     private void ApplySettingsChanged(AppSettings settings)
     {
-        OnPropertyChanged(nameof(ShowSeekControls));
-        OnPropertyChanged(nameof(NotificationsPaused));
-        OnPropertyChanged(nameof(SeekPanelVisibility));
-        OnPropertyChanged(nameof(AutoCollapse));
-        OnPropertyChanged(nameof(EnableHoverExpand));
-        OnPropertyChanged(nameof(HoverExpandDelayMs));
-        OnPropertyChanged(nameof(AutoHideOnFullscreen));
-        OnPropertyChanged(nameof(DynamicColorTint));
-        OnPropertyChanged(nameof(ShowEqualizer));
-        OnPropertyChanged(nameof(UseTransparency));
-        OnPropertyChanged(nameof(TransparencyLevel));
-        OnPropertyChanged(nameof(ArtworkTintStrength));
-        OnPropertyChanged(nameof(MotionSpeed));
-        OnPropertyChanged(nameof(TopOffset));
-        OnPropertyChanged(nameof(IslandScale));
-        OnPropertyChanged(nameof(AnimationIntensity));
-        OnPropertyChanged(nameof(Theme));
-        OnPropertyChanged(nameof(PreferredMonitorDeviceName));
-        OnPropertyChanged(nameof(HorizontalOffset));
-        OnPropertyChanged(nameof(AutoCollapseDelayMs));
-        OnPropertyChanged(nameof(CompactClickAction));
-        OnPropertyChanged(nameof(HoverAction));
-        OnPropertyChanged(nameof(Use24HourClock));
-        OnPropertyChanged(nameof(TemperatureUnit));
-        OnPropertyChanged(nameof(ShowLyrics));
-        OnPropertyChanged(nameof(FocusDefaultMinutes));
-        OnPropertyChanged(nameof(FocusBreakMinutes));
-        OnPropertyChanged(nameof(FocusCustomMinutes));
-        OnPropertyChanged(nameof(EnableGlobalHotkeys));
-        OnPropertyChanged(nameof(ScreenshotNotifications));
-        OnPropertyChanged(nameof(DoNotDisturb));
+        var prev = _lastAppliedSettings;
+        _lastAppliedSettings = settings;
+
+        if (prev.ShowSeekControls != settings.ShowSeekControls)
+        {
+            OnPropertyChanged(nameof(ShowSeekControls));
+            OnPropertyChanged(nameof(SeekPanelVisibility));
+        }
+        if (prev.NotificationsPaused != settings.NotificationsPaused) OnPropertyChanged(nameof(NotificationsPaused));
+        if (prev.AutoCollapse != settings.AutoCollapse) OnPropertyChanged(nameof(AutoCollapse));
+        if (prev.EnableHoverExpand != settings.EnableHoverExpand) OnPropertyChanged(nameof(EnableHoverExpand));
+        if (prev.HoverExpandDelayMs != settings.HoverExpandDelayMs) OnPropertyChanged(nameof(HoverExpandDelayMs));
+        if (prev.AutoHideOnFullscreen != settings.AutoHideOnFullscreen) OnPropertyChanged(nameof(AutoHideOnFullscreen));
+        if (prev.DynamicColorTint != settings.DynamicColorTint) OnPropertyChanged(nameof(DynamicColorTint));
+        if (prev.ShowEqualizer != settings.ShowEqualizer) OnPropertyChanged(nameof(ShowEqualizer));
+        if (prev.UseTransparency != settings.UseTransparency) OnPropertyChanged(nameof(UseTransparency));
+        if (prev.TransparencyLevel != settings.TransparencyLevel) OnPropertyChanged(nameof(TransparencyLevel));
+        if (prev.ArtworkTintStrength != settings.ArtworkTintStrength) OnPropertyChanged(nameof(ArtworkTintStrength));
+        if (prev.MotionSpeed != settings.MotionSpeed) OnPropertyChanged(nameof(MotionSpeed));
+        if (prev.TopOffset != settings.TopOffset) OnPropertyChanged(nameof(TopOffset));
+        if (prev.IslandScale != settings.IslandScale) OnPropertyChanged(nameof(IslandScale));
+        if (!string.Equals(prev.AnimationIntensity, settings.AnimationIntensity, StringComparison.Ordinal)) OnPropertyChanged(nameof(AnimationIntensity));
+        if (!string.Equals(prev.Theme, settings.Theme, StringComparison.Ordinal)) OnPropertyChanged(nameof(Theme));
+        if (!string.Equals(prev.PreferredMonitorDeviceName, settings.PreferredMonitorDeviceName, StringComparison.Ordinal)) OnPropertyChanged(nameof(PreferredMonitorDeviceName));
+        if (prev.HorizontalOffset != settings.HorizontalOffset) OnPropertyChanged(nameof(HorizontalOffset));
+        if (prev.AutoCollapseDelayMs != settings.AutoCollapseDelayMs) OnPropertyChanged(nameof(AutoCollapseDelayMs));
+        if (!string.Equals(prev.CompactClickAction, settings.CompactClickAction, StringComparison.Ordinal)) OnPropertyChanged(nameof(CompactClickAction));
+        if (!string.Equals(prev.HoverAction, settings.HoverAction, StringComparison.Ordinal)) OnPropertyChanged(nameof(HoverAction));
+        if (prev.Use24HourClock != settings.Use24HourClock) OnPropertyChanged(nameof(Use24HourClock));
+        if (!string.Equals(prev.TemperatureUnit, settings.TemperatureUnit, StringComparison.Ordinal)) OnPropertyChanged(nameof(TemperatureUnit));
+        if (prev.ShowLyrics != settings.ShowLyrics) OnPropertyChanged(nameof(ShowLyrics));
+        if (prev.FocusDefaultMinutes != settings.FocusDefaultMinutes) OnPropertyChanged(nameof(FocusDefaultMinutes));
+        if (prev.FocusBreakMinutes != settings.FocusBreakMinutes) OnPropertyChanged(nameof(FocusBreakMinutes));
+        if (prev.FocusCustomMinutes != settings.FocusCustomMinutes) OnPropertyChanged(nameof(FocusCustomMinutes));
+        if (prev.EnableGlobalHotkeys != settings.EnableGlobalHotkeys) OnPropertyChanged(nameof(EnableGlobalHotkeys));
+        if (prev.ScreenshotNotifications != settings.ScreenshotNotifications) OnPropertyChanged(nameof(ScreenshotNotifications));
+        if (prev.DoNotDisturb != settings.DoNotDisturb) OnPropertyChanged(nameof(DoNotDisturb));
 
         if (_lastShowLyrics != settings.ShowLyrics)
         {
@@ -878,48 +887,41 @@ public sealed class MediaViewModel : INotifyPropertyChanged, IAsyncDisposable
         OnPropertyChanged(nameof(ArtworkAccentColor));
     }
 
-    private static async Task<(byte[] ExpandedBgra, byte[] CompactBgra, uint AccentArgb)?> DecodeAndProcessArtworkAsync(byte[] artwork)
+    private static Task<(byte[] ExpandedBgra, byte[] CompactBgra, uint AccentArgb)?> DecodeAndProcessArtworkAsync(byte[] artwork)
     {
-        using var stream = new InMemoryRandomAccessStream();
-        using (var writer = new DataWriter(stream))
+        return Task.Run(async () =>
         {
-            writer.WriteBytes(artwork);
-            await writer.StoreAsync();
-            writer.DetachStream();
-        }
+            using var memoryStream = new MemoryStream(artwork, writable: false);
+            using var stream = memoryStream.AsRandomAccessStream();
+            var decoder = await BitmapDecoder.CreateAsync(stream).AsTask().ConfigureAwait(false);
+            var (scaledW, scaledH) = ArtworkBitmapProcessor.ComputeDecodeDimensions(decoder.PixelWidth, decoder.PixelHeight);
+            if (scaledW == 0 || scaledH == 0)
+            {
+                return null;
+            }
 
-        stream.Seek(0);
-        var decoder = await BitmapDecoder.CreateAsync(stream);
-        var (scaledW, scaledH) = ArtworkBitmapProcessor.ComputeDecodeDimensions(decoder.PixelWidth, decoder.PixelHeight);
-        if (scaledW == 0 || scaledH == 0)
-        {
-            return null;
-        }
+            var transform = new BitmapTransform
+            {
+                ScaledWidth = scaledW,
+                ScaledHeight = scaledH,
+                InterpolationMode = BitmapInterpolationMode.Fant
+            };
+            var pixels = await decoder.GetPixelDataAsync(
+                BitmapPixelFormat.Bgra8,
+                BitmapAlphaMode.Straight,
+                transform,
+                ExifOrientationMode.RespectExifOrientation,
+                ColorManagementMode.DoNotColorManage).AsTask().ConfigureAwait(false);
+            var straightPixels = pixels.DetachPixelData();
 
-        var transform = new BitmapTransform
-        {
-            ScaledWidth = scaledW,
-            ScaledHeight = scaledH,
-            InterpolationMode = BitmapInterpolationMode.Fant
-        };
-        var pixels = await decoder.GetPixelDataAsync(
-            BitmapPixelFormat.Bgra8,
-            BitmapAlphaMode.Straight,
-            transform,
-            ExifOrientationMode.RespectExifOrientation,
-            ColorManagementMode.DoNotColorManage);
-        var straightPixels = pixels.DetachPixelData();
+            var swappedAxes = decoder.OrientedPixelWidth != decoder.PixelWidth;
+            var pixelW = (int)(swappedAxes ? scaledH : scaledW);
+            var pixelH = (int)(swappedAxes ? scaledW : scaledH);
+            if (pixelW <= 0 || pixelH <= 0 || straightPixels.Length < checked(pixelW * pixelH * 4))
+            {
+                return null;
+            }
 
-        var swappedAxes = decoder.OrientedPixelWidth != decoder.PixelWidth;
-        var pixelW = (int)(swappedAxes ? scaledH : scaledW);
-        var pixelH = (int)(swappedAxes ? scaledW : scaledH);
-        if (pixelW <= 0 || pixelH <= 0 || straightPixels.Length < checked(pixelW * pixelH * 4))
-        {
-            return null;
-        }
-
-        return await Task.Run(() =>
-        {
             var accent = ArtworkBitmapProcessor.ExtractAccentColorFromBgra8(straightPixels, pixelW, pixelH);
             var expandedBgra = ArtworkBitmapProcessor.CreateSoftEdgeSquarePremultipliedBgra8(
                 straightPixels,

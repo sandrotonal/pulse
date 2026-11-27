@@ -60,6 +60,15 @@ public interface ISystemControlService
     /// <summary>Brings the app identified by an AUMID (packaged) or exe name (Win32) to the foreground.</summary>
     bool TryActivateApp(string appId);
 
-    /// <summary>Opens a file or folder with the shell (files are revealed in Explorer).</summary>
+    /// <summary>Opens a file, folder, or allowed URI (http/https/vscode/x-github-client).</summary>
     bool TryOpenPath(string path);
+
+    /// <summary>Opens a safe web or IDE deep-link URI using the Windows shell.</summary>
+    bool TryOpenUri(string uri) => TryOpenPath(uri);
+
+    /// <summary>Opens Windows Terminal (or PowerShell fallback) in the given local directory.</summary>
+    bool TryOpenRepositoryInTerminal(string repoPath) => TryOpenPath(repoPath);
+
+    /// <summary>Opens the local directory in VS Code if available.</summary>
+    bool TryOpenRepositoryInEditor(string repoPath) => TryOpenPath(repoPath);
 }

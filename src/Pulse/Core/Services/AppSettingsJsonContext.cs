@@ -8,6 +8,7 @@ namespace Pulse.Services.Settings;
 /// </summary>
 [JsonSourceGenerationOptions(WriteIndented = true)]
 [JsonSerializable(typeof(AppSettings))]
+[JsonSerializable(typeof(List<string>))]
 internal sealed partial class AppSettingsJsonContext : JsonSerializerContext
 {
 }

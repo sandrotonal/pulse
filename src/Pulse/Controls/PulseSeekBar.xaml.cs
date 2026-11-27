@@ -244,10 +244,23 @@ public sealed partial class PulseSeekBar : UserControl
         Canvas.SetLeft(ScrubTooltip, tooltipLeft);
     }
 
+    private static readonly global::Windows.UI.ViewManagement.UISettings SeekBarUiSettings = new();
+
     private void SetTooltipVisibility(bool visible)
     {
         if (ScrubTooltip is null)
         {
+            return;
+        }
+
+        if (!SeekBarUiSettings.AnimationsEnabled)
+        {
+            try
+            {
+                ElementCompositionPreview.GetElementVisual(ScrubTooltip).StopAnimation("Opacity");
+            }
+            catch { }
+            ScrubTooltip.Opacity = visible ? 1.0 : 0.0;
             return;
         }
 

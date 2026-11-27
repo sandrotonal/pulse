@@ -945,6 +945,174 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+
+                <!-- 9. GELİŞTİRİCİ (GİT & GİTHUB) -->
+                <TextBlock Text="GELİŞTİRİCİ (GİT &amp; GİTHUB)" Style="{StaticResource SectionTitleStyle}" Margin="0,0,0,8" />
+                <Border Background="{ThemeResource SettingsCard}" BorderBrush="{ThemeResource SettingsCardBorder}" BorderThickness="1" CornerRadius="12" Padding="16,4,16,8" Margin="0,0,0,16">
+                    <StackPanel Spacing="8">
+                        <Grid MinHeight="54">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                            <StackPanel VerticalAlignment="Center" Spacing="2" Margin="0,0,12,0">
+                                <TextBlock Text="Geliştirici Çalışma Alanı (Opt-in)" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Adada 5. Git &amp; GitHub panelini, canlı CI bildirimlerini ve commit takibini açar." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                            <ToggleSwitch Grid.Column="1" MinWidth="0" HorizontalAlignment="Right" VerticalAlignment="Center"
+                                          OnContent="" OffContent="" IsOn="{Binding EnableDeveloperWorkspace, Mode=TwoWay}"
+                                          AutomationProperties.Name="Geliştirici Çalışma Alanı" />
+                        </Grid>
+
+                        <StackPanel Visibility="{Binding DeveloperWorkspaceSettingsVisibility}" Spacing="10">
+                            <Border Style="{StaticResource DividerStyle}" />
+
+                            <!-- Quick How-To Guide Banner -->
+                            <Border Background="{ThemeResource SettingsButtonBackground}"
+                                    BorderBrush="{ThemeResource SettingsCardBorder}"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    Padding="10,8">
+                                <StackPanel Spacing="3">
+                                    <TextBlock Text="Nasıl Kullanılır?" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" />
+                                    <TextBlock Text="1. Yerel Git repo klasörü ekleyin: adanın 5. sayfasında aktif branch, dosya değişikliği, ↑/↓ farkı, son commit ve tek tık Fetch/Pull görünür."
+                                               FontSize="11.5" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                                    <TextBlock Text="2. GitHub reposu (sahibi/repo) ile CI (Actions) akışları ve açık PR'lar izlenir; + PR Aç ile compare ekranına geçebilirsiniz."
+                                               FontSize="11.5" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                                    <TextBlock Text="3. Token (PAT) eklerseniz özel repolar açılır ve PR satırındaki 'Merge → Onayla?' ile doğrudan adadan PR birleştirilebilir."
+                                               FontSize="11.5" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </Border>
+
+                            <!-- Local Git Repositories -->
+                            <StackPanel Spacing="6">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <StackPanel VerticalAlignment="Center" Spacing="2">
+                                        <TextBlock Text="Yerel Git depoları" Style="{StaticResource SettingLabelStyle}" />
+                                        <TextBlock Text="Seçilen projelerin .git klasörü sıfır CPU yüküyle izlenir." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                                    </StackPanel>
+                                    <Button Grid.Column="1" Content="Klasör ekle"
+                                            Click="OnAddLocalRepoClick"
+                                            Style="{StaticResource FooterActionButtonStyle}"
+                                            Padding="12,5" MinHeight="28" FontSize="12"
+                                            AutomationProperties.Name="Yerel Git repo klasörü ekle" />
+                                </Grid>
+
+                                <ItemsControl Visibility="{Binding HasDeveloperLocalRepositoriesVisibility}"
+                                              ItemsSource="{Binding DeveloperLocalRepositories}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel Spacing="4" /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Background="{ThemeResource SettingsButtonBackground}" CornerRadius="6" Padding="8,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding}" FontSize="11.5" Foreground="{ThemeResource SettingsText}"
+                                                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" />
+                                                <Button Grid.Column="1" Content="Kaldır" Tag="{Binding}" Click="OnRemoveLocalRepoClick"
+                                                        Style="{StaticResource FooterActionButtonStyle}" Padding="8,2" MinHeight="22" FontSize="11" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+
+                            <Border Style="{StaticResource DividerStyle}" />
+
+                            <!-- GitHub Repositories -->
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="GitHub depoları (owner/repo)" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="GitHub Actions ve açık PR'lar izlenir (yerel repoların origin URL'si otomatik algılanır)." FontSize="12" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="8">
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBox Text="{Binding NewGitHubRepoSlug, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                             PlaceholderText="ör. sandrotonal/pulse veya repo URL"
+                                             KeyDown="OnNewGitHubRepoKeyDown"
+                                             AutomationProperties.Name="GitHub deposu ekle" />
+                                    <Button Grid.Column="1" Content="Ekle"
+                                            Command="{Binding AddGitHubRepositoryCommand}"
+                                            Style="{StaticResource FooterActionButtonStyle}"
+                                            Padding="12,5" MinHeight="32" FontSize="12" />
+                                </Grid>
+
+                                <ItemsControl Visibility="{Binding HasDeveloperGitHubRepositoriesVisibility}"
+                                              ItemsSource="{Binding DeveloperGitHubRepositories}">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate><StackPanel Spacing="4" /></ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <Grid Background="{ThemeResource SettingsButtonBackground}" CornerRadius="6" Padding="8,4">
+                                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                                <TextBlock Grid.Column="0" Text="{Binding}" FontSize="12" FontWeight="SemiBold"
+                                                           Foreground="{ThemeResource SettingsText}" VerticalAlignment="Center" />
+                                                <Button Grid.Column="1" Content="Kaldır" Tag="{Binding}" Click="OnRemoveGitHubRepoClick"
+                                                        Style="{StaticResource FooterActionButtonStyle}" Padding="8,2" MinHeight="22" FontSize="11" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+
+                                <TextBlock Text="{Binding DeveloperRepoStatusMessage}" FontSize="11.5"
+                                           Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource DividerStyle}" />
+
+                            <!-- Live Notification & Polling Toggles -->
+                            <Grid MinHeight="42">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Split adada canlı CI / PR rozeti" Style="{StaticResource SettingLabelStyle}" TextWrapping="Wrap" Margin="0,0,12,0" />
+                                <ToggleSwitch Grid.Column="1" MinWidth="0" OnContent="" OffContent="" IsOn="{Binding ShowDeveloperLiveActivity, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid MinHeight="42">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Yeni yerel commit &amp; branch değişimi bildirimi" Style="{StaticResource SettingLabelStyle}" TextWrapping="Wrap" Margin="0,0,12,0" />
+                                <ToggleSwitch Grid.Column="1" MinWidth="0" OnContent="" OffContent="" IsOn="{Binding NotifyOnGitCommits, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid MinHeight="42">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="GitHub Actions başlangıç / sonuç bildirimi" Style="{StaticResource SettingLabelStyle}" TextWrapping="Wrap" Margin="0,0,12,0" />
+                                <ToggleSwitch Grid.Column="1" MinWidth="0" OnContent="" OffContent="" IsOn="{Binding NotifyOnGitHubActions, Mode=TwoWay}" />
+                            </Grid>
+                            <Grid MinHeight="42">
+                                <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                <TextBlock Text="Yeni açık Pull Request bildirimi" Style="{StaticResource SettingLabelStyle}" TextWrapping="Wrap" Margin="0,0,12,0" />
+                                <ToggleSwitch Grid.Column="1" MinWidth="0" OnContent="" OffContent="" IsOn="{Binding NotifyOnPullRequests, Mode=TwoWay}" />
+                            </Grid>
+
+                            <StackPanel Spacing="4">
+                                <Grid>
+                                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                                    <TextBlock Text="GitHub yenileme aralığı" Style="{StaticResource SettingLabelStyle}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding DeveloperPollIntervalLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{ThemeResource SettingsAccent}" VerticalAlignment="Center" />
+                                </Grid>
+                                <Slider Minimum="30" Maximum="300" StepFrequency="15" Foreground="{ThemeResource SettingsAccent}"
+                                        Value="{Binding DeveloperPollIntervalSeconds, Mode=TwoWay}"
+                                        AutomationProperties.Name="GitHub yenileme aralığı" />
+                            </StackPanel>
+
+                            <Border Style="{StaticResource DividerStyle}" />
+
+                            <!-- Optional PAT stored in Windows PasswordVault -->
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="GitHub Personal Access Token (İsteğe bağlı)" Style="{StaticResource SettingLabelStyle}" />
+                                <TextBlock Text="Özel repolar ve yüksek API kotası için. Düz metin dosyasına yazılmaz; Windows Credential Manager'da saklanır." FontSize="11.5" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                                <Grid ColumnSpacing="6">
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*" />
+                                        <ColumnDefinition Width="Auto" />
+                                        <ColumnDefinition Width="Auto" />
+                                    </Grid.ColumnDefinitions>
+                                    <PasswordBox x:Name="GitHubTokenPasswordBox" Grid.Column="0" PlaceholderText="github_pat_..." />
+                                    <Button Grid.Column="1" Content="Kaydet" Click="OnSaveGitHubTokenClick"
+                                            Style="{StaticResource FooterActionButtonStyle}" Padding="10,4" MinHeight="30" FontSize="12" />
+                                    <Button Grid.Column="2" Content="Sil" Click="OnClearGitHubTokenClick"
+                                            Style="{StaticResource FooterActionButtonStyle}" Padding="10,4" MinHeight="30" FontSize="12" />
+                                </Grid>
+                                <TextBlock Text="{Binding GitHubTokenStatusMessage}" FontSize="11.5" Foreground="{ThemeResource SettingsSecondary}" TextWrapping="Wrap" />
+                            </StackPanel>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
         <Border Grid.Row="3"

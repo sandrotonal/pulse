@@ -109,7 +109,12 @@ public sealed partial class SettingsWindow : Window
             Math.Max(1, workArea.Height - margin * 2));
 
         var x = workArea.X + (workArea.Width - width) / 2;
-        var y = workArea.Y + Math.Max(margin, (workArea.Height - height) / 2);
+        var islandClearance = (int)Math.Round(66 * dpiScale);
+        var centeredY = workArea.Y + Math.Max(margin, (workArea.Height - height) / 2);
+        // Push slightly below the top notch strip when vertical headroom allows live compact preview above.
+        var y = (workArea.Height - islandClearance - margin >= height)
+            ? Math.Max(centeredY, workArea.Y + islandClearance)
+            : centeredY;
         AppWindow.MoveAndResize(new RectInt32(x, y, width, height));
     }
 
@@ -160,6 +165,98 @@ public sealed partial class SettingsWindow : Window
         {
             e.Handled = true;
             viewModel.ApplyLocationCommand.Execute(null);
+        }
+    }
+
+    private async void OnAddLocalRepoClick(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.DataContext is not SettingsViewModel viewModel)
+        {
+            return;
+        }
+
+        const uint noMoveNoSizeNoActivate = 0x0001 | 0x0002 | 0x0010;
+        var hwndTopMost = new IntPtr(-1);
+        var hwndNoTopMost = new IntPtr(-2);
+        try
+        {
+            if (_hwnd != IntPtr.Zero)
+            {
+                _ = SetWindowPos(_hwnd, hwndNoTopMost, 0, 0, 0, 0, noMoveNoSizeNoActivate);
+            }
+
+            var picker = new Windows.Storage.Pickers.FolderPicker();
+            picker.SuggestedStartLocation = Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary;
+            picker.FileTypeFilter.Add("*");
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, _hwnd);
+            var folder = await picker.PickSingleFolderAsync();
+            if (folder is not null && !string.IsNullOrWhiteSpace(folder.Path))
+            {
+                viewModel.AddLocalRepository(folder.Path);
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("SettingsWindow.OnAddLocalRepoClick", ex);
+        }
+        finally
+        {
+            if (_hwnd != IntPtr.Zero)
+            {
+                _ = SetWindowPos(_hwnd, hwndTopMost, 0, 0, 0, 0, noMoveNoSizeNoActivate);
+            }
+        }
+    }
+
+    private void OnRemoveLocalRepoClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe &&
+            fe.Tag is string path &&
+            SettingsRoot.DataContext is SettingsViewModel viewModel)
+        {
+            viewModel.RemoveLocalRepository(path);
+        }
+    }
+
+    private void OnNewGitHubRepoKeyDown(object sender, Microsoft.UI.Xaml.Input.KeyRoutedEventArgs e)
+    {
+        if (e.Key == Windows.System.VirtualKey.Enter &&
+            SettingsRoot.DataContext is SettingsViewModel viewModel &&
+            viewModel.AddGitHubRepositoryCommand.CanExecute(null))
+        {
+            e.Handled = true;
+            viewModel.AddGitHubRepositoryCommand.Execute(null);
+        }
+    }
+
+    private void OnRemoveGitHubRepoClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe &&
+            fe.Tag is string slug &&
+            SettingsRoot.DataContext is SettingsViewModel viewModel)
+        {
+            viewModel.RemoveGitHubRepository(slug);
+        }
+    }
+
+    private void OnSaveGitHubTokenClick(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.DataContext is SettingsViewModel viewModel && GitHubTokenPasswordBox is not null)
+        {
+            viewModel.SaveGitHubToken(GitHubTokenPasswordBox.Password);
+            GitHubTokenPasswordBox.Password = string.Empty;
+        }
+    }
+
+    private void OnClearGitHubTokenClick(object sender, RoutedEventArgs e)
+    {
+        if (SettingsRoot.DataContext is SettingsViewModel viewModel)
+        {
+            if (GitHubTokenPasswordBox is not null)
+            {
+                GitHubTokenPasswordBox.Password = string.Empty;
+            }
+            viewModel.ClearGitHubToken();
         }
     }
 
@@ -301,4 +398,7 @@ public sealed partial class SettingsWindow : Window
 
     [DllImport("dwmapi.dll", PreserveSig = true)]
     private static extern int DwmSetWindowAttribute(IntPtr hwnd, uint dwAttribute, ref int pvAttribute, int cbAttribute);
+
+    [DllImport("user32.dll")]
+    private static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
 }

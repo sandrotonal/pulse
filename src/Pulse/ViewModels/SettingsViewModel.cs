@@ -1,9 +1,12 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Microsoft.UI.Xaml;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Models;
 using Pulse.Core.Services;
+using Pulse.Core.Services.Developer;
 using Pulse.Services.System;
 
 namespace Pulse.ViewModels;
@@ -13,6 +16,7 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private readonly ISettingsService _settingsService;
     private readonly IStartupService _startupService;
     private readonly ILocationService? _locationService;
+    private readonly IGitHubTokenStore? _gitHubTokenStore;
     private readonly Func<string?>? _hotkeyWarningProvider;
     private readonly Microsoft.UI.Dispatching.DispatcherQueue? _dispatcherQueue;
     private bool _startWithWindows;
@@ -67,6 +71,15 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
     private bool _enableGlobalHotkeys = true;
     private string _hotkeyWarningMessage = string.Empty;
     private string _statusMessage = string.Empty;
+    private bool _enableDeveloperWorkspace;
+    private double _developerPollIntervalSeconds = 60;
+    private bool _notifyOnGitCommits = true;
+    private bool _notifyOnGitHubActions = true;
+    private bool _notifyOnPullRequests = true;
+    private bool _showDeveloperLiveActivity = true;
+    private string _newGitHubRepoSlug = string.Empty;
+    private string _developerRepoStatusMessage = string.Empty;
+    private string _gitHubTokenStatusMessage = string.Empty;
     private bool _loading;
     private bool _initialized;
     private bool _isSelfSaving;
@@ -76,17 +89,21 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         ISettingsService settingsService,
         IStartupService startupService,
         ILocationService? locationService = null,
-        Func<string?>? hotkeyWarningProvider = null)
+        Func<string?>? hotkeyWarningProvider = null,
+        IGitHubTokenStore? gitHubTokenStore = null)
     {
         _settingsService = settingsService;
         _startupService = startupService;
         _locationService = locationService;
         _hotkeyWarningProvider = hotkeyWarningProvider;
+        _gitHubTokenStore = gitHubTokenStore;
         _dispatcherQueue = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
         _themeIndex = _settingsService.Current.Theme switch { "Dark" => 1, "Light" => 2, _ => 0 };
         RefreshMonitorOptions(_settingsService.Current.PreferredMonitorDeviceName);
         ApplyLocationCommand = new AsyncCommand(() => ApplyLocationAsync());
         ResetHorizontalOffsetCommand = new RelayCommand(() => HorizontalOffset = 0);
+        AddGitHubRepositoryCommand = new RelayCommand(AddGitHubRepositoryFromDraft);
+        RefreshGitHubTokenStatus();
         _settingsService.SettingsChanged += OnExternalSettingsChanged;
     }
 
@@ -248,6 +265,194 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
         }
     }
     public ICommand ResetHorizontalOffsetCommand { get; }
+
+    public ObservableCollection<string> DeveloperLocalRepositories { get; } = new();
+    public ObservableCollection<string> DeveloperGitHubRepositories { get; } = new();
+    public ICommand AddGitHubRepositoryCommand { get; }
+
+    public bool EnableDeveloperWorkspace
+    {
+        get => _enableDeveloperWorkspace;
+        set
+        {
+            if (SetProperty(ref _enableDeveloperWorkspace, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DeveloperWorkspaceSettingsVisibility)));
+                Save();
+            }
+        }
+    }
+
+    public Visibility DeveloperWorkspaceSettingsVisibility =>
+        _enableDeveloperWorkspace ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility HasDeveloperLocalRepositoriesVisibility =>
+        DeveloperLocalRepositories.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility HasDeveloperGitHubRepositoriesVisibility =>
+        DeveloperGitHubRepositories.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+    public double DeveloperPollIntervalSeconds
+    {
+        get => _developerPollIntervalSeconds;
+        set
+        {
+            if (SetProperty(ref _developerPollIntervalSeconds, value))
+            {
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DeveloperPollIntervalLabel)));
+                Save();
+            }
+        }
+    }
+
+    public string DeveloperPollIntervalLabel => $"{(int)Math.Round(DeveloperPollIntervalSeconds)} sn";
+    public bool NotifyOnGitCommits { get => _notifyOnGitCommits; set { if (SetProperty(ref _notifyOnGitCommits, value)) Save(); } }
+    public bool NotifyOnGitHubActions { get => _notifyOnGitHubActions; set { if (SetProperty(ref _notifyOnGitHubActions, value)) Save(); } }
+    public bool NotifyOnPullRequests { get => _notifyOnPullRequests; set { if (SetProperty(ref _notifyOnPullRequests, value)) Save(); } }
+    public bool ShowDeveloperLiveActivity { get => _showDeveloperLiveActivity; set { if (SetProperty(ref _showDeveloperLiveActivity, value)) Save(); } }
+
+    public string NewGitHubRepoSlug
+    {
+        get => _newGitHubRepoSlug;
+        set => SetProperty(ref _newGitHubRepoSlug, value);
+    }
+
+    public string DeveloperRepoStatusMessage
+    {
+        get => _developerRepoStatusMessage;
+        private set => SetProperty(ref _developerRepoStatusMessage, value);
+    }
+
+    public string GitHubTokenStatusMessage
+    {
+        get => _gitHubTokenStatusMessage;
+        private set => SetProperty(ref _gitHubTokenStatusMessage, value);
+    }
+
+    public void AddLocalRepository(string? folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return;
+        }
+
+        if (!LocalGitWatcherService.TryResolveGitRoot(folderPath, out var rootPath, out _))
+        {
+            DeveloperRepoStatusMessage = "Seçilen klasör geçerli bir Git deposu (.git) içermiyor.";
+            return;
+        }
+
+        if (DeveloperLocalRepositories.Any(p => string.Equals(p, rootPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            DeveloperRepoStatusMessage = "Bu Git klasörü zaten listede.";
+            return;
+        }
+
+        if (DeveloperLocalRepositories.Count >= 12)
+        {
+            DeveloperRepoStatusMessage = "En fazla 12 yerel repo eklenebilir.";
+            return;
+        }
+
+        DeveloperLocalRepositories.Add(rootPath);
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasDeveloperLocalRepositoriesVisibility)));
+        DeveloperRepoStatusMessage = $"Eklendi: {Path.GetFileName(rootPath)}";
+        Save();
+    }
+
+    public void RemoveLocalRepository(string? folderPath)
+    {
+        if (string.IsNullOrWhiteSpace(folderPath))
+        {
+            return;
+        }
+
+        var match = DeveloperLocalRepositories.FirstOrDefault(p => string.Equals(p, folderPath, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            DeveloperLocalRepositories.Remove(match);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasDeveloperLocalRepositoriesVisibility)));
+            Save();
+        }
+    }
+
+    private void AddGitHubRepositoryFromDraft()
+    {
+        var slug = GitStatusParser.NormalizeGitHubSlug(NewGitHubRepoSlug);
+        if (string.IsNullOrEmpty(slug))
+        {
+            DeveloperRepoStatusMessage = "Geçerli biçim girin: sahibi/repo veya GitHub URL'si.";
+            return;
+        }
+
+        if (DeveloperGitHubRepositories.Any(r => string.Equals(r, slug, StringComparison.OrdinalIgnoreCase)))
+        {
+            DeveloperRepoStatusMessage = $"{slug} zaten listede.";
+            NewGitHubRepoSlug = string.Empty;
+            return;
+        }
+
+        if (DeveloperGitHubRepositories.Count >= 12)
+        {
+            DeveloperRepoStatusMessage = "En fazla 12 GitHub reposu eklenebilir.";
+            return;
+        }
+
+        DeveloperGitHubRepositories.Add(slug);
+        NewGitHubRepoSlug = string.Empty;
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasDeveloperGitHubRepositoriesVisibility)));
+        DeveloperRepoStatusMessage = $"GitHub eklendi: {slug}";
+        Save();
+    }
+
+    public void RemoveGitHubRepository(string? slug)
+    {
+        if (string.IsNullOrWhiteSpace(slug))
+        {
+            return;
+        }
+
+        var match = DeveloperGitHubRepositories.FirstOrDefault(r => string.Equals(r, slug, StringComparison.OrdinalIgnoreCase));
+        if (match is not null)
+        {
+            DeveloperGitHubRepositories.Remove(match);
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasDeveloperGitHubRepositoriesVisibility)));
+            Save();
+        }
+    }
+
+    public void SaveGitHubToken(string? token)
+    {
+        if (_gitHubTokenStore is null)
+        {
+            GitHubTokenStatusMessage = "Credential Manager servisi kullanılamıyor.";
+            return;
+        }
+
+        if (_gitHubTokenStore.SaveToken(token))
+        {
+            RefreshGitHubTokenStatus();
+            StatusMessage = "GitHub token güvenle kaydedildi.";
+        }
+        else
+        {
+            GitHubTokenStatusMessage = "Token Windows Credential Manager'a kaydedilemedi.";
+        }
+    }
+
+    public void ClearGitHubToken()
+    {
+        _gitHubTokenStore?.ClearToken();
+        RefreshGitHubTokenStatus();
+        StatusMessage = "GitHub token silindi.";
+    }
+
+    private void RefreshGitHubTokenStatus()
+    {
+        GitHubTokenStatusMessage = _gitHubTokenStore?.HasToken() == true
+            ? "Token Windows Credential Manager'da şifreli saklanıyor."
+            : "Token kayıtlı değil (yalnızca herkese açık repolar okunur).";
+    }
     public double IslandScale
     {
         get => _islandScale;
@@ -579,6 +784,27 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
                 : $"Konum: {settings.IdleLocationCity}")
             : "Konum otomatik olarak algılanacak.";
         StartWithWindows = settings.StartWithWindows;
+        EnableDeveloperWorkspace = settings.EnableDeveloperWorkspace;
+        DeveloperPollIntervalSeconds = settings.DeveloperPollIntervalSeconds;
+        NotifyOnGitCommits = settings.NotifyOnGitCommits;
+        NotifyOnGitHubActions = settings.NotifyOnGitHubActions;
+        NotifyOnPullRequests = settings.NotifyOnPullRequests;
+        ShowDeveloperLiveActivity = settings.ShowDeveloperLiveActivity;
+
+        DeveloperLocalRepositories.Clear();
+        foreach (var path in settings.DeveloperLocalRepositories)
+        {
+            DeveloperLocalRepositories.Add(path);
+        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasDeveloperLocalRepositoriesVisibility)));
+
+        DeveloperGitHubRepositories.Clear();
+        foreach (var slug in settings.DeveloperGitHubRepositories)
+        {
+            DeveloperGitHubRepositories.Add(slug);
+        }
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HasDeveloperGitHubRepositoriesVisibility)));
+
         RefreshHotkeyWarning();
     }
 
@@ -957,7 +1183,16 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             IdleLocationSource = IdleLocationSourceIndex == 1 ? "Manual" : "Auto",
             IdleLocationCity = IdleLocationCity,
             IdleLocationLatitude = IdleLocationLatitude,
-            IdleLocationLongitude = IdleLocationLongitude
+            IdleLocationLongitude = IdleLocationLongitude,
+            EnableDeveloperWorkspace = EnableDeveloperWorkspace,
+            DeveloperLocalRepositories = DeveloperLocalRepositories.ToList(),
+            DeveloperGitHubRepositories = DeveloperGitHubRepositories.ToList(),
+            DeveloperSelectedRepoIndex = _settingsService.Current.DeveloperSelectedRepoIndex,
+            DeveloperPollIntervalSeconds = (int)Math.Round(DeveloperPollIntervalSeconds),
+            NotifyOnGitCommits = NotifyOnGitCommits,
+            NotifyOnGitHubActions = NotifyOnGitHubActions,
+            NotifyOnPullRequests = NotifyOnPullRequests,
+            ShowDeveloperLiveActivity = ShowDeveloperLiveActivity
         };
     }
 
@@ -987,5 +1222,28 @@ public sealed class SettingsViewModel : INotifyPropertyChanged, IDisposable
             _saveDebounce.Tick -= OnSaveDebounceTick;
         }
         _settingsService.SettingsChanged -= OnExternalSettingsChanged;
+
+        AppSettings? pending;
+        lock (_saveLock)
+        {
+            pending = _pendingSave;
+            _pendingSave = null;
+        }
+
+        if (pending is not null)
+        {
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _settingsService.SaveAsync(pending).ConfigureAwait(false);
+                    await _settingsService.FlushAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    CrashLogger.Write("SettingsViewModel.DisposeFlush", ex);
+                }
+            });
+        }
     }
 }
