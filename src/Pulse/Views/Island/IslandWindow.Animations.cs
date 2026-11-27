@@ -296,34 +296,46 @@ public sealed partial class IslandWindow
 
     private void OnFrameRender(object? sender, object e)
     {
-        long now = System.Diagnostics.Stopwatch.GetTimestamp();
-        double rawDt = (now - _lastRenderTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
-        _lastRenderTicks = now;
-
-        // Clamp dt to [0.5 ms .. 33 ms] so high-refresh (144Hz-360Hz) and transient stalls remain silky and deterministic.
-        double dt = DampedSpringOscillator.ClampFrameDeltaSeconds(rawDt);
-
-        if (_isDimensionAnimating)
+        try
         {
-            StepDimensionAnimation(dt);
-        }
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            double rawDt = (now - _lastRenderTicks) / (double)System.Diagnostics.Stopwatch.Frequency;
+            _lastRenderTicks = now;
 
-        if (_isPageAnimating)
+            // Clamp dt to [0.5 ms .. 33 ms] so high-refresh (144Hz-360Hz) and transient stalls remain silky and deterministic.
+            double dt = DampedSpringOscillator.ClampFrameDeltaSeconds(rawDt);
+
+            if (_isDimensionAnimating)
+            {
+                StepDimensionAnimation(dt);
+            }
+
+            if (_isPageAnimating)
+            {
+                StepPageTransition(dt);
+            }
+
+            if (_isDotAnimating)
+            {
+                StepDotAnimation(dt);
+            }
+
+            if (_isAmbientColorAnimating)
+            {
+                StepAmbientColorTransition(dt);
+            }
+
+            StopRenderLoopIfIdle();
+        }
+        catch (Exception ex)
         {
-            StepPageTransition(dt);
+            CrashLogger.Write("IslandWindow.OnFrameRender", ex);
+            _isDimensionAnimating = false;
+            _isPageAnimating = false;
+            _isDotAnimating = false;
+            _isAmbientColorAnimating = false;
+            StopRenderLoop();
         }
-
-        if (_isDotAnimating)
-        {
-            StepDotAnimation(dt);
-        }
-
-        if (_isAmbientColorAnimating)
-        {
-            StepAmbientColorTransition(dt);
-        }
-
-        StopRenderLoopIfIdle();
     }
 
     private DampedSpringOscillator SelectDimensionSpring() => _viewModel.AnimationIntensity switch
@@ -906,9 +918,11 @@ public sealed partial class IslandWindow
                 {
                     _ = DispatcherQueue.TryEnqueue(() =>
                     {
-                        if (!_windowClosed && generation == _transitionGeneration && !_viewModel.IsExpanded)
+                        if (!_windowClosed && generation == _transitionGeneration && !_viewModel.IsExpanded && !_viewModel.IsCollapsing)
                         {
                             ExpandedView.Visibility = Visibility.Collapsed;
+                            ExpandedView.IsHitTestVisible = false;
+                            CompactView.IsHitTestVisible = true;
                         }
                     });
                 };
@@ -964,9 +978,11 @@ public sealed partial class IslandWindow
                     {
                         _ = DispatcherQueue.TryEnqueue(() =>
                         {
-                            if (!_windowClosed && generation == _transitionGeneration && !_viewModel.IsExpanded)
+                            if (!_windowClosed && generation == _transitionGeneration && !_viewModel.IsExpanded && !_viewModel.IsCollapsing)
                             {
                                 ExpandedView.Visibility = Visibility.Collapsed;
+                                ExpandedView.IsHitTestVisible = false;
+                                CompactView.IsHitTestVisible = true;
                             }
                         });
                     };

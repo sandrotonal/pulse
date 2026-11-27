@@ -2342,6 +2342,8 @@ public sealed partial class IslandViewModel : INotifyPropertyChanged, IDisposabl
         _systemPollTimer.Start();
     }
 
+    private int _systemPollInFlight;
+
     private void OnSystemPollTick(object? sender, object e) => PollSystemState();
 
     private void PollSystemState()
@@ -2351,38 +2353,65 @@ public sealed partial class IslandViewModel : INotifyPropertyChanged, IDisposabl
             return;
         }
 
-        try
-        {
-            var volume = _systemControl.GetMasterVolume();
-            var muted = _systemControl.IsMuted();
-            if (volume != _masterVolume || muted != _systemMuted)
-            {
-                // Changed outside the island (hardware keys, other apps) — mirror it and show a HUD capsule.
-                _masterVolume = volume;
-                _systemMuted = muted;
-                OnPropertyChanged(nameof(MasterVolume));
-                OnPropertyChanged(nameof(MasterVolumeLabel));
-                OnPropertyChanged(nameof(IsSystemMuted));
-                OnPropertyChanged(nameof(SystemMuteGlyph));
-                _systemEvents.ReportAudioStatus(volume, muted);
-            }
-
-            var micMuted = _systemControl.IsMicMuted();
-            if (micMuted != _micMuted)
-            {
-                _micMuted = micMuted;
-                OnPropertyChanged(nameof(IsMicMuted));
-                OnPropertyChanged(nameof(MicMuteGlyph));
-                OnPropertyChanged(nameof(MicMuteToolTip));
-                OnPropertyChanged(nameof(MicMutedDotVisibility));
-            }
-        }
-        catch
-        {
-            // endpoint may be temporarily unavailable; next tick retries
-        }
-
         RefreshBattery(notify: true);
+
+        if (Interlocked.CompareExchange(ref _systemPollInFlight, 1, 0) != 0)
+        {
+            return;
+        }
+
+        var control = _systemControl;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                if (_disposed || _isSessionLocked)
+                {
+                    return;
+                }
+
+                var volume = control.GetMasterVolume();
+                var muted = control.IsMuted();
+                var micMuted = control.IsMicMuted();
+
+                ApplyOnUi(() =>
+                {
+                    if (_disposed || _isSessionLocked)
+                    {
+                        return;
+                    }
+
+                    if (volume != _masterVolume || muted != _systemMuted)
+                    {
+                        // Changed outside the island (hardware keys, other apps) — mirror it and show a HUD capsule.
+                        _masterVolume = volume;
+                        _systemMuted = muted;
+                        OnPropertyChanged(nameof(MasterVolume));
+                        OnPropertyChanged(nameof(MasterVolumeLabel));
+                        OnPropertyChanged(nameof(IsSystemMuted));
+                        OnPropertyChanged(nameof(SystemMuteGlyph));
+                        _systemEvents.ReportAudioStatus(volume, muted);
+                    }
+
+                    if (micMuted != _micMuted)
+                    {
+                        _micMuted = micMuted;
+                        OnPropertyChanged(nameof(IsMicMuted));
+                        OnPropertyChanged(nameof(MicMuteGlyph));
+                        OnPropertyChanged(nameof(MicMuteToolTip));
+                        OnPropertyChanged(nameof(MicMutedDotVisibility));
+                    }
+                });
+            }
+            catch
+            {
+                // endpoint may be temporarily unavailable; next tick retries
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _systemPollInFlight, 0);
+            }
+        });
     }
 
     /// <summary>Refreshes battery, system audio endpoint, and SMTC media session state after returning from fullscreen or display shifts.</summary>

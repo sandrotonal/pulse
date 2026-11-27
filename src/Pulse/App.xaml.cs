@@ -810,6 +810,7 @@ public partial class App : Application
             var window = new SettingsWindow(viewModel);
             _settingsWindow = window;
             _islandWindow?.SetCompanionAboveWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));
+            window.AppWindow.Closing += (_, _) => _islandWindow?.SetCompanionAboveWindow(IntPtr.Zero);
             window.Closed += (_, _) =>
             {
                 _settingsWindow = null;
