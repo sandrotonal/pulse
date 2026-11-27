@@ -15,7 +15,8 @@ public static class IslandPresentationPolicy
         bool isFocusTimerActive,
         bool isNotificationActive,
         bool isFileOperationActive,
-        bool hasShelfItems = false)
+        bool hasShelfItems = false,
+        bool hasDeveloperActivity = false)
     {
         if (!isCompact)
         {
@@ -34,7 +35,7 @@ public static class IslandPresentationPolicy
             return false;
         }
 
-        return (hasTrack && isFocusTimerActive) || hasShelfItems;
+        return (hasTrack && isFocusTimerActive) || hasShelfItems || (hasTrack && hasDeveloperActivity);
     }
 
     public static double ComputeCompactTargetWidth(
@@ -43,7 +44,8 @@ public static class IslandPresentationPolicy
         bool isSplit,
         bool isNotificationActive,
         bool isFileOperationActive,
-        bool isFocusTimerActive)
+        bool isFocusTimerActive,
+        bool isDeveloperActivityActive = false)
     {
         if (state == IslandState.Expanded)
         {
@@ -63,6 +65,11 @@ public static class IslandPresentationPolicy
         if (isFocusTimerActive)
         {
             return 220;
+        }
+
+        if (isDeveloperActivityActive)
+        {
+            return 252;
         }
 
         if (!hasTrack && state == IslandState.Idle)

@@ -3,6 +3,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Pulse.Core.Interfaces;
 using Pulse.Core.Services;
+using Pulse.Core.Services.Developer;
 using Pulse.Core.Services.Weather;
 using Pulse.Services.Artwork;
 using Pulse.Services.Media;
@@ -33,6 +34,9 @@ public partial class App : Application
     private readonly HttpClient _httpClient;
     private readonly OpenMeteoWeatherService _weatherService;
     private readonly LocationService _locationService;
+    private readonly WindowsGitHubTokenStore _gitHubTokenStore;
+    private readonly LocalGitWatcherService _localGitWatcherService;
+    private readonly GitHubWorkspaceService _gitHubWorkspaceService;
     private readonly MediaViewModel _mediaViewModel;
     private readonly IslandViewModel _islandViewModel;
     private IslandWindow? _islandWindow;
@@ -55,6 +59,8 @@ public partial class App : Application
     private RegisteredWaitHandle? _expandSystemRegistration;
     private EventWaitHandle? _expandShelfSignal;
     private RegisteredWaitHandle? _expandShelfRegistration;
+    private EventWaitHandle? _expandDevSignal;
+    private RegisteredWaitHandle? _expandDevRegistration;
     private EventWaitHandle? _collapseSignal;
     private RegisteredWaitHandle? _collapseRegistration;
     private EventWaitHandle? _toggleSplitDemoSignal;
@@ -165,6 +171,8 @@ public partial class App : Application
                     ? _instanceNames.ExpandSystemEventName
                     : (HasLaunchArg("--shelf") || HasLaunchArg("--raf"))
                     ? _instanceNames.ExpandShelfEventName
+                    : (HasLaunchArg("--dev") || HasLaunchArg("--git"))
+                    ? _instanceNames.ExpandDevEventName
                     : HasLaunchArg("--collapse")
                     ? _instanceNames.CollapseEventName
                     : HasLaunchArg("--split")
@@ -232,6 +240,9 @@ public partial class App : Application
         _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(6) };
         _weatherService = new OpenMeteoWeatherService(_httpClient);
         _locationService = new LocationService(_httpClient);
+        _gitHubTokenStore = new WindowsGitHubTokenStore();
+        _localGitWatcherService = new LocalGitWatcherService();
+        _gitHubWorkspaceService = new GitHubWorkspaceService(_httpClient, _gitHubTokenStore.GetToken);
 
         _mediaViewModel = new MediaViewModel(
             _mediaSessionService,
@@ -252,7 +263,9 @@ public partial class App : Application
             _settingsService,
             _weatherService,
             _locationService,
-            _dropShelfService);
+            _dropShelfService,
+            _localGitWatcherService,
+            _gitHubWorkspaceService);
 
         RegisterInstanceSignals(dispatcherQueue);
     }
@@ -339,6 +352,18 @@ public partial class App : Application
                 if (!_islandViewModel.IsExpanded)
                 {
                     _islandViewModel.ToggleExpanded();
+                }
+            });
+
+            RegisterIslandWindowSignal(out _expandDevSignal, out _expandDevRegistration, _instanceNames.ExpandDevEventName, () =>
+            {
+                if (_islandViewModel.IsDeveloperWorkspaceEnabled)
+                {
+                    _islandViewModel.SelectedPageIndex = 4;
+                    if (!_islandViewModel.IsExpanded)
+                    {
+                        _islandViewModel.ToggleExpanded();
+                    }
                 }
             });
 
@@ -534,9 +559,12 @@ public partial class App : Application
 
     private async Task ExportShowcaseShotsAsync(IslandWindow islandWindow, Task mediaInitTask, string exportDir)
     {
+        var originalSettings = _settingsService.Current;
+        var hasTemporaryDevSettings = false;
         try
         {
             await mediaInitTask;
+            originalSettings = _settingsService.Current;
             await Task.Delay(900);
 
             var tcs = new TaskCompletionSource();
@@ -545,6 +573,34 @@ public partial class App : Application
                 try
                 {
                     Directory.CreateDirectory(exportDir);
+
+                    var detectedRepoRoot =
+                        Pulse.Core.Services.Developer.LocalGitWatcherService.TryResolveGitRoot(Environment.CurrentDirectory, out var cwdRoot, out _)
+                            ? cwdRoot
+                            : (Pulse.Core.Services.Developer.LocalGitWatcherService.TryResolveGitRoot(AppContext.BaseDirectory, out var baseRoot, out _)
+                                ? baseRoot
+                                : null);
+
+                    var devLocalRepos = originalSettings.DeveloperLocalRepositories.Count > 0
+                        ? originalSettings.DeveloperLocalRepositories
+                        : (detectedRepoRoot is not null ? new List<string> { detectedRepoRoot } : new List<string>());
+                    var devGitHubRepos = originalSettings.DeveloperGitHubRepositories.Count > 0
+                        ? originalSettings.DeveloperGitHubRepositories
+                        : new List<string> { "sandrotonal/pulse" };
+
+                    var demoSettings = originalSettings with
+                    {
+                        AutoCollapse = false,
+                        DoNotDisturb = true,
+                        NotificationsPaused = true,
+                        EnableDeveloperWorkspace = true,
+                        DeveloperLocalRepositories = devLocalRepos,
+                        DeveloperGitHubRepositories = devGitHubRepos,
+                        DeveloperSelectedRepoIndex = 0
+                    };
+                    await _settingsService.SaveAsync(demoSettings);
+                    hasTemporaryDevSettings = true;
+                    await Task.Delay(1400);
 
                     var addedDemoTrack = false;
                     if (!_islandViewModel.HasTrack)
@@ -573,7 +629,7 @@ public partial class App : Application
                             _dropShelfService.TogglePin(iconItem.Id);
                         }
                     }
-                    await _dropShelfService.StageTextAsync("Pulse Drop Shelf v2.2\nQuick Look · Pin · Offline OCR");
+                    await _dropShelfService.StageTextAsync("Pulse Drop Shelf v2.4\nQuick Look · Pin · Offline OCR");
                     await Task.Delay(550);
 
                     // Capture split island (media + shelf badge)
@@ -601,6 +657,31 @@ public partial class App : Application
                     await Task.Delay(600);
                     await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-shelf.png"));
 
+                    _islandViewModel.SelectedPageIndex = 4;
+                    if (!_islandViewModel.IsExpanded)
+                    {
+                        _islandViewModel.ToggleExpanded();
+                    }
+                    _islandViewModel.RefreshDeveloperCommand?.Execute(null);
+                    await Task.Delay(1400);
+                    if (!_islandViewModel.IsExpanded)
+                    {
+                        _islandViewModel.ToggleExpanded();
+                        await Task.Delay(400);
+                    }
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-dev.png"));
+
+                    if (!_islandViewModel.IsDevGuideOpen)
+                    {
+                        _islandViewModel.ToggleDevGuideCommand?.Execute(null);
+                        await Task.Delay(450);
+                    }
+                    await islandWindow.ExportSurfaceSnapshotAsync(Path.Combine(exportDir, "island-expanded-dev-guide.png"));
+                    if (_islandViewModel.IsDevGuideOpen)
+                    {
+                        _islandViewModel.ToggleDevGuideCommand?.Execute(null);
+                    }
+
                     if (addedDemoTrack)
                     {
                         _islandViewModel.ToggleDemoTrackCommand.Execute(null);
@@ -619,6 +700,11 @@ public partial class App : Application
                 }
                 finally
                 {
+                    if (hasTemporaryDevSettings)
+                    {
+                        await _settingsService.SaveAsync(originalSettings);
+                        await _settingsService.FlushAsync();
+                    }
                     tcs.TrySetResult();
                 }
             });
@@ -707,6 +793,7 @@ public partial class App : Application
 
         if (_settingsWindow is not null)
         {
+            _islandWindow?.SetCompanionAboveWindow(WinRT.Interop.WindowNative.GetWindowHandle(_settingsWindow));
             BringToFront(_settingsWindow);
             return;
         }
@@ -715,12 +802,14 @@ public partial class App : Application
             _settingsService,
             _startupService,
             _locationService,
-            () => _islandWindow?.HotkeyConflictWarning);
+            () => _islandWindow?.HotkeyConflictWarning,
+            _gitHubTokenStore);
         _activeSettingsViewModel = viewModel;
         try
         {
             var window = new SettingsWindow(viewModel);
             _settingsWindow = window;
+            _islandWindow?.SetCompanionAboveWindow(WinRT.Interop.WindowNative.GetWindowHandle(window));
             window.Closed += (_, _) =>
             {
                 _settingsWindow = null;
@@ -728,6 +817,7 @@ public partial class App : Application
                 {
                     _activeSettingsViewModel = null;
                 }
+                _islandWindow?.SetCompanionAboveWindow(IntPtr.Zero);
             };
             BringToFront(window);
         }
@@ -738,6 +828,7 @@ public partial class App : Application
             {
                 _activeSettingsViewModel = null;
             }
+            _islandWindow?.SetCompanionAboveWindow(IntPtr.Zero);
             viewModel.Dispose();
             CrashLogger.Write("App.OnSettingsRequested", ex);
         }
@@ -899,6 +990,8 @@ public partial class App : Application
             _expandSystemSignal?.Dispose();
             _expandShelfRegistration?.Unregister(null);
             _expandShelfSignal?.Dispose();
+            _expandDevRegistration?.Unregister(null);
+            _expandDevSignal?.Dispose();
             _collapseRegistration?.Unregister(null);
             _collapseSignal?.Dispose();
             _toggleSplitDemoRegistration?.Unregister(null);
@@ -916,6 +1009,8 @@ public partial class App : Application
             }
 
             _islandViewModel.Dispose();
+            _localGitWatcherService.Dispose();
+            _gitHubWorkspaceService.Dispose();
             _dropShelfService.Dispose();
             _downloadsWatcherService.Dispose();
             _windowsToastService.Dispose();

@@ -12,5 +12,6 @@ public enum EventCategory
     Download,
     FocusTimer,
     Clipboard,
-    SystemToast
+    SystemToast,
+    Developer
 }

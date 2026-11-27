@@ -15,9 +15,10 @@ using Pulse.Services.System;
 
 namespace Pulse.ViewModels;
 
-public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
+public sealed partial class IslandViewModel : INotifyPropertyChanged, IDisposable
 {
-    public const int PageCount = 4;
+    public const int PageCount = 5;
+    public int VisiblePageCount => IsDeveloperWorkspaceEnabled ? 5 : 4;
 
     private readonly MediaViewModel _media;
     private readonly IEventRouter _eventRouter;
@@ -32,11 +33,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     private readonly DispatcherQueue _dispatcherQueue;
     private readonly DispatcherQueueTimer? _idleClockTimer;
     private readonly DispatcherQueueTimer? _idleWeatherTimer;
+    private readonly DispatcherQueueTimer? _shelfStatusTimer;
     private readonly bool _ownsDropShelf;
     private bool _isDragHovering;
     private bool _isShelfZipping;
     private string _shelfStatusBanner = string.Empty;
     private int _shelfStatusGeneration;
+    private int _quickLookReadGeneration;
 
     private IslandEvent? _activeEvent;
     private bool _systemMuted;
@@ -82,7 +85,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         ISettingsService? settingsService = null,
         IWeatherService? weatherService = null,
         ILocationService? locationService = null,
-        IDropShelfService? dropShelf = null)
+        IDropShelfService? dropShelf = null,
+        ILocalGitWatcherService? localGitWatcher = null,
+        IGitHubWorkspaceService? gitHubWorkspace = null)
     {
         _media = media ?? throw new ArgumentNullException(nameof(media));
         _eventRouter = eventRouter ?? throw new ArgumentNullException(nameof(eventRouter));
@@ -117,6 +122,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _idleWeatherTimer = dispatcherQueue.CreateTimer();
             _idleWeatherTimer.IsRepeating = false;
             _idleWeatherTimer.Tick += OnIdleWeatherTick;
+        }
+
+        if (dispatcherQueue is not null)
+        {
+            _shelfStatusTimer = dispatcherQueue.CreateTimer();
+            _shelfStatusTimer.IsRepeating = false;
+            _shelfStatusTimer.Interval = TimeSpan.FromMilliseconds(1800);
+            _shelfStatusTimer.Tick += OnShelfStatusTimerTick;
         }
 
         _media.PropertyChanged += OnMediaPropertyChanged;
@@ -369,6 +382,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         RefreshBattery();
         SubscribePowerEvents();
         StartSystemPolling();
+        InitializeDeveloperWorkspace(localGitWatcher, gitHubWorkspace);
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -379,7 +393,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         get => _selectedPageIndex;
         set
         {
-            var clamped = Math.Clamp(value, 0, PageCount - 1);
+            var clamped = Math.Clamp(value, 0, VisiblePageCount - 1);
             if (_selectedPageIndex != clamped)
             {
                 _selectedPageIndex = clamped;
@@ -388,18 +402,24 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
                 OnPropertyChanged(nameof(IsFocusPageSelected));
                 OnPropertyChanged(nameof(IsSystemPageSelected));
                 OnPropertyChanged(nameof(IsShelfPageSelected));
+                OnPropertyChanged(nameof(IsDevPageSelected));
                 OnPropertyChanged(nameof(MediaPageVisibility));
                 OnPropertyChanged(nameof(SpotifyBadgeVisibility));
                 OnPropertyChanged(nameof(GenericMediaBadgeVisibility));
                 OnPropertyChanged(nameof(FocusPageVisibility));
                 OnPropertyChanged(nameof(SystemPageVisibility));
                 OnPropertyChanged(nameof(ShelfPageVisibility));
+                OnPropertyChanged(nameof(DevPageVisibility));
                 OnPropertyChanged(nameof(ExpandedHeaderTitle));
 
                 if (clamped == 2)
                 {
                     RefreshBattery();
                     RefreshSystemAudio();
+                }
+                else if (clamped == 4)
+                {
+                    OnDeveloperPanelOpened();
                 }
             }
         }
@@ -409,6 +429,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public bool IsFocusPageSelected => _selectedPageIndex == 1;
     public bool IsSystemPageSelected => _selectedPageIndex == 2;
     public bool IsShelfPageSelected => _selectedPageIndex == 3;
+    public bool IsDevPageSelected => _selectedPageIndex == 4 && IsDeveloperWorkspaceEnabled;
     public Microsoft.UI.Xaml.Visibility MediaPageVisibility => SelectedPageIndex == 0 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SpotifyBadgeVisibility => (MediaPageVisibility == Microsoft.UI.Xaml.Visibility.Visible && IsSpotify)
         ? Microsoft.UI.Xaml.Visibility.Visible
@@ -419,17 +440,19 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public Microsoft.UI.Xaml.Visibility FocusPageVisibility => SelectedPageIndex == 1 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility SystemPageVisibility => SelectedPageIndex == 2 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility ShelfPageVisibility => SelectedPageIndex == 3 ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility DevPageVisibility => SelectedPageIndex == 4 && IsDeveloperWorkspaceEnabled ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public string ExpandedHeaderTitle => _selectedPageIndex switch
     {
         1 => "Odak Sayacı",
         2 => "Sistem & Denetim",
         3 => HasShelfItems ? $"Raf ({ShelfCount})" : "Raf",
+        4 => string.IsNullOrWhiteSpace(DevRepoHeaderTitle) ? "Git & GitHub" : DevRepoHeaderTitle,
         _ => AppDisplayName
     };
 
-    public void NextPage() => SelectedPageIndex = (SelectedPageIndex + 1) % PageCount;
-    public void PreviousPage() => SelectedPageIndex = (SelectedPageIndex - 1 + PageCount) % PageCount;
+    public void NextPage() => SelectedPageIndex = (SelectedPageIndex + 1) % VisiblePageCount;
+    public void PreviousPage() => SelectedPageIndex = (SelectedPageIndex - 1 + VisiblePageCount) % VisiblePageCount;
     public void SelectPage(int index) => SelectedPageIndex = index;
 
     // ---- Drop Shelf ("Raf") State & Commands ----
@@ -583,6 +606,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             {
                 _quickLookTextPreview = value;
                 OnPropertyChanged(nameof(QuickLookTextPreview));
+                OnPropertyChanged(nameof(QuickLookTextVisibility));
+                OnPropertyChanged(nameof(QuickLookGenericVisibility));
             }
         }
     }
@@ -660,6 +685,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    private static readonly HashSet<string> PreviewableTextExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".txt", ".md", ".json", ".cs", ".ts", ".tsx", ".js", ".jsx", ".py",
+        ".xml", ".xaml", ".html", ".css", ".sql", ".log", ".csv", ".yml",
+        ".yaml", ".ps1", ".ini", ".cfg", ".toml", ".env"
+    };
+
     public void OpenQuickLook(ShelfItemViewModel? item)
     {
         if (_disposed || item is null)
@@ -667,49 +699,71 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             return;
         }
 
-        var textPreview = string.Empty;
-        if (!item.IsImage && item.Model.Kind != ShelfItemKind.Folder && File.Exists(item.FilePath))
+        var generation = Interlocked.Increment(ref _quickLookReadGeneration);
+        QuickLookTextPreview = string.Empty;
+        QuickLookItem = item;
+
+        if (!item.IsImage && item.Model.Kind != ShelfItemKind.Folder)
         {
             var ext = Path.GetExtension(item.FilePath);
-            if (ext.Equals(".txt", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".md", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".json", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".cs", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".xml", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".xaml", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".log", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".csv", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".yml", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".yaml", StringComparison.OrdinalIgnoreCase) ||
-                ext.Equals(".ps1", StringComparison.OrdinalIgnoreCase))
+            if (PreviewableTextExtensions.Contains(ext))
             {
-                try
-                {
-                    using var reader = new StreamReader(item.FilePath, detectEncodingFromByteOrderMarks: true);
-                    var buffer = new char[1200];
-                    var read = reader.ReadBlock(buffer, 0, buffer.Length);
-                    if (read > 0)
-                    {
-                        textPreview = new string(buffer, 0, read).TrimEnd();
-                        if (!reader.EndOfStream)
-                        {
-                            textPreview += "\n…";
-                        }
-                    }
-                }
-                catch
-                {
-                    textPreview = string.Empty;
-                }
+                _ = LoadQuickLookTextPreviewAsync(item, generation);
             }
         }
+    }
 
-        QuickLookTextPreview = textPreview;
-        QuickLookItem = item;
+    private async Task LoadQuickLookTextPreviewAsync(ShelfItemViewModel item, int generation)
+    {
+        try
+        {
+            var preview = await Task.Run(() =>
+            {
+                if (!File.Exists(item.FilePath))
+                {
+                    return string.Empty;
+                }
+
+                using var reader = new StreamReader(item.FilePath, detectEncodingFromByteOrderMarks: true);
+                var buffer = new char[1200];
+                var read = reader.ReadBlock(buffer, 0, buffer.Length);
+                if (read <= 0)
+                {
+                    return string.Empty;
+                }
+
+                var text = new string(buffer, 0, read).TrimEnd();
+                if (!reader.EndOfStream)
+                {
+                    text += "\n…";
+                }
+                return text;
+            }).ConfigureAwait(false);
+
+            if (_disposed || generation != Volatile.Read(ref _quickLookReadGeneration))
+            {
+                return;
+            }
+
+            ApplyOnUi(() =>
+            {
+                if (!_disposed &&
+                    generation == Volatile.Read(ref _quickLookReadGeneration) &&
+                    ReferenceEquals(_quickLookItem, item))
+                {
+                    QuickLookTextPreview = preview;
+                }
+            });
+        }
+        catch
+        {
+            // Keep generic preview fallback when file cannot be read.
+        }
     }
 
     public void CloseQuickLook()
     {
+        Interlocked.Increment(ref _quickLookReadGeneration);
         QuickLookTextPreview = string.Empty;
         QuickLookItem = null;
     }
@@ -736,11 +790,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public async Task CopyOcrTextFromImageAsync(string filePath)
+    public async Task<bool> CopyOcrTextFromImageAsync(string filePath)
     {
         if (_disposed || string.IsNullOrWhiteSpace(filePath))
         {
-            return;
+            return false;
         }
 
         try
@@ -748,24 +802,28 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             var extracted = await ShelfShellService.ExtractTextFromImageAsync(filePath);
             if (_disposed)
             {
-                return;
+                return false;
             }
 
             if (string.IsNullOrWhiteSpace(extracted))
             {
                 ShowShelfStatus("Okunabilir metin bulunamadı");
-                return;
+                return false;
             }
 
             if (ShelfShellService.CopyTextToClipboard(extracted))
             {
                 ShowShelfStatus("Görseldeki metin kopyalandı");
+                return true;
             }
+
+            return false;
         }
         catch (Exception ex)
         {
             CrashLogger.Write("IslandViewModel.CopyOcrTextFromImageAsync", ex);
             ShowShelfStatus("Metin okunamadı");
+            return false;
         }
     }
 
@@ -815,10 +873,46 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
 
         var snapshot = _dropShelf.Items;
-        ShelfItems.Clear();
-        foreach (var item in snapshot)
+        var isLight = DesktopFrostService.ResolveIsLightTheme(_media.Theme);
+
+        // Preserve existing ShelfItemViewModels incrementally so thumbnails don't re-decode on pin/add/remove.
+        var existingById = new Dictionary<string, ShelfItemViewModel>(ShelfItems.Count, StringComparer.Ordinal);
+        foreach (var vm in ShelfItems)
         {
-            ShelfItems.Add(new ShelfItemViewModel(item));
+            existingById[vm.Id] = vm;
+        }
+
+        var targetIds = new HashSet<string>(snapshot.Select(i => i.Id), StringComparer.Ordinal);
+        for (int i = ShelfItems.Count - 1; i >= 0; i--)
+        {
+            if (!targetIds.Contains(ShelfItems[i].Id))
+            {
+                ShelfItems.RemoveAt(i);
+            }
+        }
+
+        for (int targetIndex = 0; targetIndex < snapshot.Count; targetIndex++)
+        {
+            var model = snapshot[targetIndex];
+            if (existingById.TryGetValue(model.Id, out var existing))
+            {
+                existing.UpdateModel(model);
+                existing.RefreshTheme(isLight);
+                var currentIndex = ShelfItems.IndexOf(existing);
+                if (currentIndex >= 0 && currentIndex != targetIndex)
+                {
+                    ShelfItems.Move(currentIndex, targetIndex);
+                }
+            }
+            else
+            {
+                ShelfItems.Insert(targetIndex, new ShelfItemViewModel(model, isLight));
+            }
+        }
+
+        if (_quickLookItem is not null && !targetIds.Contains(_quickLookItem.Id))
+        {
+            CloseQuickLook();
         }
 
         OnPropertyChanged(nameof(ShelfCount));
@@ -830,6 +924,20 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(CompactShelfBadgeVisibility));
         OnPropertyChanged(nameof(ExpandedHeaderTitle));
         NotifySplitStateChanged();
+    }
+
+    private void OnShelfStatusTimerTick(DispatcherQueueTimer sender, object args)
+    {
+        sender.Stop();
+        if (_disposed)
+        {
+            return;
+        }
+
+        _shelfStatusBanner = string.Empty;
+        OnPropertyChanged(nameof(ShelfStatusBanner));
+        OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
+        OnPropertyChanged(nameof(ShelfSummaryVisibility));
     }
 
     private void ShowShelfStatus(string message)
@@ -846,36 +954,17 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             OnPropertyChanged(nameof(ShelfStatusBanner));
             OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
             OnPropertyChanged(nameof(ShelfSummaryVisibility));
-        });
 
-        if (string.IsNullOrWhiteSpace(message))
-        {
-            return;
-        }
-
-        _ = Task.Run(async () =>
-        {
-            try
+            if (string.IsNullOrWhiteSpace(message))
             {
-                await Task.Delay(1800).ConfigureAwait(false);
-                if (_disposed || gen != Volatile.Read(ref _shelfStatusGeneration))
-                {
-                    return;
-                }
-
-                ApplyOnUi(() =>
-                {
-                    if (!_disposed && gen == Volatile.Read(ref _shelfStatusGeneration))
-                    {
-                        _shelfStatusBanner = string.Empty;
-                        OnPropertyChanged(nameof(ShelfStatusBanner));
-                        OnPropertyChanged(nameof(ShelfStatusBannerVisibility));
-                        OnPropertyChanged(nameof(ShelfSummaryVisibility));
-                    }
-                });
+                _shelfStatusTimer?.Stop();
+                return;
             }
-            catch
+
+            if (_shelfStatusTimer is not null)
             {
+                _shelfStatusTimer.Stop();
+                _shelfStatusTimer.Start();
             }
         });
     }
@@ -933,18 +1022,18 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
 
     private void ToggleSystemMute()
     {
-        _systemMuted = !_systemMuted;
+        var targetMuted = !_systemMuted;
         try
         {
-            _systemControl?.SetMute(_systemMuted);
+            _systemControl?.SetMute(targetMuted);
+            _systemMuted = targetMuted;
+            OnPropertyChanged(nameof(IsSystemMuted));
+            OnPropertyChanged(nameof(SystemMuteGlyph));
         }
-        catch
+        catch (Exception ex)
         {
-            // keep local state; endpoint stays authoritative next refresh
+            CrashLogger.Write("IslandViewModel.ToggleSystemMute", ex);
         }
-
-        OnPropertyChanged(nameof(IsSystemMuted));
-        OnPropertyChanged(nameof(SystemMuteGlyph));
     }
 
     private string _activeAudioDeviceName = "Hoparlör";
@@ -1147,10 +1236,26 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public IslandEvent? ActiveEvent => _activeEvent;
 
     public bool IsNotificationActive => _activeEvent is SystemNotificationEvent;
-    public string NotificationTitle => (_activeEvent as SystemNotificationEvent)?.Title ?? string.Empty;
-    public string NotificationSubtitle => (_activeEvent as SystemNotificationEvent)?.Subtitle ?? string.Empty;
-    public string NotificationGlyph => (_activeEvent as SystemNotificationEvent)?.IconGlyph ?? "\uE7E7";
-    public bool IsNotificationWarning => (_activeEvent as SystemNotificationEvent)?.Priority == EventPriority.Warning;
+    public bool IsDeveloperActivityBannerActive => !IsNotificationActive && !HasTrack && !IsFocusTimerActive && !IsFileOperationActive && _activeEvent is DeveloperActivityEvent;
+    public string NotificationTitle => _activeEvent switch
+    {
+        SystemNotificationEvent n => n.Title,
+        DeveloperActivityEvent d => d.Title,
+        _ => string.Empty
+    };
+    public string NotificationSubtitle => _activeEvent switch
+    {
+        SystemNotificationEvent n => n.Subtitle,
+        DeveloperActivityEvent d => d.Subtitle,
+        _ => string.Empty
+    };
+    public string NotificationGlyph => _activeEvent switch
+    {
+        SystemNotificationEvent n => n.IconGlyph,
+        DeveloperActivityEvent d => d.IconGlyph,
+        _ => "\uE7E7"
+    };
+    public bool IsNotificationWarning => _activeEvent?.Priority == EventPriority.Warning;
 
     public bool IsFocusTimerActive => _activeEvent is FocusTimerEvent || _focusTimer.IsRunning || (_focusTimer.State == FocusTimerState.Paused && _focusTimer.RemainingTime > TimeSpan.Zero && _focusTimer.RemainingTime < _focusTimer.TotalDuration);
     public string FocusTimerText
@@ -1248,6 +1353,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _focusPresetKey = key;
         NotifyFocusBrushes();
         _focusTimer.Start(focus, breakTime);
+        ApplyFocusAutoDnd(enteringFocus: true);
         OnPropertyChanged(nameof(PreserveFocusPanel));
         NotifySplitStateChanged();
     }
@@ -1271,6 +1377,11 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
     public void RefreshThemeResources()
     {
         NotifyFocusBrushes();
+        var isLight = DesktopFrostService.ResolveIsLightTheme(_media.Theme);
+        foreach (var item in ShelfItems)
+        {
+            item.RefreshTheme(isLight);
+        }
         OnPropertyChanged(nameof(BatteryStatusBrush));
         OnPropertyChanged(nameof(BatteryIconBrush));
         OnPropertyChanged(nameof(HeadphoneStatusBrush));
@@ -1318,7 +1429,8 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         IsFocusTimerActive,
         IsNotificationActive,
         IsFileOperationActive,
-        HasShelfItems);
+        HasShelfItems,
+        HasDeveloperLiveSplitBadge);
     public Microsoft.UI.Xaml.Visibility SplitModeVisibility => IsSplitModeActive ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     public string DetachedGlyph => IsFocusTimerActive
@@ -1327,7 +1439,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             ? NotificationGlyph
             : (_isSplitDemoForced
                 ? "\uE916"
-                : (HasShelfItems ? "\uE896" : "\uE896")));
+                : (HasShelfItems
+                    ? "\uE896"
+                    : (HasDeveloperLiveSplitBadge ? DeveloperSplitGlyph : "\uE896"))));
 
     public string DetachedBadgeText => IsFocusTimerActive
         ? FocusTimerText
@@ -1335,7 +1449,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             ? "!"
             : (_isSplitDemoForced
                 ? "25:00"
-                : (HasShelfItems ? ShelfCountText : $"{FileOperationProgress:F0}%")));
+                : (HasShelfItems
+                    ? ShelfCountText
+                    : (HasDeveloperLiveSplitBadge ? DeveloperSplitBadgeText : $"{FileOperationProgress:F0}%"))));
 
     public string DetachedToolTip => IsFocusTimerActive
         ? "Odak Sayacı"
@@ -1343,7 +1459,9 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             ? NotificationTitle
             : (_isSplitDemoForced
                 ? "Odak Sayacı (Demo)"
-                : (HasShelfItems ? $"Dosya Rafı ({ShelfTotalSummary})" : FileOperationName)));
+                : (HasShelfItems
+                    ? $"Dosya Rafı ({ShelfTotalSummary})"
+                    : (HasDeveloperLiveSplitBadge ? DeveloperSplitToolTip : FileOperationName))));
 
     public void OnDetachedPillClicked()
     {
@@ -1351,22 +1469,30 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         {
             SelectedPageIndex = 1;
         }
-        else if (IsNotificationActive || IsFileOperationActive)
+        else if (IsNotificationActive)
         {
-            SelectedPageIndex = 2;
+            SelectedPageIndex = _activeEvent?.Category == EventCategory.Developer && IsDeveloperWorkspaceEnabled ? 4 : 2;
         }
         else if (HasShelfItems)
         {
             SelectedPageIndex = 3;
         }
+        else if (HasDeveloperLiveSplitBadge && IsDeveloperWorkspaceEnabled)
+        {
+            SelectedPageIndex = 4;
+        }
+        else if (IsFileOperationActive)
+        {
+            SelectedPageIndex = 2;
+        }
         ToggleExpanded();
     }
 
-    public Microsoft.UI.Xaml.Visibility NotificationVisibility => (!IsSplitModeActive && IsNotificationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility NotificationVisibility => (!IsSplitModeActive && (IsNotificationActive || IsDeveloperActivityBannerActive)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FocusTimerVisibility => (!IsSplitModeActive && !IsNotificationActive && IsFocusTimerActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility FileOperationVisibility => (!IsSplitModeActive && !IsNotificationActive && !IsFocusTimerActive && IsFileOperationActive) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
     public Microsoft.UI.Xaml.Visibility TrackContentVisibility => ((HasTrack || _isSplitDemoForced) && (!IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive || IsSplitModeActive) && ShowsCompactContent) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
-    public Microsoft.UI.Xaml.Visibility CustomIdleVisibility => (!HasTrack && !_isSplitDemoForced && !IsNotificationActive && !IsFocusTimerActive && !IsFileOperationActive && CurrentIslandState is (IslandState.Idle or IslandState.Hover or IslandState.Collapsing)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
+    public Microsoft.UI.Xaml.Visibility CustomIdleVisibility => (!HasTrack && !_isSplitDemoForced && !IsNotificationActive && !IsDeveloperActivityBannerActive && !IsFocusTimerActive && !IsFileOperationActive && CurrentIslandState is (IslandState.Idle or IslandState.Hover or IslandState.Collapsing)) ? Microsoft.UI.Xaml.Visibility.Visible : Microsoft.UI.Xaml.Visibility.Collapsed;
 
     private bool ShowIdleClock => _settingsService?.Current.ShowIdleClock ?? true;
     private bool ShowIdleDate => _settingsService?.Current.ShowIdleDate ?? true;
@@ -1574,6 +1700,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         var target = _activeEvent switch
         {
             SystemNotificationEvent notification => notification.LaunchTarget,
+            DeveloperActivityEvent devEvent => devEvent.LaunchTarget,
             FileOperationEvent fileOperation => fileOperation.DestinationPath,
             _ => null
         };
@@ -1619,11 +1746,13 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         bool stateChanged = (prevEvent is null) != (newEvent is null) ||
                             (prevEvent?.GetType() != newEvent?.GetType()) ||
                             (prevEvent is FocusTimerEvent pF && newEvent is FocusTimerEvent nF && pF.State != nF.State) ||
-                            (prevEvent is FileOperationEvent pO && newEvent is FileOperationEvent nO && pO.Status != nO.Status);
+                            (prevEvent is FileOperationEvent pO && newEvent is FileOperationEvent nO && pO.Status != nO.Status) ||
+                            (prevEvent is DeveloperActivityEvent pD && newEvent is DeveloperActivityEvent nD && pD.ActivityKind != nD.ActivityKind);
 
         if (stateChanged)
         {
             OnPropertyChanged(nameof(IsNotificationActive));
+            OnPropertyChanged(nameof(IsDeveloperActivityBannerActive));
             OnPropertyChanged(nameof(IsFocusTimerActive));
             OnPropertyChanged(nameof(IsFileOperationActive));
             OnPropertyChanged(nameof(IsMediaActive));
@@ -1917,6 +2046,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         NotifyIdleClock();
         NotifyIdleWeather();
         RefreshIdlePresentation();
+        OnDeveloperSettingsChanged(settings);
     }
 
     private static string BuildIdleLocationKey(AppSettings settings) =>
@@ -2180,6 +2310,7 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         }
 
         _isSessionLocked = isLocked;
+        SetDeveloperSessionLocked(isLocked);
         if (isLocked)
         {
             _systemPollTimer?.Stop();
@@ -2491,7 +2622,14 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
             _idleWeatherTimer.Tick -= OnIdleWeatherTick;
         }
 
+        _shelfStatusTimer?.Stop();
+        if (_shelfStatusTimer is not null)
+        {
+            _shelfStatusTimer.Tick -= OnShelfStatusTimerTick;
+        }
+
         try { _idleWeatherCts?.Cancel(); } catch (ObjectDisposedException) { }
+        try { _idleWeatherCts?.Dispose(); } catch (ObjectDisposedException) { }
         _idleWeatherCts = null;
 
         if (_settingsService is not null)
@@ -2516,5 +2654,6 @@ public sealed class IslandViewModel : INotifyPropertyChanged, IDisposable
         _focusTimer.Dispose();
         _systemEvents.Dispose();
         _fileOperations.Dispose();
+        DisposeDeveloperWorkspace();
     }
 }

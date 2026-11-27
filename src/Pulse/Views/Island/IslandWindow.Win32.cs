@@ -33,6 +33,7 @@ public sealed partial class IslandWindow
     private const long WsExStaticEdge = 0x00020000L;
     private const uint SwpNoSize = 0x0001;
     private const uint SwpNoMove = 0x0002;
+    private const uint SwpNoZOrder = 0x0004;
     private const uint SwpNoActivate = 0x0010;
     private const uint SwpFrameChanged = 0x0020;
     private const uint SwpShowWindow = 0x0040;
@@ -51,8 +52,47 @@ public sealed partial class IslandWindow
     private const uint NotifyForThisSession = 0;
     private const int MdtEffectiveDpi = 0;
     private static readonly IntPtr HwndTopmost = new(-1);
+    private IntPtr _companionAboveHwnd;
 
-    /// <summary>Keeps the island above everything, even if another app demoted its z-order.</summary>
+    /// <summary>
+    /// Registers an open companion window (such as Settings) that must remain above the island
+    /// in Z-order while visible, instead of being overtaken by ReassertTopmost.
+    /// </summary>
+    public void SetCompanionAboveWindow(IntPtr hwnd)
+    {
+        _companionAboveHwnd = hwnd;
+        if (!_windowClosed)
+        {
+            ReassertTopmost();
+        }
+    }
+
+    private IntPtr GetTargetZOrderInsertAfter(out bool skipZOrderChange)
+    {
+        var companion = _companionAboveHwnd;
+        if (companion != IntPtr.Zero &&
+            companion != _hwnd &&
+            IsWindow(companion) &&
+            IsWindowVisible(companion) &&
+            !IsIconic(companion))
+        {
+            var exStyle = GetWindowLongPtr(companion, GwlExStyle).ToInt64();
+            if ((exStyle & WsExTopmost) == 0)
+            {
+                // Companion temporarily yielded topmost (e.g., native FolderPicker dialog is open).
+                skipZOrderChange = true;
+                return IntPtr.Zero;
+            }
+
+            skipZOrderChange = false;
+            return companion;
+        }
+
+        skipZOrderChange = false;
+        return HwndTopmost;
+    }
+
+    /// <summary>Keeps the island above desktop apps without overtaking an open Settings window.</summary>
     public void ReassertTopmost()
     {
         if (_hwnd == IntPtr.Zero || (_isIslandHidden && !_hideAnchorVisible))
@@ -60,7 +100,13 @@ public sealed partial class IslandWindow
             return;
         }
 
-        _ = SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
+        var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
+        if (skipZOrder)
+        {
+            return;
+        }
+
+        _ = SetWindowPos(_hwnd, insertAfter, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate);
     }
 
     /// <summary>Guarantees the native HWND is shown without disrupting active Composition animations.</summary>
@@ -551,7 +597,9 @@ public sealed partial class IslandWindow
 
         // Startup / DPI / display / settings changes only; transitions never resize the native window.
         // Always invoke SetWindowPos directly on the UI owner thread so DWM mode-switches never race.
-        _ = SetWindowPos(_hwnd, HwndTopmost, hostBounds.X, hostBounds.Y, hostBounds.Width, hostBounds.Height, SwpNoActivate);
+        var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
+        var flags = SwpNoActivate | (skipZOrder ? SwpNoZOrder : 0);
+        _ = SetWindowPos(_hwnd, insertAfter, hostBounds.X, hostBounds.Y, hostBounds.Width, hostBounds.Height, flags);
 
         // Window moves under the cursor can synthesize pointer exit/enter pairs in WinUI;
         // suppress them briefly so hover state cannot oscillate with the resize itself.
@@ -761,6 +809,58 @@ public sealed partial class IslandWindow
     }
 
     // Win32 Styles & Border/Shadow Stripping
+    private IntPtr _previousForegroundHwndBeforeInput;
+    private bool _isTextInputActivationEnabled;
+
+    /// <summary>
+    /// Temporarily allows Win32 window activation while an in-island TextBox (Quick Note) is open
+    /// so Windows routes keyboard input into the WinUI input site, then restores WS_EX_NOACTIVATE.
+    /// </summary>
+    private void SetTextInputActivationEnabled(bool enabled)
+    {
+        if (_hwnd == IntPtr.Zero || _windowClosed || _isTextInputActivationEnabled == enabled)
+        {
+            return;
+        }
+
+        _isTextInputActivationEnabled = enabled;
+        try
+        {
+            var exStyle = GetWindowLongPtr(_hwnd, GwlExStyle).ToInt64();
+            if (enabled)
+            {
+                var currentFg = GetForegroundWindow();
+                if (currentFg != IntPtr.Zero && currentFg != _hwnd)
+                {
+                    _previousForegroundHwndBeforeInput = currentFg;
+                }
+
+                SetWindowLongPtr(_hwnd, GwlExStyle, new IntPtr(exStyle & ~WsExNoActivate));
+                SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0, SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged);
+                Activate();
+                _ = SetForegroundWindow(_hwnd);
+            }
+            else
+            {
+                SetWindowLongPtr(_hwnd, GwlExStyle, new IntPtr(exStyle | WsExNoActivate));
+                var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
+                SetWindowPos(_hwnd, insertAfter, 0, 0, 0, 0,
+                    SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged | (skipZOrder ? SwpNoZOrder : 0));
+
+                var prev = _previousForegroundHwndBeforeInput;
+                _previousForegroundHwndBeforeInput = IntPtr.Zero;
+                if (prev != IntPtr.Zero && prev != _hwnd && GetForegroundWindow() == _hwnd && IsWindow(prev) && IsWindowVisible(prev))
+                {
+                    _ = SetForegroundWindow(prev);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            CrashLogger.Write("IslandWindow.SetTextInputActivationEnabled", ex);
+        }
+    }
+
     private void ApplyWindowStyles()
     {
         var style = GetWindowLongPtr(_hwnd, GwlStyle).ToInt64();
@@ -782,8 +882,9 @@ public sealed partial class IslandWindow
         int doNotRound = 1; // DWMWCP_DONOTROUND
         DwmSetWindowAttribute(_hwnd, 33, ref doNotRound, sizeof(int)); // 33 = DWMWA_WINDOW_CORNER_PREFERENCE
 
-        SetWindowPos(_hwnd, HwndTopmost, 0, 0, 0, 0,
-            SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged);
+        var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
+        SetWindowPos(_hwnd, insertAfter, 0, 0, 0, 0,
+            SwpNoMove | SwpNoSize | SwpNoActivate | SwpFrameChanged | (skipZOrder ? SwpNoZOrder : 0));
     }
 
     // Subclass WndProc to handle native hit-testing, DPI/display changes, and eliminate OS window minimum size constraints
@@ -797,7 +898,6 @@ public sealed partial class IslandWindow
         const uint WM_WTSSESSION_CHANGE = 0x02B1;
         const uint WM_DPICHANGED = 0x02E0;
         const uint WM_HOTKEY = 0x0312;
-        const uint SwpNoZOrder = 0x0004;
         const int WtsSessionLock = 0x7;
         const int WtsSessionUnlock = 0x8;
 
@@ -829,11 +929,19 @@ public sealed partial class IslandWindow
 
         if (uMsg == WM_WINDOWPOSCHANGING)
         {
-            // Immune to z-order demotion: any real z-order change is forced back to topmost.
+            // Keep topmost above general apps while yielding cleanly to an open companion Settings window.
             var wp = Marshal.PtrToStructure<WINDOWPOS>(lParam);
             if ((wp.flags & SwpNoZOrder) == 0)
             {
-                wp.hwndInsertAfter = HwndTopmost;
+                var insertAfter = GetTargetZOrderInsertAfter(out var skipZOrder);
+                if (skipZOrder)
+                {
+                    wp.flags |= SwpNoZOrder;
+                }
+                else
+                {
+                    wp.hwndInsertAfter = insertAfter;
+                }
                 Marshal.StructureToPtr(wp, lParam, false);
             }
             return DefSubclassProc(hWnd, uMsg, wParam, lParam);
@@ -884,12 +992,25 @@ public sealed partial class IslandWindow
             }
         }
 
+        const uint WM_MOUSEACTIVATE = 0x0021;
         const uint WM_KILLFOCUS = 0x0008;
         const uint WM_CAPTURECHANGED = 0x0215;
+        if (uMsg == WM_MOUSEACTIVATE)
+        {
+            const int MA_ACTIVATE = 1;
+            const int MA_NOACTIVATE = 3;
+            return new IntPtr((_isTextInputActivationEnabled || _viewModel.IsQuickNoteOpen) ? MA_ACTIVATE : MA_NOACTIVATE);
+        }
+
         if (uMsg == WM_KILLFOCUS || uMsg == WM_CAPTURECHANGED)
         {
-            _isInteractingWithControl = false;
-            if (!_isContextMenuOpen && !_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse && !_viewModel.PreserveFocusPanel && !_isDragHovering && !_isDraggingOut)
+            if (!_viewModel.IsQuickNoteOpen && !_isPickingShelfFile)
+            {
+                _isInteractingWithControl = false;
+            }
+            if (!_isContextMenuOpen && !_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse &&
+                !_viewModel.PreserveFocusPanel && !_viewModel.IsQuickNoteOpen && !_viewModel.IsQuickLookOpen &&
+                !_isPickingShelfFile && !_isDragHovering && !_isDraggingOut)
             {
                 RestartCollapseDelayTimer();
             }
@@ -1047,10 +1168,22 @@ public sealed partial class IslandWindow
     private static extern bool GetCursorPos(out Win32Point pt);
 
     [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(Win32Point pt);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr hwnd, uint gaFlags);
+
+    [DllImport("user32.dll")]
     private static extern IntPtr MonitorFromPoint(Win32Point pt, uint dwFlags);
 
     [DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     private static extern bool IsWindowVisible(IntPtr hWnd);

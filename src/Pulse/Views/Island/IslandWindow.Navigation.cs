@@ -23,6 +23,7 @@ public sealed partial class IslandWindow
         1 => _focusPanelVisual,
         2 => _systemPanelVisual,
         3 => _shelfPanelVisual,
+        4 => _devPanelVisual,
         _ => _mediaPanelVisual
     };
 
@@ -32,6 +33,7 @@ public sealed partial class IslandWindow
         1 => FocusExpandedPanel,
         2 => SystemExpandedPanel,
         3 => ShelfExpandedPanel,
+        4 => DevExpandedPanel,
         _ => MediaExpandedPanel
     };
 
@@ -39,6 +41,23 @@ public sealed partial class IslandWindow
     private void OnPageDot1Click(object sender, RoutedEventArgs e) => NavigateToPage(1, 1 > _viewModel.SelectedPageIndex);
     private void OnPageDot2Click(object sender, RoutedEventArgs e) => NavigateToPage(2, 2 > _viewModel.SelectedPageIndex);
     private void OnPageDot3Click(object sender, RoutedEventArgs e) => NavigateToPage(3, 3 > _viewModel.SelectedPageIndex);
+    private void OnPageDot4Click(object sender, RoutedEventArgs e) => NavigateToPage(4, 4 > _viewModel.SelectedPageIndex);
+
+    private void OnDevPullRequestClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is string url && !string.IsNullOrWhiteSpace(url))
+        {
+            _viewModel.OpenDeveloperUrl(url);
+        }
+    }
+
+    private void OnDevPullRequestMergeClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement fe && fe.Tag is int prNumber && prNumber > 0)
+        {
+            _ = _viewModel.HandlePullRequestMergeClickAsync(prNumber);
+        }
+    }
 
     private void OnSurfacePointerWheelChanged(object sender, PointerRoutedEventArgs e)
     {
@@ -85,15 +104,16 @@ public sealed partial class IslandWindow
         _lastWheelNavTicks = now;
         e.Handled = true;
 
+        int pageCount = ActivePageCount;
         int currentIndex = _viewModel.SelectedPageIndex;
         if (step < 0)
         {
-            int nextIndex = (currentIndex + 1) % ExpandedPageCount;
+            int nextIndex = (currentIndex + 1) % pageCount;
             NavigateToPage(nextIndex, isForward: true);
         }
         else
         {
-            int prevIndex = (currentIndex - 1 + ExpandedPageCount) % ExpandedPageCount;
+            int prevIndex = (currentIndex - 1 + pageCount) % pageCount;
             NavigateToPage(prevIndex, isForward: false);
         }
 
@@ -105,7 +125,7 @@ public sealed partial class IslandWindow
 
     private void NavigateToPage(int targetIndex, bool isForward)
     {
-        targetIndex = Math.Clamp(targetIndex, 0, ExpandedPageCount - 1);
+        targetIndex = Math.Clamp(targetIndex, 0, ActivePageCount - 1);
         int fromIndex = _targetPageIndex;
         if (fromIndex == targetIndex) return;
 
@@ -317,24 +337,36 @@ public sealed partial class IslandWindow
 
     private void UpdatePageDots(int activeIndex, bool animated)
     {
+        int activeCount = Math.Clamp(ActivePageCount, 1, _dotVisualElements.Length);
+        if (PageDotsGrid is not null)
+        {
+            PageDotsGrid.Width = activeCount == 5 ? 75.0 : 64.0;
+        }
+        if (PageDotVisual4 is not null)
+        {
+            PageDotVisual4.Visibility = activeCount == 5 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         double[] targets =
         [
             activeIndex == 0 ? 18.0 : 6.0,
             activeIndex == 1 ? 18.0 : 6.0,
             activeIndex == 2 ? 18.0 : 6.0,
-            activeIndex == 3 ? 18.0 : 6.0
+            activeIndex == 3 ? 18.0 : 6.0,
+            activeIndex == 4 ? 18.0 : 6.0
         ];
         double[] targetOpacities =
         [
             activeIndex == 0 ? 1.0 : 0.35,
             activeIndex == 1 ? 1.0 : 0.35,
             activeIndex == 2 ? 1.0 : 0.35,
-            activeIndex == 3 ? 1.0 : 0.35
+            activeIndex == 3 ? 1.0 : 0.35,
+            activeIndex == 4 ? 1.0 : 0.35
         ];
 
         if (WindowRoot.Resources.TryGetValue("PrimaryText", out var brushObj) && brushObj is Microsoft.UI.Xaml.Media.Brush brush)
         {
-            for (int i = 0; i < ExpandedPageCount; i++)
+            for (int i = 0; i < _dotVisualElements.Length; i++)
             {
                 if (_dotVisualElements[i] is not null)
                 {
@@ -349,7 +381,7 @@ public sealed partial class IslandWindow
             Array.Clear(_dotCurrVelWidth);
             Array.Clear(_dotCurrVelOpacity);
             double x = DotStripStartXDip;
-            for (int i = 0; i < ExpandedPageCount; i++)
+            for (int i = 0; i < activeCount; i++)
             {
                 _dotCurrWidth[i] = targets[i];
                 _dotTargetWidth[i] = targets[i];
@@ -362,7 +394,7 @@ public sealed partial class IslandWindow
             return;
         }
 
-        for (int i = 0; i < ExpandedPageCount; i++)
+        for (int i = 0; i < activeCount; i++)
         {
             _dotStartWidth[i] = _dotCurrWidth[i];
             _dotVelWidth[i] = _isDotAnimating ? _dotCurrVelWidth[i] : 0.0;
@@ -385,12 +417,13 @@ public sealed partial class IslandWindow
             return;
         }
 
+        int activeCount = Math.Clamp(ActivePageCount, 1, _dotVisualElements.Length);
         _dotAnimElapsedSec += dt;
         double springElapsedSec = _dotAnimElapsedSec * MotionSpeedScale;
         var dotSpring = SelectDotSpring();
         bool settled = true;
 
-        for (int i = 0; i < ExpandedPageCount; i++)
+        for (int i = 0; i < activeCount; i++)
         {
             var widthState = dotSpring.Evaluate(
                 springElapsedSec,
@@ -416,7 +449,7 @@ public sealed partial class IslandWindow
         }
 
         double x = DotStripStartXDip;
-        for (int i = 0; i < ExpandedPageCount; i++)
+        for (int i = 0; i < activeCount; i++)
         {
             ApplyDotVisualState(i, x, _dotCurrWidth[i], _dotCurrOpacity[i]);
             x += _dotCurrWidth[i] + 5.0;
@@ -428,7 +461,7 @@ public sealed partial class IslandWindow
             Array.Clear(_dotCurrVelWidth);
             Array.Clear(_dotCurrVelOpacity);
             double snapX = DotStripStartXDip;
-            for (int i = 0; i < ExpandedPageCount; i++)
+            for (int i = 0; i < activeCount; i++)
             {
                 _dotCurrWidth[i] = _dotTargetWidth[i];
                 _dotCurrOpacity[i] = _dotTargetOpacity[i];
@@ -440,6 +473,11 @@ public sealed partial class IslandWindow
 
     private void ApplyDotVisualState(int index, double offsetX, double width, double opacity)
     {
+        if (index < 0 || index >= _dotVisualElements.Length)
+        {
+            return;
+        }
+
         if (_dotVisualElements[index] is not null)
         {
             _dotVisualElements[index].Translation = new Vector3((float)offsetX, 0f, 0f);

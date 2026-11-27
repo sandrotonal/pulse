@@ -49,6 +49,12 @@ public sealed partial class IslandWindow
                 _viewModel.IsDragHovering = true;
             }
 
+            _viewModel.CloseQuickLook();
+            if (_viewModel.IsQuickNoteOpen && string.IsNullOrWhiteSpace(_viewModel.QuickNoteText))
+            {
+                _viewModel.CloseQuickNote();
+            }
+
             // Magnetically spring open to Page 3 ("Raf") on drag approach.
             if (!_viewModel.IsExpanded)
             {
@@ -388,8 +394,11 @@ public sealed partial class IslandWindow
     {
         if (_viewModel.QuickLookItem is { } item)
         {
-            await _viewModel.CopyOcrTextFromImageAsync(item.FilePath);
-            _viewModel.CloseQuickLook();
+            var copied = await _viewModel.CopyOcrTextFromImageAsync(item.FilePath);
+            if (copied)
+            {
+                _viewModel.CloseQuickLook();
+            }
         }
     }
 
@@ -404,14 +413,23 @@ public sealed partial class IslandWindow
     private void OnShelfOpenQuickNoteClick(object sender, RoutedEventArgs e)
     {
         _collapseDelayTimer.Stop();
+        SetTextInputActivationEnabled(true);
         _viewModel.OpenQuickNote();
-        _ = DispatcherQueue.TryEnqueue(() =>
+        _ = DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
         {
-            if (QuickNoteInputBox is not null)
+            if (!_windowClosed && _viewModel.IsQuickNoteOpen && QuickNoteInputBox is not null)
             {
                 QuickNoteInputBox.Focus(FocusState.Programmatic);
             }
         });
+    }
+
+    private void OnQuickNotePointerPressed(object sender, PointerRoutedEventArgs e)
+    {
+        _collapseDelayTimer.Stop();
+        SetTextInputActivationEnabled(true);
+        _ = SetForegroundWindow(_hwnd);
+        QuickNoteInputBox?.Focus(FocusState.Pointer);
     }
 
     private void OnShelfQuickNoteCancelClick(object sender, RoutedEventArgs e)
@@ -422,8 +440,21 @@ public sealed partial class IslandWindow
 
     private async void OnShelfQuickNoteSaveClick(object sender, RoutedEventArgs e)
     {
-        _isInteractingWithControl = false;
-        await _viewModel.SubmitQuickNoteAsync();
+        if (_isSubmittingQuickNote)
+        {
+            return;
+        }
+
+        _isSubmittingQuickNote = true;
+        try
+        {
+            _isInteractingWithControl = false;
+            await _viewModel.SubmitQuickNoteAsync();
+        }
+        finally
+        {
+            _isSubmittingQuickNote = false;
+        }
     }
 
     private async void OnQuickNoteKeyDown(object sender, KeyRoutedEventArgs e)
@@ -431,8 +462,21 @@ public sealed partial class IslandWindow
         if (e.Key == global::Windows.System.VirtualKey.Enter)
         {
             e.Handled = true;
-            _isInteractingWithControl = false;
-            await _viewModel.SubmitQuickNoteAsync();
+            if (_isSubmittingQuickNote)
+            {
+                return;
+            }
+
+            _isSubmittingQuickNote = true;
+            try
+            {
+                _isInteractingWithControl = false;
+                await _viewModel.SubmitQuickNoteAsync();
+            }
+            finally
+            {
+                _isSubmittingQuickNote = false;
+            }
         }
         else if (e.Key == global::Windows.System.VirtualKey.Escape)
         {
@@ -480,6 +524,11 @@ public sealed partial class IslandWindow
         var target = visible ? 1.0 : 0.0;
         if (ReducedMotion)
         {
+            try
+            {
+                ElementCompositionPreview.GetElementVisual(btn).StopAnimation("Opacity");
+            }
+            catch { }
             btn.Opacity = target;
             return;
         }
@@ -575,6 +624,13 @@ public sealed partial class IslandWindow
 
     private async void OnShelfBrowseFilesClick(object sender, RoutedEventArgs e)
     {
+        if (_isPickingShelfFile)
+        {
+            return;
+        }
+
+        _isPickingShelfFile = true;
+        _collapseDelayTimer.Stop();
         try
         {
             var picker = new Windows.Storage.Pickers.FileOpenPicker();
@@ -591,6 +647,16 @@ public sealed partial class IslandWindow
         catch (Exception ex)
         {
             CrashLogger.Write("IslandWindow.OnShelfBrowseFilesClick", ex);
+        }
+        finally
+        {
+            _isPickingShelfFile = false;
+            if (!_isPointerOverSurface && _viewModel.IsExpanded && _viewModel.AutoCollapse &&
+                !_viewModel.PreserveFocusPanel && !_viewModel.IsQuickNoteOpen && !_viewModel.IsQuickLookOpen &&
+                !_isDragHovering && !_isDraggingOut && !IsCursorCurrentlyInsideIsland())
+            {
+                RestartCollapseDelayTimer();
+            }
         }
     }
 
@@ -698,6 +764,15 @@ public sealed partial class IslandWindow
     {
         if (ReducedMotion)
         {
+            try
+            {
+                if (ShelfDropBobIcon is not null)
+                {
+                    ElementCompositionPreview.GetElementVisual(ShelfDropBobIcon).StopAnimation("Translation");
+                    ShelfDropBobIcon.Translation = Vector3.Zero;
+                }
+            }
+            catch { }
             return;
         }
 
